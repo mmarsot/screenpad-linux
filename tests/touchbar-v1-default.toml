@@ -1,0 +1,46 @@
+# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
+# second. 'screenpad-touchbar check' validates this file.
+#
+# Units are ScreenPad pixels as you see the panel with the laptop open:
+# 1920 wide, 1080 tall, (0, 0) at the top left, the top being the edge
+# nearest the screen hinge. 16 pixels are about 1 mm.
+
+# Height of the bar at the top of the panel. Touches that start in it never
+# move the pointer or click; everything below stays a touchpad.
+height = 160
+
+# One [[button]] block per button, at x .. x + width along the bar.
+#   label            text drawn on the button
+#   x, width         where it sits, in pixels from the left edge
+#   mode             "hold": keys down on touch, up on release
+#                    "tap":  one key press when you lift the finger on it
+#   key              a key or combo: "F14", "ctrl+alt+t", "super+space",
+#                    "micmute", "playpause" (evdev names, KEY_ optional)
+#   command          instead of key: a command to run, as a string for sh
+#                    or a list of arguments. With mode "hold" it runs on
+#                    touch, and release_command (optional) runs on release.
+
+# Push to talk. F14 is on no keyboard and GNOME binds nothing to it
+# (it reaches apps as XF86Launch5); set your voice app's push-to-talk key to
+# it by holding this button, or change key to what the app already uses.
+[[button]]
+label = "Push to talk"
+x = 0
+width = 480
+mode = "hold"
+key = "F14"
+
+# More buttons, for example:
+# [[button]]
+# label = "Mute"
+# x = 520
+# width = 240
+# mode = "tap"
+# key = "micmute"
+#
+# [[button]]
+# label = "Terminal"
+# x = 800
+# width = 240
+# mode = "tap"
+# command = ["gnome-terminal"]

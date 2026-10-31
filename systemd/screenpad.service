@@ -1,0 +1,20 @@
+[Unit]
+Description=ASUS ScreenPad display (fixed EDID, connector on, WMI light)
+Documentation=file:/usr/local/share/doc/screenpad/README.md file:/usr/local/share/doc/screenpad/docs/display.md
+# After the display manager, so a compositor drives the output by the time
+# 'on' lights the panel.
+After=systemd-modules-load.service systemd-udevd.service sys-kernel-debug.mount
+After=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Waits for nvidia-drm, the asus_screenpad backlight, unless the kernel is in
+# lockdown (Secure Boot) debugfs itself, and then for a compositor to enable
+# the connector; 30 s in all.
+ExecStart=/usr/local/sbin/screenpad on --wait 30
+ExecStop=/usr/local/sbin/screenpad off
+TimeoutStartSec=60
+
+[Install]
+WantedBy=graphical.target

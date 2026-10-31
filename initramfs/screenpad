@@ -1,0 +1,21 @@
+#!/bin/sh
+# initramfs-tools hook: ship the ScreenPad EDID in the initramfs, so that
+# drm.edid_firmware can load it when nvidia-drm is probed from there.
+# install.sh only installs this when nvidia-drm is in the initramfs.
+PREREQ=""
+prereqs() {
+    echo "$PREREQ"
+}
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+if [ -e /lib/firmware/screenpad/edid.bin ]; then
+    copy_file firmware /lib/firmware/screenpad/edid.bin
+fi
+exit 0

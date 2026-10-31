@@ -1,0 +1,4 @@
+# screenpad-touchbar: lets the user at the seat create the virtual touchpad
+# and key device through /dev/uinput (an ACL via uaccess, applied by
+# 73-seat-late.rules). Installed by the screenpad install.sh.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess"

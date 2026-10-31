@@ -1,0 +1,22 @@
+[Unit]
+Description=ScreenPad touch bar (buttons along the top, touchpad below)
+Documentation=file:/usr/local/share/doc/screenpad/docs/touchbar.md file:/usr/local/share/doc/screenpad/docs/configuration.md
+# The bar is drawn by the GNOME Shell extension, so it belongs to the session.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Grabs the touchpad only while /run/screenpad/active exists ('screenpad on').
+# When it stops or dies, the kernel drops the grab and the uinput devices and
+# the plain touchpad works again.
+ExecStart=/usr/local/bin/screenpad-touchbar run
+ExecReload=/bin/kill -HUP $MAINPID
+# The daemon removes its state file when it stops; this covers a SIGKILL, so
+# the extension stops drawing the bar at once.
+ExecStopPost=/bin/rm -f %t/screenpad/touchbar.json
+Restart=on-failure
+RestartSec=3
+MemoryMax=64M
+
+[Install]
+WantedBy=graphical-session.target

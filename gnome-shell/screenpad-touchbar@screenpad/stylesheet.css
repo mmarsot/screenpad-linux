@@ -1,0 +1,74 @@
+.screenpad-touchbar {
+    background-color: #161618;
+    border-bottom: 1px solid #333338;
+}
+
+.screenpad-touchbar-separator {
+    background-color: #333338;
+}
+
+.screenpad-touchbar-spot {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* Buttons: grey, lighter while pressed; a hold button (push to talk) is red
+   while held. */
+.screenpad-touchbar-button {
+    background-color: #3a3a40;
+}
+
+.screenpad-touchbar-button:active {
+    background-color: #62626a;
+}
+
+.screenpad-touchbar-button.hold:active {
+    background-color: #e01b24;
+}
+
+/* Shortcuts: the app's own icon; red with a bin while a long press arms
+   removing it. */
+.screenpad-touchbar-shortcut {
+    background-color: #2a2a2e;
+}
+
+.screenpad-touchbar-shortcut:active {
+    background-color: #4a4a52;
+}
+
+.screenpad-touchbar-shortcut.removing {
+    background-color: #c01c28;
+}
+
+/* Spots with nothing in them, and where a dragged app will land. */
+.screenpad-touchbar-spot.empty {
+    background-color: transparent;
+    border: 2px solid #3a3a40;
+    color: #5a5a62;
+}
+
+.screenpad-touchbar-shortcut.drop {
+    background-color: rgba(53, 132, 228, 0.3);
+    border: 2px solid #3584e4;
+    color: #ffffff;
+}
+
+/* The resize grip at the right end: up and down arrows around a grab bar,
+   on a faint tile so it reads as a handle at any height. */
+.screenpad-touchbar-grip {
+    background-color: #242428;
+    color: #b0b0b8;
+}
+
+.screenpad-touchbar-grip-bar {
+    background-color: #b0b0b8;
+}
+
+.screenpad-touchbar-grip:active {
+    background-color: #3a3a40;
+    color: #ffffff;
+}
+
+.screenpad-touchbar-grip:active .screenpad-touchbar-grip-bar {
+    background-color: #ffffff;
+}

@@ -1,0 +1,6 @@
+{
+  "uuid": "screenpad-touchbar@screenpad",
+  "name": "ScreenPad touch bar",
+  "description": "Draws the ScreenPad touch bar (screenpad-touchbar) on the ScreenPad: its buttons, app shortcuts and resize grip; takes apps dropped on it and opens them when tapped.",
+  "shell-version": ["50"]
+}
