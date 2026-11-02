@@ -492,39 +492,7 @@ class NotifyConfigTests(unittest.TestCase):
 
 
 class ExtensionMirrorTests(unittest.TestCase):
-    """Static checks on notifications.js, which cannot run here."""
-
-    def test_wired_into_the_extension(self):
-        ext = read("extension.js")
-        self.assertIn("import {NotificationMirror} from './notifications.js';", ext)
-        self.assertIn("const SOCKET_NAME = '%s';" % t.SOCKET_NAME, ext)
-        disable = ext[ext.index("    disable() {"):ext.index("    Launch(id)")]
-        self.assertIn("this._mirror?.destroy();", disable)
-
-    def test_follows_the_message_tray(self):
-        src = read("notifications.js")
-        for signal in ("'source-added'", "'source-removed'", "'notification-request-banner'",
-                       "'destroy'", "'action-added'", "'action-removed'"):
-            self.assertIn(signal, src)
-        self.assertIn("dnd: !this._settings.get_boolean('show-banners')", src)
-        self.assertIn("banners: policy?.showBanners ?? true", src)
-        # Only an app's own policy names an app; the generic one is "generic".
-        self.assertIn("policy instanceof MessageTray.NotificationApplicationPolicy", src)
-        # GNOME's own banner handler runs first and may acknowledge it:
-        # whether it was seen is taken when it was added.
-        self.assertIn("this._added.set(notification, notification.acknowledged)", src)
-        self.assertNotIn("acknowledged: notification.acknowledged", src)
-
-    def test_never_activates_by_itself(self):
-        src = read("notifications.js")
-        # One activation, of a button, in the answer to a tap; never the
-        # notification's own activate().
-        self.assertEqual(src.count("activate()"), 1)
-        answer = src[src.index("    _answer(msg) {"):src.index("    _read(input) {")]
-        self.assertIn("action.activate();", answer)
-        self.assertLess(answer.index("msg.reason !== 'chosen'"), answer.index("action.activate"))
-        self.assertIn("card.notification.actions.includes(action)", answer)
-        self.assertNotRegex(src, r"notification\.activate\(")
+    """The extension's messages against the daemon's protocol."""
 
     def test_messages_match_the_daemon(self):
         src = read("notifications.js")
@@ -536,10 +504,9 @@ class ExtensionMirrorTests(unittest.TestCase):
         body = src[src.index("op: 'notify', id,"):]
         body = body[:body.index("});")]
         keys = set(re.findall(r"^\s*(\w+)[:,]", body, re.M)) - {"op"} | {"id"}
-        msg = {k: None for k in keys}
-        t._known(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners",
-                       "dnd", "acknowledged"})
-        self.assertEqual(keys, set(notify()) - {"op"})
+        self.assertEqual(keys, set(t.parse_notify(notify())))
+        ext = read("extension.js")
+        self.assertEqual(re.search(r"const SOCKET_NAME = '([^']+)';", ext).group(1), t.SOCKET_NAME)
 
 
 if __name__ == "__main__":

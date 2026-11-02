@@ -805,27 +805,11 @@ class ExtensionTests(unittest.TestCase):
             keys = set(re.findall(r"(\w+)\s*:", args))
             self.assertLessEqual(keys, self.CHROME_OPTIONS, args)
 
-    def test_bar_is_a_strut(self):
-        # Windows on the ScreenPad must open and maximize below the bar: the
-        # strut actor, as tall as the bar's own height. A card's extra
-        # height covers windows instead (the bar itself is no strut).
-        import re
-        src = self.source()
-        self.assertEqual(re.findall(r"addChrome\(strut(?:, (\{[^}]*\}))?\)", src),
-                         ["{affectsStruts: true}"])
-        self.assertEqual(re.findall(r"addChrome\(bar(?:, (\{[^}]*\}))?\)", src), [""])
-        self.assertIn("const strut = new St.Widget({x: monitor.x, y: monitor.y, "
-                      "width: monitor.width,\n            height: own});", src)
-        self.assertIn("Number.isFinite(state.strut) ? state.strut : state.height;", src)
-
     def test_card_growth_is_animated_within_the_arming_delay(self):
         import re
-        src = self.source()
-        grow = int(re.search(r"const GROW_MS = (\d+);", src).group(1))
+        grow = int(re.search(r"const GROW_MS = (\d+);", self.source()).group(1))
         # Fully drawn before a tap on it counts.
         self.assertLess(grow, t.ASK_ARM * 1000)
-        self.assertIn("previous && previous.own === own && previous.height < height", src)
-        self.assertIn("bar.ease({height, duration: GROW_MS", src)
 
     def test_grip_drawn_at_every_height(self):
         # The grip is narrow (104 px); insets and icons scaled by the

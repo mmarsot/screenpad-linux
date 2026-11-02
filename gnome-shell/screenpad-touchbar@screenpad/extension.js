@@ -228,7 +228,7 @@ export default class ScreenpadTouchbar extends Extension {
         // A finger going down or up only restyles a tile; anything else
         // rebuilds the bar.
         const shape = state.tiles.map(({pressed, ...rest}) => rest);
-        const layout = JSON.stringify([state.panel, state.height, shape, state.divider,
+        const layout = JSON.stringify([state.panel, state.height, state.strut, shape, state.divider,
             monitor.x, monitor.y, monitor.width, monitor.height]);
         if (layout !== this._layout) {
             const previous = this._drawn;
