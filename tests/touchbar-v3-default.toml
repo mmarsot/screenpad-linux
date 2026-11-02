@@ -1,0 +1,62 @@
+# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
+# second. 'screenpad-touchbar check' validates this file. The bar writes
+# here too, when you resize it or add or remove a shortcut; it changes only
+# the height line and the [[shortcut]] blocks and keeps the rest as it is.
+#
+# The bar, left to right: three button spots, three shortcut spots, and a
+# grip at the right end. Units are ScreenPad pixels as you see the panel
+# with the laptop open: 1920 wide, 1080 tall, the top being the edge
+# nearest the screen hinge. 16 pixels are about 1 mm.
+
+# Height of the bar at the top of the panel, 64 to 540. Touches that
+# start in it never move the pointer or click; everything below stays a
+# touchpad. Drag the grip at the bar's right end down or up to change it.
+height = 160
+
+# Up to three [[button]] blocks, for the three button spots in order.
+#   icon             a symbolic icon name from the icon theme, such as
+#                    "audio-input-microphone-symbolic" (the names are the
+#                    files in /usr/share/icons/Adwaita/symbolic), or the
+#                    path of an image file (SVG or PNG)
+#   label            the button's name; drawn instead when there is no icon
+#   mode             "hold": keys down on touch, up on release
+#                    "tap":  one key press when you lift the finger on it
+#   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
+#                    "micmute", "playpause" (evdev names, KEY_ optional;
+#                    "meta" and "super" are the Super key, not Alt)
+#   command          instead of key: a command to run, as a string for sh
+#                    or a list of arguments. With mode "hold" it runs on
+#                    touch, and release_command (optional) runs on release.
+
+# Push to talk. Alt+K, held while you hold the button: Claude Code's voice
+# push-to-talk when ~/.claude/keybindings.json binds "meta+k" (Claude
+# Code's name for Alt+K) to "voice:pushToTalk" in the "Chat" context.
+# Terminals send Alt+K, unlike F13 and up. For another voice app, set key
+# to the push-to-talk key it uses.
+[[button]]
+icon = "audio-input-microphone-symbolic"
+label = "Push to talk"
+mode = "hold"
+key = "alt+k"
+
+# Mutes and unmutes the microphone, like a keyboard's mic mute key.
+[[button]]
+icon = "microphone-sensitivity-muted-symbolic"
+label = "Mute microphone"
+mode = "tap"
+key = "micmute"
+
+# GNOME's screenshot tool, like the Print Screen key.
+[[button]]
+icon = "applets-screenshooter-symbolic"
+label = "Screenshot"
+mode = "tap"
+key = "printscreen"
+
+# Up to three [[shortcut]] blocks, for the shortcut spots in order: apps by
+# their desktop file id. Drag an app from the dock or the app grid onto the
+# bar to add it; tap it to open the app; hold it for a second, until it
+# turns red, and lift to remove it. 'screenpad-touchbar shortcut' does the
+# same from a terminal. For example:
+# [[shortcut]]
+# app = "org.gnome.Nautilus.desktop"

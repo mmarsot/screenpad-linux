@@ -3,7 +3,7 @@
 Makes the first-generation ASUS ScreenPad (5.5", 1080x1920) work on Linux on the **ASUS ZenBook UX480FD**, with Ubuntu and GNOME:
 
 - **Display:** lights the ScreenPad and makes it a normal extended monitor, at boot and after resume, with Secure Boot on or off. It runs in userspace only: no kernel module, no `acpi_call`.
-- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip.
+- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)).
 
 ![The touch bar: push to talk, mute microphone and screenshot buttons, then Files and Firefox shortcuts, an empty shortcut spot and the resize grip](docs/images/touchbar.png)
 
@@ -30,7 +30,7 @@ What was checked on the hardware:
 What was not checked on the hardware:
 
 - **Display:** relighting after suspend and resume; reading the EDID over DDC (it failed with `Input/output error` on the tested unit); the debugfs path used on kernels without lockdown (covered by unit tests only); X11 sessions.
-- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel.
+- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel. The same goes for the scene of tiles: in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked.
 
 ## Quick start
 
@@ -99,6 +99,7 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 | [Display](docs/display.md) | how the display bring-up works, every `screenpad` command, Secure Boot and `drm.edid_firmware`, GRUB, manual rollback, GNOME placement |
 | [Touch bar](docs/touchbar.md) | using the bar, its commands, troubleshooting, how it works |
 | [Touch bar configuration](docs/configuration.md) | `~/.config/screenpad/touchbar.toml`, every setting, examples, push to talk |
+| [Touch bar app API](docs/app-api.md) | the socket for apps: tiles, questions, `screenpad-touchbar ask` |
 | [Development](docs/development.md) | code layout and the test suite |
 
 ## Follow-ups

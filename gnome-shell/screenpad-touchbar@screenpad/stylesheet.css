@@ -72,3 +72,61 @@
 .screenpad-touchbar-grip:active .screenpad-touchbar-grip-bar {
     background-color: #ffffff;
 }
+
+/* Tiles an app draws (a button spot with 'tile' in the config): dimmed
+   while no app provides them, colored by the tone the app sets. */
+.screenpad-touchbar-button.tile.offline {
+    background-color: #2a2a2e;
+    color: #6a6a72;
+}
+
+.screenpad-touchbar-spot.tone-neutral {
+    background-color: #3a3a40;
+}
+
+.screenpad-touchbar-spot.tone-accept {
+    background-color: #26a269;
+}
+
+.screenpad-touchbar-spot.tone-reject {
+    background-color: #c01c28;
+}
+
+.screenpad-touchbar-spot.tone-warning {
+    background-color: #e5a50a;
+    color: #000000;
+}
+
+.screenpad-touchbar-spot.tone-neutral:active,
+.screenpad-touchbar-spot.tone-accept:active,
+.screenpad-touchbar-spot.tone-reject:active,
+.screenpad-touchbar-spot.tone-warning:active {
+    background-color: #62626a;
+    color: #ffffff;
+}
+
+/* A question: its text over the button spots, its answers in the shortcut
+   spots, each lighter while a finger is on it. */
+.screenpad-touchbar-ask-text {
+    background-color: #2a2a2e;
+    padding: 0 16px;
+}
+
+.screenpad-touchbar-option {
+    background-color: #3a3a40;
+}
+
+/* A second, smaller line of text, and a short count in a tile's corner. */
+.screenpad-touchbar-text {
+    color: #b0b0b8;
+    font-weight: normal;
+}
+
+/* White, to stand out on every tone. */
+.screenpad-touchbar-badge {
+    background-color: #ffffff;
+    color: #000000;
+    border-radius: 999px;
+    padding: 0 6px;
+    font-weight: bold;
+}

@@ -44,6 +44,7 @@ key = "printscreen"
 | `mode` | `"hold"`: the key goes down when the touch starts and up when it ends, wherever the finger is by then. `"tap"` (the default): one press when the finger lifts on the button (or within 60 px of it) |
 | `key` | a key or combo, by evdev name with or without `KEY_`, joined by `+`: `"alt+k"`, `"ctrl+alt+t"`, `"super+space"`, `"micmute"`, `"playpause"`, or a raw code such as `"184"`. `meta` and `super` both mean the Super key, not Alt |
 | `command` | instead of `key`: a command, as a string for `sh -c` or a list of arguments. In `"hold"` mode it runs when the touch starts, and `release_command` (optional) runs when it ends |
+| `tile` | instead of `key` or `command`: the name of a tile an app draws and handles in this spot (lower case letters, digits, `.`, `_`, `-`). While no app provides it, the spot shows its `icon` or `label` dimmed and ignores touches. `mode` does not apply. See the [app API](app-api.md) |
 | `[[shortcut]]` `app` | up to three, filling the shortcut spots: an app's desktop file id, such as `"org.gnome.Nautilus.desktop"` (`.desktop` optional). Normally added by drag and drop |
 
 The bar sends keys through its own virtual keyboard, so a key goes to whatever window has the keyboard focus, exactly as if it were typed. Key names are evdev key positions, so on a non-QWERTY layout a letter key gives whatever your layout puts at that position.
@@ -68,6 +69,15 @@ icon = "utilities-terminal-symbolic"
 label = "Terminal"
 mode = "tap"
 command = ["ptyxis", "--new-window"]
+```
+
+A spot for an app (here one that calls its tile `agents`; see the [app API](app-api.md)):
+
+```toml
+[[button]]
+icon = "dialog-information-symbolic"
+label = "Agents"
+tile = "agents"
 ```
 
 A push-to-talk button that unmutes the microphone only while held, for apps without a push-to-talk key:
@@ -113,5 +123,5 @@ The first version placed buttons with `x` and `width`. Those keys are now ignore
 
 When the daemon or `screenpad-touchbar on` starts:
 
-- A config that is still exactly the first version's default is replaced by the current default.
-- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`. The rest of the file is yours and is left as it is.
+- A config that is still exactly an earlier version's default is replaced by the current default.
+- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`, and the settings comment gains the lines about `tile`. The rest of the file is yours and is left as it is.
