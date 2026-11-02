@@ -25,8 +25,12 @@ whatever tiles it finds there, on the ScreenPad, and takes apps dropped on it.
 Other programs use the bar through a socket next to that file
 (touchbar.sock): an app draws and handles the button spots the config gives
 it ('tile' in a [[button]] block), and any program can ask the user a
-question with up to three answers, shown in the bar until it is answered or
-times out ('screenpad-touchbar ask' does it from a shell).
+question with up to three answers ('screenpad-touchbar ask' does it from a
+shell). The extension forwards GNOME's notifications there too, and those
+with buttons (or urgent ones) become questions whose answers press the
+notification's own buttons. A question is an attention card: the bar grows
+to CARD_HEIGHT for it and shrinks back once it is answered, dismissed or
+timed out. Contacts already down keep the kind they started with.
 
 Runs as the desktop user (group input, plus access to /dev/uinput).
 Commands: run, on, off, status, check, probe, shortcut, ask.
@@ -107,7 +111,17 @@ MAX_OUT = 262144
 # A question ignores touches that start this soon after it appears, so a tap
 # already on its way lands on nothing rather than on an answer.
 ASK_ARM = 0.3
+# The bar's height while a question shows (about 29 mm, which leaves about
+# 39 mm of touchpad). It grows only when no touchpad contact lies in the
+# band it is about to cover, or after waiting GROW_WAIT for one to leave.
+CARD_HEIGHT = 456
+GROW_WAIT = 0.3
 ASK_TIMEOUT = 60
+# GNOME notifications: how long a card shows one, and how many one sender
+# (the extension) may have waiting at once.
+NOTIFY_TIMEOUT = 20
+MAX_NOTIFY_WAITING = 8
+URGENCIES = ("low", "normal", "high", "critical")
 MAX_ASK_TIMEOUT = 3600
 MAX_OPTIONS = 3
 TONES = ("neutral", "accept", "reject", "warning")
@@ -355,11 +369,32 @@ class Spot:
         return out
 
 
+class NotifyPolicy:
+    """Which GNOME notifications the bar mirrors ([notifications])."""
+
+    def __init__(self, mirror=True, allow=None, deny=(), timeout=NOTIFY_TIMEOUT):
+        self.mirror = mirror
+        self.allow = None if allow is None else list(allow)
+        self.deny = list(deny)
+        self.timeout = timeout
+
+    def describe(self):
+        if not self.mirror:
+            return "not mirrored"
+        out = "mirrored for %d s" % self.timeout
+        if self.allow is not None:
+            out += ", only %s" % (", ".join(self.allow) or "no app")
+        if self.deny:
+            out += ", never %s" % ", ".join(self.deny)
+        return out
+
+
 class Config:
-    def __init__(self, height, buttons, shortcuts=()):
+    def __init__(self, height, buttons, shortcuts=(), notifications=None):
         self.height = height
         self.buttons = list(buttons)
         self.shortcuts = list(shortcuts)
+        self.notifications = notifications or NotifyPolicy()
         self.spots = (
             [Spot(BUTTON, i, i * SPOT_W, SPOT_W, self.buttons[i] if i < len(self.buttons) else None)
              for i in range(MAX_BUTTONS)]
@@ -368,9 +403,12 @@ class Config:
                for i in range(MAX_SHORTCUTS)]
             + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)])
 
-    def spot_at(self, px, py):
-        """The index in spots of what is under a bar touch, or None."""
-        if not 0 <= py < self.height:
+    def spot_at(self, px, py, height=None):
+        """The index in spots of what is under a bar touch, or None.
+
+        height is the bar's height for touches now (taller while a card
+        shows), else the config's."""
+        if not 0 <= py < (height or self.height):
             return None
         for i, s in enumerate(self.spots):
             if s.x <= px < s.x + s.width:
@@ -485,8 +523,21 @@ key = "printscreen"
 # same from a terminal. For example:
 # [[shortcut]]
 # app = "org.gnome.Nautilus.desktop"
+
+# GNOME notifications that have buttons (Join, Reply, ...), and urgent ones,
+# show in the bar: it grows into a card with the notification's text and
+# buttons, and shrinks back when you tap one, dismiss it or it times out.
+# Tapping a button presses the notification's own button. Dismissing only
+# closes the card; the notification stays in GNOME's list. Nothing shows
+# while Do Not Disturb is on, except what GNOME itself shows then (critical
+# notifications). To change that, a [notifications] table:
+# [notifications]
+# mirror = false                             # no cards for notifications
+# deny = ["org.gnome.Evolution.desktop"]     # never these apps
+# allow = ["org.gnome.Calendar.desktop"]     # only these apps
+# timeout = %(notify_timeout)d                               # seconds a card shows
 """ % {"height": DEFAULT_HEIGHT, "min": MIN_HEIGHT, "max": MAX_HEIGHT, "ptt": PTT_BLOCK,
-       "tile": TILE_DOC}
+       "tile": TILE_DOC, "notify_timeout": NOTIFY_TIMEOUT}
 
 # sha256 of the defaults earlier versions wrote. A file still exactly one of
 # them is replaced by the current default (see migrate_config()).
@@ -494,6 +545,8 @@ OLD_DEFAULTS = {
     "dfabfa5d73979ec2302e2a4d343426085da0c6fcd9093f31e3cee4067bc30c36",
     # Before tiles (tests/touchbar-v3-default.toml).
     "a764addfad0135d0272d89ed390b4013ed575819ca224fd3fa704508dde2a755",
+    # Before notifications (tests/touchbar-v4-default.toml).
+    "d6137e89e4ace61da259ef3accf7645b090baee1863076db4145bc08d54d8456",
 }
 
 # Default blocks earlier versions wrote, each with its current text. A config
@@ -613,7 +666,7 @@ def parse_config(text):
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(str(e))
-    unknown = set(data) - {"height", "button", "shortcut"}
+    unknown = set(data) - {"height", "button", "shortcut", "notifications"}
     if unknown:
         raise ConfigError("unknown setting(s): %s" % ", ".join(sorted(unknown)))
     height = _int(data.get("height", DEFAULT_HEIGHT), "height")
@@ -637,7 +690,38 @@ def parse_config(text):
         if app in shortcuts:
             raise ConfigError("%s: %s is already a shortcut" % (where, app))
         shortcuts.append(app)
-    return Config(height, buttons, shortcuts)
+    try:
+        notifications = _notifications(data.get("notifications", {}))
+    except ConfigError as e:
+        raise ConfigError("notifications: %s" % e)
+    return Config(height, buttons, shortcuts, notifications)
+
+
+NOTIFY_KEYS = {"mirror", "allow", "deny", "timeout"}
+
+
+def _apps(value, what):
+    if not isinstance(value, list):
+        raise ConfigError("%s must be a list of desktop file ids" % what)
+    return list(dict.fromkeys(app_id(a) for a in value))
+
+
+def _notifications(table):
+    if not isinstance(table, dict):
+        raise ConfigError("must be a [notifications] table")
+    unknown = set(table) - NOTIFY_KEYS
+    if unknown:
+        raise ConfigError("unknown setting(s): %s" % ", ".join(sorted(unknown)))
+    mirror = table.get("mirror", True)
+    if not isinstance(mirror, bool):
+        raise ConfigError("mirror must be true or false")
+    allow = _apps(table["allow"], "allow") if "allow" in table else None
+    deny = _apps(table.get("deny", []), "deny")
+    timeout = table.get("timeout", NOTIFY_TIMEOUT)
+    if isinstance(timeout, bool) or not isinstance(timeout, int) \
+            or not 1 <= timeout <= MAX_ASK_TIMEOUT:
+        raise ConfigError("timeout must be a whole number of seconds, 1 to %d" % MAX_ASK_TIMEOUT)
+    return NotifyPolicy(mirror, allow, deny, timeout)
 
 
 def config_path():
@@ -808,6 +892,9 @@ def migrate_config(path=None):
             changed = True
     if not changed:
         return False
+    # Updated block by block, an older default can become a later one.
+    if hashlib.sha256(text.encode()).hexdigest() in OLD_DEFAULTS:
+        text = EXAMPLE_CONFIG
     _write(path, text)
     log("%s had an earlier default button; updated it to the current one" % path)
     return True
@@ -875,6 +962,9 @@ def runtime_file(name):
 # "label", "title" and "text" (text lines), "badge" (a short text in a
 # corner), "drop" (the shortcut spot number an app icon dropped there takes)
 # and "empty". "divider" is the x of the line between the two groups.
+# "height" is the bar's height drawn (CARD_HEIGHT while a card shows) and
+# "strut" its own height, which windows keep clear of; the extension
+# animates a growth of height over an unchanged strut.
 
 TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
 # Every CSS class a tile can carry besides its style. The stylesheet has a
@@ -883,9 +973,11 @@ TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
 TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple(
     "tone-" + tone for tone in TONES)
 DIVIDER_X = SHORTCUTS_X - GROUP_GAP // 2
-# A question: its title and text over the three button spots, its answers in
-# the three shortcut spots. The grip stays.
-ASK_TEXT_W = SHORTCUTS_X - GROUP_GAP
+# A question (an attention card): its title and text over the first two
+# button spots, Dismiss in the third, its answers in the three shortcut
+# spots. The grip stays.
+ASK_TEXT_W = DISMISS_X = 2 * SPOT_W
+DISMISS = "dismiss"
 
 
 def _looks(button):
@@ -939,8 +1031,15 @@ def ask_option_x(k):
     return SHORTCUTS_X + k * SPOT_W
 
 
+def option_x(option):
+    """Where an answer's tile (an index, or DISMISS) starts."""
+    return DISMISS_X if option == DISMISS else ask_option_x(option)
+
+
 def ask_option_at(ask, px):
-    """The index of the answer under a touch at px, or None."""
+    """The answer under a touch at px (an index, or DISMISS), or None."""
+    if DISMISS_X <= px < DISMISS_X + SPOT_W:
+        return DISMISS
     for k in range(len(ask.options)):
         if ask_option_x(k) <= px < ask_option_x(k) + SPOT_W:
             return k
@@ -948,13 +1047,18 @@ def ask_option_at(ask, px):
 
 
 def ask_tiles(ask, pressed=(), queued=0):
-    """The tiles of a question: its text, then one tile per answer."""
+    """The tiles of a question: its text, Dismiss, then one tile per answer."""
     text = {"id": "ask-text", "x": 0, "width": ASK_TEXT_W, "style": "ask-text", "title": ask.title}
     if ask.text:
         text["text"] = ask.text
     if queued:
         text["badge"] = "+%d" % queued
-    tiles = [text]
+    dismiss = {"id": "ask-dismiss", "x": DISMISS_X, "width": SPOT_W, "style": "option",
+               "classes": ["tone-neutral"], "icon": "window-close-symbolic", "icon_scale": 0.6,
+               "label": "Dismiss"}
+    if DISMISS in pressed:
+        dismiss["pressed"] = True
+    tiles = [text, dismiss]
     for k, o in enumerate(ask.options):
         tile = {"id": "ask-option-%d" % k, "x": ask_option_x(k), "width": SPOT_W,
                 "style": "option", "classes": ["tone-" + o["tone"]], "label": o["label"]}
@@ -1105,6 +1209,13 @@ class Splitter:
     def wanted(self):
         return {s: (c.id, c.x, c.y, c.tool) for s, c in self.contacts.items() if c.kind == PAD}
 
+    def pad_in_band(self, top, bottom):
+        """Whether a touchpad contact is now between rows top and bottom:
+        the band a growing bar would cover. It would stay a touchpad
+        contact, but the card would be drawn under the finger."""
+        return any(top <= self.axes.panel(c.x, c.y)[1] < bottom
+                   for c in self.contacts.values() if c.kind == PAD)
+
     def pad_frames(self, wanted=None):
         wanted = self.wanted() if wanted is None else wanted
         events = []
@@ -1210,16 +1321,17 @@ class Bar:
     - shortcut: a tap opens the app; held for LONG_PRESS it turns to
       "remove", and lifting then removes it; sliding away cancels either;
     - grip: dragging it up or down resizes the bar, saved on lift;
-    - while a question shows (asks.shown()), it covers the button and
-      shortcut spots: lifting on an answer chooses it. Touches that start
-      within ASK_ARM of it showing, or on its text, do nothing. The grip
-      stays.
+    - while a question shows (asks.shown()), the bar is CARD_HEIGHT tall
+      (touch_height()) and the question covers the button and shortcut
+      spots: lifting on an answer chooses it, lifting on Dismiss closes
+      it with no answer. Touches that start within ASK_ARM of it showing,
+      or on its text, do nothing. The grip stays.
     A touch keeps what it started on: a button held when a question appears
     stays held, and a touch on a question that goes away does nothing.
     launch(app), remove(index) and resize(height) do the saving and
     launching; remove and resize return whether they did. tiles has
     online(name) and event(name, kind, inside); asks has shown(), the shown
-    question's shown_at, and choose(ask, option).
+    question's shown_at, choose(ask, option) and dismiss(ask).
     """
 
     def __init__(self, config, keys, run, launch=None, remove=None, resize=None,
@@ -1288,16 +1400,24 @@ class Bar:
                 self._fire(s.item, press=False)
         return changed
 
+    def touch_height(self):
+        """How far down touches belong to the bar now: the config's height,
+        or CARD_HEIGHT while a question shows on a shorter bar."""
+        if self.asks and self.asks.shown():
+            return max(self.config.height, CARD_HEIGHT)
+        return self.config.height
+
     def _begin(self, slot, px, py):
         ask = self.asks.shown() if self.asks else None
-        if ask and 0 <= py < self.config.height and px < GRIP_X:
-            # Too soon after the question appeared, or on its text: the
-            # contact is the question's, and does nothing.
+        if ask and 0 <= py < self.touch_height() and px < GRIP_X:
+            # Too soon after the question appeared (with the bar grown
+            # under it), or on its text: the contact is the question's,
+            # and does nothing.
             fresh = self.clock() < ask.shown_at + ASK_ARM
             option = None if fresh else ask_option_at(ask, px)
             self.ask_touch[slot] = AskTouch(ask, option)
             return option is not None
-        i = self.config.spot_at(px, py)
+        i = self.config.spot_at(px, py, self.touch_height())
         if i is None:
             return False
         s = self.config.spots[i]
@@ -1326,7 +1446,7 @@ class Bar:
             if kind != "move":
                 del self.ask_touch[slot]
             return False
-        here = near(ask_option_x(t.option), SPOT_W, self.config.height, px, py)
+        here = near(option_x(t.option), SPOT_W, max(self.config.height, CARD_HEIGHT), px, py)
         if kind == "move":
             if here != t.armed:
                 t.armed = here
@@ -1334,7 +1454,10 @@ class Bar:
             return False
         del self.ask_touch[slot]
         if kind == "end" and t.armed and here and self.asks.shown() is t.ask:
-            self.asks.choose(t.ask, t.option)
+            if t.option == DISMISS:
+                self.asks.dismiss(t.ask)
+            else:
+                self.asks.choose(t.ask, t.option)
         return True
 
     def tick(self):
@@ -1361,8 +1484,16 @@ class Bar:
         elif not press and b.release_command:
             self.run(b.release_command)
 
-    def height(self):
+    def base_height(self):
+        """The bar's own height: the config's, or the grip's while it moves."""
         return self.config.height if self.preview is None else self.preview
+
+    def height(self):
+        """The height drawn: the bar's own, or CARD_HEIGHT while a question
+        shows on a shorter bar."""
+        if self.asks and self.asks.shown():
+            return max(self.base_height(), CARD_HEIGHT)
+        return self.base_height()
 
     def pressed(self):
         return sorted({t.spot for t in self.touch.values() if t.armed})
@@ -1371,9 +1502,10 @@ class Bar:
         return sorted({t.spot for t in self.touch.values() if t.armed and t.removing})
 
     def ask_pressed(self, ask):
-        """The answers of this question a finger is on."""
-        return sorted({t.option for t in self.ask_touch.values()
-                       if t.ask is ask and t.armed and t.option is not None})
+        """The answers of this question a finger is on (DISMISS first)."""
+        on = {t.option for t in self.ask_touch.values()
+              if t.ask is ask and t.armed and t.option is not None}
+        return ([DISMISS] if DISMISS in on else []) + sorted(o for o in on if o != DISMISS)
 
     def _end(self, slot):
         t = self.touch.pop(slot)
@@ -1421,12 +1553,14 @@ class Bar:
 #   {"op": "ask", "id": ID, "title": .., "text": .., "timeout": SECONDS,
 #    "options": [{"id": .., "label": .., "tone": ..}, ...]}  a question
 #   {"op": "cancel", "id": ID}  and  {"op": "ping"}
+#   {"op": "notify", ...}   a GNOME notification (the extension; see below)
 #
 # and gets back "welcome" (which of its tiles have a spot), "event" (a touch
 # on its tile: "down", then "up" with "inside" when the finger lifted on
-# it), "answer" (the chosen option id, or null with the reason: "timeout",
-# "unavailable" when the bar cannot show questions, or "cancelled"), "pong"
-# and "error".
+# it), "answer" (the chosen option id, or null with the reason: "dismissed"
+# when the user closed the card, "timeout", "unavailable" when the bar
+# cannot show questions, "cancelled", or "ignored" with "why" for a
+# notification the bar does not mirror), "pong" and "error".
 
 
 class ProtocolError(Exception):
@@ -1457,12 +1591,15 @@ def _tone(value):
 
 
 class Ask:
-    """A question from an app, with up to MAX_OPTIONS answers."""
-    __slots__ = ("client", "id", "title", "text", "options", "deadline", "shown_at")
+    """A question from an app, with up to MAX_OPTIONS answers; or a GNOME
+    notification shown the same way (notification True)."""
+    __slots__ = ("client", "id", "title", "text", "options", "deadline", "shown_at",
+                 "notification")
 
-    def __init__(self, client, id, title, text, options, deadline):
+    def __init__(self, client, id, title, text, options, deadline, notification=False):
         self.client, self.id, self.title, self.text = client, id, title, text
         self.options, self.deadline, self.shown_at = options, deadline, None
+        self.notification = notification
 
 
 def parse_ask(client, msg, now):
@@ -1494,6 +1631,96 @@ def parse_ask(client, msg, now):
     return Ask(client, ask_id, title, text, clean, now + timeout)
 
 
+# --- notifications -----------------------------------------------------------
+#
+# The extension forwards each notification GNOME's message tray asks a banner
+# for, normalized, as one "notify" message:
+#
+#   {"op": "notify", "id": ID, "app": "org.gnome.Calendar.desktop" | null,
+#    "source": "Calendar", "title": .., "text": .., "urgency": "normal",
+#    "actions": ["Join", "Snooze"], "banners": true, "dnd": false,
+#    "acknowledged": false}
+#
+# "banners" is whether GNOME shows banners for that app (false under Do Not
+# Disturb too), "dnd" whether Do Not Disturb is on. The rules of what the bar
+# mirrors are here, not in the extension, so they are tested here.
+
+
+def clip(value, limit):
+    """value as one line of printable text, at most limit characters."""
+    if not isinstance(value, str):
+        return ""
+    text = " ".join("".join(c if c.isprintable() else " " for c in value).split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "\u2026"
+
+
+def mirror_refusal(card, policy):
+    """Why the bar does not mirror this notification, or None if it does.
+
+    Only notifications GNOME would show a banner for (not low urgency, not
+    already seen, banners on for the app and Do Not Disturb off, except for
+    critical ones, as GNOME does), and of those only the ones with buttons
+    or that are urgent (high or critical). Then the config's say.
+    """
+    urgency = card["urgency"]
+    if not policy.mirror:
+        return "mirroring is off in the config"
+    if card["app"] in policy.deny:
+        return "the config denies %s" % card["app"]
+    if policy.allow is not None and card["app"] not in policy.allow:
+        return "%s is not in the config's allow list" % (card["app"] or "an app with no id")
+    if card["acknowledged"]:
+        return "already seen"
+    if urgency == "low":
+        return "low urgency"
+    if urgency != "critical" and card["dnd"]:
+        return "do not disturb"
+    if urgency != "critical" and not card["banners"]:
+        return "banners are off for the app"
+    if not card["actions"] and urgency not in ("high", "critical"):
+        return "no buttons and not urgent"
+    return None
+
+
+def parse_notify(msg):
+    """The normalized notification of a "notify" message."""
+    _known(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners",
+                 "dnd", "acknowledged"})
+    if not isinstance(msg.get("id"), str) or not OPTION_ID.fullmatch(msg["id"]):
+        raise ProtocolError("id must be a name like \"n1\" (letters, digits, . _ -, at most 32)")
+    app = msg.get("app")
+    try:
+        app = app_id(app) if app is not None else None
+    except ConfigError:
+        app = None
+    if msg.get("urgency", "normal") not in URGENCIES:
+        raise ProtocolError("urgency must be one of %s" % ", ".join(URGENCIES))
+    actions = msg.get("actions", [])
+    if not isinstance(actions, list) or not all(isinstance(a, str) for a in actions):
+        raise ProtocolError("actions must be a list of button labels")
+    flags = {}
+    for key, default in (("banners", True), ("dnd", False), ("acknowledged", False)):
+        flags[key] = msg.get(key, default)
+        if not isinstance(flags[key], bool):
+            raise ProtocolError("%s must be true or false" % key)
+    return dict(flags, id=msg["id"], app=app, source=clip(msg.get("source"), 80),
+                title=clip(msg.get("title"), 80), text=clip(msg.get("text"), 400),
+                urgency=msg.get("urgency", "normal"),
+                actions=[clip(a, 24) or "Action" for a in actions])
+
+
+def notification_ask(client, card, now, timeout):
+    """The question that shows a notification: its first MAX_OPTIONS buttons
+    as answers "action-0".., the title (else the app's name) and the text."""
+    title = card["title"] or card["source"] or "Notification"
+    text = " \u00b7 ".join(p for p in (card["source"] if card["source"] != title else "",
+                                       card["text"]) if p)
+    options = [{"id": "action-%d" % k, "label": label, "tone": "neutral"}
+               for k, label in enumerate(card["actions"][:MAX_OPTIONS])]
+    return Ask(client, card["id"], title, clip(text, 200) or None, options, now + timeout,
+               notification=True)
+
+
 class Asks:
     """Questions waiting for an answer; the first is shown, the rest queue.
 
@@ -1501,6 +1728,12 @@ class Asks:
     holds the touchpad and a renderer that knows questions is running. When
     it cannot, a new question is answered "unavailable" at once and waiting
     ones are too, so whoever asked can fall back to asking another way.
+
+    The bar grows to CARD_HEIGHT for the first question (raised), once no
+    touchpad contact lies in the band it would cover (band_clear(), which
+    the daemon sets) or GROW_WAIT after it started waiting, whichever comes
+    first. The question shows from then on, so its ASK_ARM counts from the
+    moment the bar grew. It shrinks back when no question is left.
     """
 
     def __init__(self, clock=time.monotonic):
@@ -1510,6 +1743,9 @@ class Asks:
         self.changed = False
         # Whether the bar can show questions now; the daemon sets it.
         self.can_show = None
+        self.band_clear = lambda: True
+        self.raised = False
+        self.waiting_since = None
 
     def refresh(self):
         """Ask can_show again: a question arriving right after the bar came
@@ -1517,30 +1753,68 @@ class Asks:
         if self.can_show is not None:
             self.set_available(bool(self.can_show()))
 
+    def find(self, client, ask_id):
+        return next((a for a in self.queue if a.client is client and a.id == ask_id), None)
+
     def add(self, ask):
-        if any(a.client is ask.client and a.id == ask.id for a in self.queue):
+        if self.find(ask.client, ask.id):
             raise ProtocolError("question %s is already waiting" % ask.id)
         self.refresh()
         if not self.available:
             self._reply(ask, None, "unavailable")
             return
         self.queue.append(ask)
-        if len(self.queue) == 1:
+        self.settle()
+
+    def replace(self, ask):
+        """A newer version of a waiting question (an updated notification)
+        takes its place; shown, it is armed anew. False if none waits."""
+        old = self.find(ask.client, ask.id)
+        if old is None:
+            return False
+        i = self.queue.index(old)
+        self.queue[i] = ask
+        if i == 0 and self.raised:
             ask.shown_at = self.clock()
-            self.changed = True
+        self.changed = True
+        return True
 
     def shown(self):
-        return self.queue[0] if self.available and self.queue else None
+        if self.available and self.queue and self.raised:
+            return self.queue[0]
+        return None
+
+    def settle(self):
+        """Grow the bar for the first question, or let it shrink back."""
+        head = self.queue[0] if self.available and self.queue else None
+        if head is None:
+            if self.raised or self.waiting_since is not None:
+                self.raised, self.waiting_since = False, None
+                self.changed = True
+            return
+        if self.raised:
+            return
+        now = self.clock()
+        if self.waiting_since is None:
+            self.waiting_since = now
+        if now >= self.waiting_since + GROW_WAIT or self.band_clear():
+            self.raised, self.waiting_since = True, None
+            head.shown_at = now
+            self.changed = True
 
     def choose(self, ask, k):
         self._finish(ask, ask.options[k]["id"], "chosen")
 
+    def dismiss(self, ask):
+        """Closed with no answer: for a notification, the card only."""
+        self._finish(ask, None, "dismissed")
+
     def cancel(self, client, ask_id):
-        for a in self.queue:
-            if a.client is client and a.id == ask_id:
-                self._finish(a, None, "cancelled")
-                return True
-        return False
+        ask = self.find(client, ask_id)
+        if ask is None:
+            return False
+        self._finish(ask, None, "cancelled")
+        return True
 
     def drop(self, client):
         """The app went away: its questions go, unanswered."""
@@ -1554,26 +1828,33 @@ class Asks:
         if not ok:
             for a in list(self.queue):
                 self._finish(a, None, "unavailable")
-        elif self.queue:
-            self.queue[0].shown_at = self.clock()
         self.changed = True
+        self.settle()
 
     def tick(self):
         now = self.clock()
         for a in [a for a in self.queue if now >= a.deadline]:
             self._finish(a, None, "timeout")
+        self.settle()
 
     def deadline(self):
-        return min((a.deadline for a in self.queue), default=None)
+        """When tick() next has something to do: a timeout, or the end of
+        the wait for the band to clear."""
+        times = [a.deadline for a in self.queue]
+        if self.waiting_since is not None:
+            times.append(self.waiting_since + GROW_WAIT)
+        return min(times, default=None)
 
     def _finish(self, ask, option, reason):
         head = self.queue and self.queue[0] is ask
         self.queue.remove(ask)
-        if head and self.queue:
+        if head and self.queue and self.raised:
+            # The next one shows in the bar already grown, armed anew.
             self.queue[0].shown_at = self.clock()
         self.changed = True
         if reason:
             self._reply(ask, option, reason)
+        self.settle()
 
     @staticmethod
     def _reply(ask, option, reason):
@@ -1593,6 +1874,7 @@ class Apps:
         self.look = {}                # tile name -> what it shows
         self.placed = set()           # tile names the config gives a spot
         self.asks = Asks(clock)
+        self.notify_policy = NotifyPolicy()
         self.on_tile_gone = lambda name: None
         self.dirty = False
 
@@ -1655,6 +1937,8 @@ class Apps:
                 self._set(client, msg)
             elif op == "ask":
                 self.asks.add(parse_ask(client, msg, self.asks.clock()))
+            elif op == "notify":
+                self._notify(client, msg)
             elif op == "cancel":
                 _known(msg, {"id"})
                 if not self.asks.cancel(client, msg.get("id")):
@@ -1692,6 +1976,27 @@ class Apps:
         client.send({"op": "welcome", "app": name,
                      "placed": [t for t in mine if t in self.placed],
                      "unplaced": [t for t in mine if t not in self.placed], "taken": taken})
+
+    def _notify(self, client, msg):
+        """A GNOME notification, from the extension: a card if the rules
+        say so, else answered "ignored" at once. One already waiting with
+        the same id was updated, and the newer version replaces it."""
+        card = parse_notify(msg)
+        old = self.asks.find(client, card["id"])
+        why = mirror_refusal(card, self.notify_policy)
+        if why is None and old is None and MAX_NOTIFY_WAITING <= sum(
+                a.client is client and a.notification for a in self.asks.queue):
+            why = "too many notifications waiting"
+        if why is not None:
+            if old is not None:
+                self.asks.cancel(client, card["id"])
+                return
+            client.send({"op": "answer", "id": card["id"], "option": None, "reason": "ignored",
+                         "why": why})
+            return
+        ask = notification_ask(client, card, self.asks.clock(), self.notify_policy.timeout)
+        if not self.asks.replace(ask):
+            self.asks.add(ask)
 
     def _set(self, client, msg):
         _known(msg, {"tile", "icon", "label", "text", "badge", "tone"})
@@ -2070,6 +2375,11 @@ class Daemon:
         # "unavailable".
         self.apps.asks.can_show = lambda: (self.source is not None and self.source.grabbed
                                            and self.renderer_ready())
+        # The bar grows for a card only when no touchpad finger is in the
+        # band it would cover (or after GROW_WAIT).
+        self.apps.asks.band_clear = lambda: not (
+            self.splitter and self.splitter.pad_in_band(self.config.height, CARD_HEIGHT))
+        self.apps.notify_policy = config.notifications
         self.server = None
         self.renderer = (None, False)  # renderer.json's mtime, and whether it is ready
 
@@ -2125,7 +2435,11 @@ class Daemon:
             "active": self.source is not None and self.source.grabbed,
             "monitor": self.monitor,
             "panel": [PANEL_W, PANEL_H],
+            # Drawn: CARD_HEIGHT while a card shows. The strut (the work
+            # area windows avoid) is the bar's own height: a card covers
+            # windows for a moment rather than resizing them.
             "height": self.bar.height() if self.bar else self.config.height,
+            "strut": self.bar.base_height() if self.bar else self.config.height,
             "tiles": self.scene(),
             "divider": DIVIDER_X,
             "apps": self.apps.names(),
@@ -2210,8 +2524,10 @@ class Daemon:
             raise
         self.source = source
         x, y = source.abs[ABS_MT_POSITION_X], source.abs[ABS_MT_POSITION_Y]
+        # New contacts take the bar's height now, taller while a card
+        # shows; contacts already down keep their kind.
         self.splitter = Splitter(source.axes(), source.nslots,
-                                 lambda px, py: py < self.config.height,
+                                 lambda px, py: py < self.bar.touch_height(),
                                  source.abs[ABS_MT_SLOT][0])
         self.bar = self.new_bar(KeyEmitter(lambda ev: write_events(self.keys_fd, ev)))
         log("grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; bar %d px high, "
@@ -2286,6 +2602,7 @@ class Daemon:
             return
         self.config = config
         self.apps.set_placed(config.tiles())
+        self.apps.notify_policy = config.notifications
         if self.bar:
             self.bar.set_config(config)
         log("loaded %s: bar %d px high, %d button(s), %d shortcut(s)"
@@ -2398,7 +2715,9 @@ def cmd_check(args):
         log(str(e))
         return 2
     print("%s: ok" % (path or "built-in default"))
-    print("bar: %d of %d px high (%.1f mm)" % (config.height, PANEL_H, config.height / 16))
+    print("bar: %d of %d px high (%.1f mm); %d px while a card shows"
+          % (config.height, PANEL_H, config.height / 16, max(config.height, CARD_HEIGHT)))
+    print("notifications: %s" % config.notifications.describe())
     for s in config.spots:
         where = "  %-8s %d  x %4d..%-4d " % (s.kind, s.index + 1, s.x, s.x + s.width)
         if s.kind == GRIP:
