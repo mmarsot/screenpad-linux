@@ -18,12 +18,18 @@ and splits every contact by where it starts:
 It grabs only while the ScreenPad is on ('screenpad on' creates
 /run/screenpad/active, 'screenpad off' removes it). When it stops, or dies,
 the kernel drops the grab and the uinput devices, and the plain touchpad works
-again. It publishes the bar layout and which spots are pressed in
-$XDG_RUNTIME_DIR/screenpad/touchbar.json for the GNOME Shell extension that
-draws the bar on the ScreenPad and takes apps dropped on it.
+again. It publishes the bar as a scene of tiles in
+$XDG_RUNTIME_DIR/screenpad/touchbar.json; the GNOME Shell extension draws
+whatever tiles it finds there, on the ScreenPad, and takes apps dropped on it.
+
+Other programs use the bar through a socket next to that file
+(touchbar.sock): an app draws and handles the button spots the config gives
+it ('tile' in a [[button]] block), and any program can ask the user a
+question with up to three answers, shown in the bar until it is answered or
+times out ('screenpad-touchbar ask' does it from a shell).
 
 Runs as the desktop user (group input, plus access to /dev/uinput).
-Commands: run, on, off, status, check, probe, shortcut.
+Commands: run, on, off, status, check, probe, shortcut, ask.
 """
 
 import argparse
@@ -37,6 +43,7 @@ import re
 import select
 import shlex
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -80,6 +87,32 @@ LONG_PRESS = 0.8
 # How long to wait for fingers to lift before grabbing or letting go.
 LIFT_WAIT = 2.0
 POLL = 1.0
+
+# The scene in touchbar.json. Version 2 is a list of tiles the extension
+# draws without knowing what they are; version 1 was the fixed spots.
+SCENE_VERSION = 2
+# While it is enabled, the extension writes renderer.json with this protocol
+# and whether the bar is on screen ("drawn"). Questions (asks) show only
+# while both say so: an extension loaded before this version draws the
+# version 1 spots and could not show them, a bar not drawn (no ScreenPad
+# monitor found) shows nothing, and a touch must never answer a question
+# nobody can see.
+RENDERER_PROTOCOL = 2
+RENDERER_NAME = "renderer.json"
+SOCKET_NAME = "touchbar.sock"
+MAX_APPS = 16
+# Bytes: a longer line, or a client that does not read its replies, is cut off.
+MAX_LINE = 16384
+MAX_OUT = 262144
+# A question ignores touches that start this soon after it appears, so a tap
+# already on its way lands on nothing rather than on an answer.
+ASK_ARM = 0.3
+ASK_TIMEOUT = 60
+MAX_ASK_TIMEOUT = 3600
+MAX_OPTIONS = 3
+TONES = ("neutral", "accept", "reject", "warning")
+TILE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,31}")
+OPTION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 
 # linux/input-event-codes.h
 EV_SYN, EV_KEY, EV_ABS, EV_MSC = 0x00, 0x01, 0x03, 0x04
@@ -288,7 +321,7 @@ BUTTON, SHORTCUT, GRIP = "button", "shortcut", "grip"
 
 class Button:
     def __init__(self, label, mode, keys=None, command=None, release_command=None,
-                 key=None, icon=None):
+                 key=None, icon=None, tile=None):
         self.label = label
         self.icon = icon
         self.key = key
@@ -296,9 +329,11 @@ class Button:
         self.keys = keys
         self.command = command
         self.release_command = release_command
+        # The name of a tile an app draws and handles in this spot.
+        self.tile = tile
 
     def action(self):
-        return (self.mode, self.keys, self.command, self.release_command)
+        return (self.mode, self.keys, self.command, self.release_command, self.tile)
 
     def public(self):
         return {"label": self.label, "icon": self.icon, "mode": self.mode}
@@ -344,8 +379,17 @@ class Config:
 
     def near_spot(self, i, px, py):
         s = self.spots[i]
-        return (s.x - TAP_SLOP <= px < s.x + s.width + TAP_SLOP
-                and -TAP_SLOP <= py < self.height + TAP_SLOP)
+        return near(s.x, s.width, self.height, px, py)
+
+    def tiles(self):
+        """The tile names the config places, in spot order."""
+        return [b.tile for b in self.buttons if b.tile]
+
+
+def near(x, width, height, px, py):
+    """Whether a touch at px, py is on, or within TAP_SLOP of, a bar rectangle."""
+    return (x - TAP_SLOP <= px < x + width + TAP_SLOP
+            and -TAP_SLOP <= py < height + TAP_SLOP)
 
 
 # The push-to-talk button's block in the default config.
@@ -373,6 +417,19 @@ icon = "audio-input-microphone-symbolic"
 label = "Push to talk"
 mode = "hold"
 key = "F14"
+"""
+
+# How the default config documents 'tile', below 'command'.
+COMMAND_DOC = """\
+#   command          instead of key: a command to run, as a string for sh
+#                    or a list of arguments. With mode "hold" it runs on
+#                    touch, and release_command (optional) runs on release.
+"""
+TILE_DOC = """\
+#   tile             instead of key or command: the name of a tile that an
+#                    app draws and handles in this spot (an app that talks
+#                    to the bar's socket; see app-api.md in the docs). The
+#                    icon or label shows, dimmed, while no app provides it.
 """
 
 EXAMPLE_CONFIG = """\
@@ -405,7 +462,7 @@ height = %(height)d
 #   command          instead of key: a command to run, as a string for sh
 #                    or a list of arguments. With mode "hold" it runs on
 #                    touch, and release_command (optional) runs on release.
-
+%(tile)s
 %(ptt)s
 # Mutes and unmutes the microphone, like a keyboard's mic mute key.
 [[button]]
@@ -428,11 +485,16 @@ key = "printscreen"
 # same from a terminal. For example:
 # [[shortcut]]
 # app = "org.gnome.Nautilus.desktop"
-""" % {"height": DEFAULT_HEIGHT, "min": MIN_HEIGHT, "max": MAX_HEIGHT, "ptt": PTT_BLOCK}
+""" % {"height": DEFAULT_HEIGHT, "min": MIN_HEIGHT, "max": MAX_HEIGHT, "ptt": PTT_BLOCK,
+       "tile": TILE_DOC}
 
-# sha256 of the default config earlier versions wrote. A file still exactly
-# that is replaced by the current default (see migrate_config()).
-OLD_DEFAULTS = {"dfabfa5d73979ec2302e2a4d343426085da0c6fcd9093f31e3cee4067bc30c36"}
+# sha256 of the defaults earlier versions wrote. A file still exactly one of
+# them is replaced by the current default (see migrate_config()).
+OLD_DEFAULTS = {
+    "dfabfa5d73979ec2302e2a4d343426085da0c6fcd9093f31e3cee4067bc30c36",
+    # Before tiles (tests/touchbar-v3-default.toml).
+    "a764addfad0135d0272d89ed390b4013ed575819ca224fd3fa704508dde2a755",
+}
 
 # Default blocks earlier versions wrote, each with its current text. A config
 # that still holds one word for word gets the new one in its place and keeps
@@ -447,10 +509,14 @@ OLD_BLOCKS = (
 #                    "micmute", "playpause" (evdev names, KEY_ optional;
 #                    "meta" and "super" are the Super key, not Alt)
 '''),
+    # The blank line after it marks the block without 'tile' yet, so this
+    # applies once.
+    (COMMAND_DOC + "\n", COMMAND_DOC + TILE_DOC + "\n"),
 )
 
 # x and width placed buttons in the first version; the spots do it now.
-BUTTON_KEYS = {"label", "icon", "mode", "key", "command", "release_command", "x", "width"}
+BUTTON_KEYS = {"label", "icon", "mode", "key", "command", "release_command", "tile", "x",
+               "width"}
 SHORTCUT_KEYS = {"app"}
 APP_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*\.desktop")
 
@@ -522,16 +588,24 @@ def _button(b):
     mode = b.get("mode", "tap")
     if mode not in ("hold", "tap"):
         raise ConfigError('mode must be "hold" or "tap"')
-    if ("key" in b) == ("command" in b):
-        raise ConfigError("needs exactly one of key or command")
+    if sum(k in b for k in ("key", "command", "tile")) != 1:
+        raise ConfigError("needs exactly one of key, command or tile")
     keys = parse_key(b["key"]) if "key" in b else None
     command = _command(b["command"], "command") if "command" in b else None
+    tile = None
+    if "tile" in b:
+        tile = b["tile"]
+        if not isinstance(tile, str) or not TILE_NAME.fullmatch(tile):
+            raise ConfigError("tile must be a name like \"agents\" (lower case letters, digits, "
+                              "dot, dash or underscore, at most 32)")
+        if "mode" in b:
+            raise ConfigError("mode does not apply to a tile: the app that draws it decides")
     release = None
     if "release_command" in b:
         if mode != "hold" or command is None:
             raise ConfigError("release_command only goes with a command in mode \"hold\"")
         release = _command(b["release_command"], "release_command")
-    return Button(label, mode, keys, command, release, b.get("key"), icon)
+    return Button(label, mode, keys, command, release, b.get("key"), icon, tile)
 
 
 def parse_config(text):
@@ -548,7 +622,10 @@ def parse_config(text):
     buttons = []
     for where, b in _blocks(data, "button", BUTTON_KEYS, MAX_BUTTONS):
         try:
-            buttons.append(_button(b))
+            button = _button(b)
+            if button.tile and button.tile in [o.tile for o in buttons]:
+                raise ConfigError("tile %s is already in another spot" % button.tile)
+            buttons.append(button)
         except ConfigError as e:
             raise ConfigError("%s: %s" % (where, e))
     shortcuts = []
@@ -776,6 +853,115 @@ def monitor_identity(path=SAVED_EDID):
 def state_path():
     base = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
     return os.path.join(base, "screenpad", "touchbar.json")
+
+
+def runtime_file(name):
+    """A file next to touchbar.json: the app socket or the renderer handshake."""
+    return os.path.join(os.path.dirname(state_path()), name)
+
+
+# --- the scene ---------------------------------------------------------------
+#
+# What touchbar.json shows the extension: tiles, each a rectangle in the bar
+# (x and width in panel pixels, as tall as the bar) and what to draw in it.
+# The extension draws tiles without knowing what they are, so a new kind of
+# tile needs no extension update (GNOME loads extension code only at login).
+#
+# Every tile has "id", "x", "width" and "style" (its CSS class is
+# screenpad-touchbar-<style>). It may have "classes" (more CSS classes),
+# "pressed", "glyph" ("grip": drawn by the extension's own code), "icon" (an
+# icon name or an image path) and "icon_scale", "app" (a desktop file id,
+# drawn as that app's icon; the extension opens only apps shown this way),
+# "label", "title" and "text" (text lines), "badge" (a short text in a
+# corner), "drop" (the shortcut spot number an app icon dropped there takes)
+# and "empty". "divider" is the x of the line between the two groups.
+
+TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
+# Every CSS class a tile can carry besides its style. The stylesheet has a
+# rule for each but "tap", which is the plain button (tests/test_touchbar.py
+# checks it).
+TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple(
+    "tone-" + tone for tone in TONES)
+DIVIDER_X = SHORTCUTS_X - GROUP_GAP // 2
+# A question: its title and text over the three button spots, its answers in
+# the three shortcut spots. The grip stays.
+ASK_TEXT_W = SHORTCUTS_X - GROUP_GAP
+
+
+def _looks(button):
+    """A config button's icon and label, those it has."""
+    return {k: v for k, v in (("icon", button.icon), ("label", button.label)) if v}
+
+
+def spot_tiles(config, pressed=(), removing=(), provided=None):
+    """The tiles of the config's spots: buttons, shortcuts and the grip.
+
+    provided maps the names of the tiles apps provide now to what they draw.
+    """
+    provided = provided or {}
+    tiles = []
+    for i, s in enumerate(config.spots):
+        tile = {"id": "%s-%d" % (s.kind, s.index), "x": s.x, "width": s.width, "style": s.kind}
+        if i in pressed:
+            tile["pressed"] = True
+        if s.kind == GRIP:
+            tile["id"], tile["glyph"] = GRIP, GRIP
+        elif s.kind == SHORTCUT:
+            tile["drop"] = s.index + 1
+            if s.item is None:
+                tile.update(classes=["empty"], icon="list-add-symbolic", icon_scale=0.6, empty=True)
+            else:
+                tile["app"] = s.item
+                if i in removing:
+                    tile.update(classes=["removing"], icon="edit-delete-symbolic")
+        elif s.item is None:
+            tile["classes"] = ["empty"]
+        elif s.item.tile:
+            look = provided.get(s.item.tile)
+            if look is None:
+                tile["classes"] = ["tile", "offline"]
+                look = {"icon": s.item.icon, "label": s.item.label}
+            else:
+                tile["classes"] = ["tile", "tone-" + look.get("tone", "neutral")]
+            for k in ("icon", "label", "text", "badge"):
+                if look.get(k):
+                    tile[k] = look[k]
+            if "icon" not in tile and "label" not in tile:
+                tile.update(_looks(s.item))
+        else:
+            tile["classes"] = [s.item.mode]
+            tile.update(_looks(s.item))
+        tiles.append(tile)
+    return tiles
+
+
+def ask_option_x(k):
+    return SHORTCUTS_X + k * SPOT_W
+
+
+def ask_option_at(ask, px):
+    """The index of the answer under a touch at px, or None."""
+    for k in range(len(ask.options)):
+        if ask_option_x(k) <= px < ask_option_x(k) + SPOT_W:
+            return k
+    return None
+
+
+def ask_tiles(ask, pressed=(), queued=0):
+    """The tiles of a question: its text, then one tile per answer."""
+    text = {"id": "ask-text", "x": 0, "width": ASK_TEXT_W, "style": "ask-text", "title": ask.title}
+    if ask.text:
+        text["text"] = ask.text
+    if queued:
+        text["badge"] = "+%d" % queued
+    tiles = [text]
+    for k, o in enumerate(ask.options):
+        tile = {"id": "ask-option-%d" % k, "x": ask_option_x(k), "width": SPOT_W,
+                "style": "option", "classes": ["tone-" + o["tone"]], "label": o["label"]}
+        if k in pressed:
+            tile["pressed"] = True
+        tiles.append(tile)
+    return tiles
 
 
 # --- the split ---------------------------------------------------------------
@@ -1006,20 +1192,38 @@ class Touch:
         self.start_y, self.start_height = start_y, start_height
 
 
+class AskTouch:
+    """A contact on a question: on one of its answers, or inert (option None)."""
+    __slots__ = ("ask", "option", "armed")
+
+    def __init__(self, ask, option):
+        self.ask, self.option, self.armed = ask, option, option is not None
+
+
 class Bar:
     """Turns bar contacts into button presses, shortcut taps and resizes.
 
     - button: "hold" sends its keys down on touch and up on lift; "tap" sends
-      them when the finger lifts on (or near) the button;
+      them when the finger lifts on (or near) the button; a "tile" button
+      belongs to an app, which gets "down" on touch and "up" on lift, with
+      whether the finger lifted on (or near) it;
     - shortcut: a tap opens the app; held for LONG_PRESS it turns to
       "remove", and lifting then removes it; sliding away cancels either;
-    - grip: dragging it up or down resizes the bar, saved on lift.
+    - grip: dragging it up or down resizes the bar, saved on lift;
+    - while a question shows (asks.shown()), it covers the button and
+      shortcut spots: lifting on an answer chooses it. Touches that start
+      within ASK_ARM of it showing, or on its text, do nothing. The grip
+      stays.
+    A touch keeps what it started on: a button held when a question appears
+    stays held, and a touch on a question that goes away does nothing.
     launch(app), remove(index) and resize(height) do the saving and
-    launching; remove and resize return whether they did.
+    launching; remove and resize return whether they did. tiles has
+    online(name) and event(name, kind, inside); asks has shown(), the shown
+    question's shown_at, and choose(ask, option).
     """
 
     def __init__(self, config, keys, run, launch=None, remove=None, resize=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, tiles=None, asks=None):
         self.config = config
         self.keys = keys              # KeyEmitter
         self.run = run                # run(argv)
@@ -1027,7 +1231,10 @@ class Bar:
         self.remove = remove or (lambda index: False)
         self.resize = resize or (lambda height: False)
         self.clock = clock
+        self.tiles = tiles
+        self.asks = asks
         self.touch = {}               # slot -> Touch
+        self.ask_touch = {}           # slot -> AskTouch
         self.preview = None           # the height while the grip moves
 
     def spot(self, t):
@@ -1038,6 +1245,9 @@ class Bar:
         for kind, slot, px, py in events:
             if kind == "begin":
                 changed |= self._begin(slot, px, py)
+                continue
+            if slot in self.ask_touch:
+                changed |= self._ask_event(kind, slot, px, py)
                 continue
             t = self.touch.get(slot)
             if t is None:
@@ -1069,6 +1279,8 @@ class Bar:
                     self.remove(s.index)
                 elif lifted:
                     self.launch(s.item)
+            elif s.item.tile:
+                self.tiles.event(s.item.tile, "up", bool(lifted))
             elif s.item.mode == "hold":
                 self._fire(s.item, press=False)
             elif lifted:
@@ -1077,6 +1289,14 @@ class Bar:
         return changed
 
     def _begin(self, slot, px, py):
+        ask = self.asks.shown() if self.asks else None
+        if ask and 0 <= py < self.config.height and px < GRIP_X:
+            # Too soon after the question appeared, or on its text: the
+            # contact is the question's, and does nothing.
+            fresh = self.clock() < ask.shown_at + ASK_ARM
+            option = None if fresh else ask_option_at(ask, px)
+            self.ask_touch[slot] = AskTouch(ask, option)
+            return option is not None
         i = self.config.spot_at(px, py)
         if i is None:
             return False
@@ -1089,9 +1309,32 @@ class Bar:
             self.preview = self.config.height
             self.touch[slot] = Touch(i, self.clock(), py, self.config.height)
             return True
+        if s.kind == BUTTON and s.item.tile:
+            if not (self.tiles and self.tiles.online(s.item.tile)):
+                return False
+            self.touch[slot] = Touch(i, self.clock())
+            self.tiles.event(s.item.tile, "down")
+            return True
         self.touch[slot] = Touch(i, self.clock())
         if s.kind == BUTTON and s.item.mode == "hold":
             self._fire(s.item, press=True)
+        return True
+
+    def _ask_event(self, kind, slot, px, py):
+        t = self.ask_touch[slot]
+        if t.option is None:
+            if kind != "move":
+                del self.ask_touch[slot]
+            return False
+        here = near(ask_option_x(t.option), SPOT_W, self.config.height, px, py)
+        if kind == "move":
+            if here != t.armed:
+                t.armed = here
+                return True
+            return False
+        del self.ask_touch[slot]
+        if kind == "end" and t.armed and here and self.asks.shown() is t.ask:
+            self.asks.choose(t.ask, t.option)
         return True
 
     def tick(self):
@@ -1127,10 +1370,17 @@ class Bar:
     def removing(self):
         return sorted({t.spot for t in self.touch.values() if t.armed and t.removing})
 
+    def ask_pressed(self, ask):
+        """The answers of this question a finger is on."""
+        return sorted({t.option for t in self.ask_touch.values()
+                       if t.ask is ask and t.armed and t.option is not None})
+
     def _end(self, slot):
         t = self.touch.pop(slot)
         s = self.spot(t)
-        if s.kind == BUTTON and s.item.mode == "hold":
+        if s.kind == BUTTON and s.item.tile:
+            self.tiles.event(s.item.tile, "up", False)
+        elif s.kind == BUTTON and s.item.mode == "hold":
             self._fire(s.item, press=False)
 
     def set_config(self, config):
@@ -1144,11 +1394,470 @@ class Bar:
         self.config = config
         self.preview = None
 
+    def tile_gone(self, name):
+        """An app stopped providing a tile: touches on it end, unannounced."""
+        for slot, t in list(self.touch.items()):
+            s = self.spot(t)
+            if s.kind == BUTTON and s.item.tile == name:
+                del self.touch[slot]
+
     def release_all(self):
         for slot in list(self.touch):
             self._end(slot)
+        self.ask_touch.clear()
         self.preview = None
         self.keys.release_all()
+
+
+# --- apps --------------------------------------------------------------------
+#
+# Programs use the bar through a Unix socket next to touchbar.json
+# (SOCKET_NAME, in the user's own runtime directory), one JSON object per
+# line each way. docs/app-api.md is the reference. In short, an app sends:
+#
+#   {"op": "hello", "app": NAME, "tiles": [TILE, ...]}   the tiles it draws
+#   {"op": "set", "tile": TILE, "icon": .., "label": .., "text": ..,
+#    "badge": .., "tone": ..}                              what a tile shows
+#   {"op": "ask", "id": ID, "title": .., "text": .., "timeout": SECONDS,
+#    "options": [{"id": .., "label": .., "tone": ..}, ...]}  a question
+#   {"op": "cancel", "id": ID}  and  {"op": "ping"}
+#
+# and gets back "welcome" (which of its tiles have a spot), "event" (a touch
+# on its tile: "down", then "up" with "inside" when the finger lifted on
+# it), "answer" (the chosen option id, or null with the reason: "timeout",
+# "unavailable" when the bar cannot show questions, or "cancelled"), "pong"
+# and "error".
+
+
+class ProtocolError(Exception):
+    pass
+
+
+def _printable(value, what, limit, required=True):
+    if value is None and not required:
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > limit \
+            or not value.isprintable():
+        raise ProtocolError("%s must be printable text of 1 to %d characters" % (what, limit))
+    return value.strip()
+
+
+def _known(msg, allowed):
+    unknown = set(msg) - allowed - {"op"}
+    if unknown:
+        raise ProtocolError("unknown field(s): %s" % ", ".join(sorted(unknown)))
+
+
+def _tone(value):
+    if value is None:
+        return "neutral"
+    if value not in TONES:
+        raise ProtocolError("tone must be one of %s" % ", ".join(TONES))
+    return value
+
+
+class Ask:
+    """A question from an app, with up to MAX_OPTIONS answers."""
+    __slots__ = ("client", "id", "title", "text", "options", "deadline", "shown_at")
+
+    def __init__(self, client, id, title, text, options, deadline):
+        self.client, self.id, self.title, self.text = client, id, title, text
+        self.options, self.deadline, self.shown_at = options, deadline, None
+
+
+def parse_ask(client, msg, now):
+    """An Ask from an "ask" message; ProtocolError if it is not one."""
+    _known(msg, {"id", "title", "text", "options", "timeout"})
+    ask_id = msg.get("id")
+    if not isinstance(ask_id, str) or not OPTION_ID.fullmatch(ask_id):
+        raise ProtocolError("id must be a name like \"q1\" (letters, digits, . _ -, at most 32)")
+    title = _printable(msg.get("title"), "title", 80)
+    text = _printable(msg.get("text"), "text", 200, required=False)
+    options = msg.get("options")
+    if not isinstance(options, list) or not 1 <= len(options) <= MAX_OPTIONS:
+        raise ProtocolError("options must be a list of 1 to %d answers" % MAX_OPTIONS)
+    clean = []
+    for o in options:
+        if not isinstance(o, dict):
+            raise ProtocolError("each option is an object with id and label")
+        _known(o, {"id", "label", "tone"})
+        if not isinstance(o.get("id"), str) or not OPTION_ID.fullmatch(o["id"]):
+            raise ProtocolError("option id must be a name like \"allow\"")
+        if o["id"] in [c["id"] for c in clean]:
+            raise ProtocolError("option id %s appears twice" % o["id"])
+        clean.append({"id": o["id"], "label": _printable(o.get("label"), "option label", 24),
+                      "tone": _tone(o.get("tone"))})
+    timeout = msg.get("timeout", ASK_TIMEOUT)
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) \
+            or not 1 <= timeout <= MAX_ASK_TIMEOUT:
+        raise ProtocolError("timeout must be 1 to %d seconds" % MAX_ASK_TIMEOUT)
+    return Ask(client, ask_id, title, text, clean, now + timeout)
+
+
+class Asks:
+    """Questions waiting for an answer; the first is shown, the rest queue.
+
+    Questions show only while the bar can show them (available): the daemon
+    holds the touchpad and a renderer that knows questions is running. When
+    it cannot, a new question is answered "unavailable" at once and waiting
+    ones are too, so whoever asked can fall back to asking another way.
+    """
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.queue = []
+        self.available = False
+        self.changed = False
+        # Whether the bar can show questions now; the daemon sets it.
+        self.can_show = None
+
+    def refresh(self):
+        """Ask can_show again: a question arriving right after the bar came
+        on screen shows, and waiting ones go when it left."""
+        if self.can_show is not None:
+            self.set_available(bool(self.can_show()))
+
+    def add(self, ask):
+        if any(a.client is ask.client and a.id == ask.id for a in self.queue):
+            raise ProtocolError("question %s is already waiting" % ask.id)
+        self.refresh()
+        if not self.available:
+            self._reply(ask, None, "unavailable")
+            return
+        self.queue.append(ask)
+        if len(self.queue) == 1:
+            ask.shown_at = self.clock()
+            self.changed = True
+
+    def shown(self):
+        return self.queue[0] if self.available and self.queue else None
+
+    def choose(self, ask, k):
+        self._finish(ask, ask.options[k]["id"], "chosen")
+
+    def cancel(self, client, ask_id):
+        for a in self.queue:
+            if a.client is client and a.id == ask_id:
+                self._finish(a, None, "cancelled")
+                return True
+        return False
+
+    def drop(self, client):
+        """The app went away: its questions go, unanswered."""
+        for a in [a for a in self.queue if a.client is client]:
+            self._finish(a, None, None)
+
+    def set_available(self, ok):
+        if ok == self.available:
+            return
+        self.available = ok
+        if not ok:
+            for a in list(self.queue):
+                self._finish(a, None, "unavailable")
+        elif self.queue:
+            self.queue[0].shown_at = self.clock()
+        self.changed = True
+
+    def tick(self):
+        now = self.clock()
+        for a in [a for a in self.queue if now >= a.deadline]:
+            self._finish(a, None, "timeout")
+
+    def deadline(self):
+        return min((a.deadline for a in self.queue), default=None)
+
+    def _finish(self, ask, option, reason):
+        head = self.queue and self.queue[0] is ask
+        self.queue.remove(ask)
+        if head and self.queue:
+            self.queue[0].shown_at = self.clock()
+        self.changed = True
+        if reason:
+            self._reply(ask, option, reason)
+
+    @staticmethod
+    def _reply(ask, option, reason):
+        ask.client.send({"op": "answer", "id": ask.id, "option": option, "reason": reason})
+
+
+class Apps:
+    """The programs on the socket: who provides which tile, and their asks.
+
+    A tile belongs to the first app that provides it, until that app goes.
+    on_tile_gone(name) lets the bar end touches on a tile whose app left.
+    """
+
+    def __init__(self, clock=time.monotonic):
+        self.clients = []
+        self.owner = {}               # tile name -> client
+        self.look = {}                # tile name -> what it shows
+        self.placed = set()           # tile names the config gives a spot
+        self.asks = Asks(clock)
+        self.on_tile_gone = lambda name: None
+        self.dirty = False
+
+    def take_changed(self):
+        changed = self.dirty or self.asks.changed
+        self.dirty = self.asks.changed = False
+        return changed
+
+    def connect(self, client):
+        if len(self.clients) >= MAX_APPS:
+            client.send({"op": "error", "message": "too many apps (%d)" % MAX_APPS})
+            return False
+        client.name = None
+        self.clients.append(client)
+        return True
+
+    def disconnect(self, client):
+        if client not in self.clients:
+            return
+        self.clients.remove(client)
+        self.asks.drop(client)
+        for name in [n for n, c in self.owner.items() if c is client]:
+            del self.owner[name]
+            self.look.pop(name, None)
+            self.on_tile_gone(name)
+            self.dirty = True
+
+    def set_placed(self, names):
+        self.placed = set(names)
+
+    def online(self, name):
+        return name in self.owner
+
+    def provided(self):
+        return {name: self.look.get(name, {}) for name in self.owner}
+
+    def names(self):
+        return sorted({c.name for c in self.clients if c.name})
+
+    def event(self, name, kind, inside=None):
+        client = self.owner.get(name)
+        if client is None:
+            return
+        msg = {"op": "event", "tile": name, "type": kind}
+        if inside is not None:
+            msg["inside"] = inside
+        client.send(msg)
+
+    def handle(self, client, msg):
+        """One message from an app; errors go back to it."""
+        op = msg.get("op") if isinstance(msg, dict) else None
+        try:
+            if op == "ping":
+                client.send({"op": "pong"})
+            elif op == "hello":
+                self._hello(client, msg)
+            elif client.name is None:
+                raise ProtocolError("say hello first")
+            elif op == "set":
+                self._set(client, msg)
+            elif op == "ask":
+                self.asks.add(parse_ask(client, msg, self.asks.clock()))
+            elif op == "cancel":
+                _known(msg, {"id"})
+                if not self.asks.cancel(client, msg.get("id")):
+                    raise ProtocolError("no waiting question %r" % msg.get("id"))
+            else:
+                raise ProtocolError("unknown op %r" % op)
+        except ProtocolError as e:
+            reply = {"op": "error", "request": op if isinstance(op, str) else None,
+                     "message": str(e)}
+            if isinstance(msg, dict) and isinstance(msg.get("id"), str):
+                reply["id"] = msg["id"]
+            client.send(reply)
+
+    def _hello(self, client, msg):
+        _known(msg, {"app", "tiles"})
+        if client.name is not None:
+            raise ProtocolError("hello was already said")
+        name = msg.get("app")
+        if not isinstance(name, str) or not TILE_NAME.fullmatch(name):
+            raise ProtocolError("app must be a name like \"agents\" (lower case, at most 32)")
+        tiles = msg.get("tiles", [])
+        if not isinstance(tiles, list) or len(tiles) > 8 or not all(
+                isinstance(t, str) and TILE_NAME.fullmatch(t) for t in tiles):
+            raise ProtocolError("tiles must be a list of at most 8 tile names")
+        client.name = name
+        taken = []
+        for tile in dict.fromkeys(tiles):
+            if tile in self.owner:
+                taken.append(tile)
+                continue
+            self.owner[tile] = client
+            self.look[tile] = {}
+            self.dirty = True
+        mine = [t for t in dict.fromkeys(tiles) if t not in taken]
+        client.send({"op": "welcome", "app": name,
+                     "placed": [t for t in mine if t in self.placed],
+                     "unplaced": [t for t in mine if t not in self.placed], "taken": taken})
+
+    def _set(self, client, msg):
+        _known(msg, {"tile", "icon", "label", "text", "badge", "tone"})
+        tile = msg.get("tile")
+        if self.owner.get(tile) is not client:
+            raise ProtocolError("tile %r is not yours; provide it in hello" % tile)
+        look = {"tone": _tone(msg.get("tone"))}
+        icon = msg.get("icon")
+        if icon is not None:
+            if not isinstance(icon, str) or not (
+                    re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", icon)
+                    or (icon.startswith("/") and len(icon) <= 4096 and icon.isprintable())):
+                raise ProtocolError("icon must be an icon name or an absolute image path")
+            look["icon"] = icon
+        for key, limit in (("label", 32), ("text", 48), ("badge", 4)):
+            value = _printable(msg.get(key), key, limit, required=False)
+            if value:
+                look[key] = value
+        if look != self.look.get(tile):
+            self.look[tile] = look
+            self.dirty = True
+
+
+class AppClient:
+    """One connection to the app socket."""
+
+    def __init__(self, sock):
+        self.sock = sock
+        self.rbuf = b""
+        self.wbuf = b""
+        self.name = None
+        # Set when it must be cut off: a too long line, or replies piling up.
+        self.broken = False
+
+    def fileno(self):
+        return self.sock.fileno()
+
+    def send(self, msg):
+        if self.broken:
+            return
+        self.wbuf += (json.dumps(msg, separators=(",", ":")) + "\n").encode()
+        if len(self.wbuf) > MAX_OUT:
+            self.broken = True
+
+
+def peer_uid(sock):
+    """The uid of the process at the other end of a Unix socket, or None."""
+    try:
+        creds = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+    except OSError:
+        return None
+    return struct.unpack("3i", creds)[1]
+
+
+class AppServer:
+    """The listening socket and its connections; the daemon's loop drives it."""
+
+    def __init__(self, path, apps):
+        self.path, self.apps = path, apps
+        self.clients = {}             # fd -> AppClient
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        if os.path.exists(path):
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
+            try:
+                probe.connect(path)
+            except OSError:
+                os.unlink(path)       # left by a daemon that died
+            else:
+                raise TouchbarError("another daemon answers on %s" % path)
+            finally:
+                probe.close()
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_NONBLOCK
+                                  | socket.SOCK_CLOEXEC)
+        old = os.umask(0o177)
+        try:
+            self.sock.bind(path)
+        finally:
+            os.umask(old)
+        self.sock.listen(8)
+
+    def rfds(self):
+        return [self.sock.fileno()] + list(self.clients)
+
+    def wfds(self):
+        return [fd for fd, c in self.clients.items() if c.wbuf]
+
+    def owns(self, fd):
+        return fd == self.sock.fileno() or fd in self.clients
+
+    def readable(self, fd):
+        if fd == self.sock.fileno():
+            self._accept()
+            return
+        client = self.clients.get(fd)
+        if client is None:
+            return
+        try:
+            data = client.sock.recv(65536)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        if not data:
+            self._drop(client)
+            return
+        client.rbuf += data
+        while b"\n" in client.rbuf:
+            line, client.rbuf = client.rbuf.split(b"\n", 1)
+            if not line.strip():
+                continue
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                client.send({"op": "error", "message": "not a JSON object"})
+                continue
+            self.apps.handle(client, msg)
+        if len(client.rbuf) > MAX_LINE:
+            client.broken = True
+
+    def _accept(self):
+        try:
+            conn, _ = self.sock.accept()
+        except BlockingIOError:
+            return
+        if peer_uid(conn) != os.getuid():
+            conn.close()
+            return
+        conn.setblocking(False)
+        client = AppClient(conn)
+        if self.apps.connect(client):
+            self.clients[conn.fileno()] = client
+        else:
+            self._write(client)
+            conn.close()
+
+    def flush(self):
+        """Send what is waiting, and cut off broken clients."""
+        for client in list(self.clients.values()):
+            if client.broken:
+                self._drop(client)
+            elif client.wbuf:
+                self._write(client)
+
+    def _write(self, client):
+        try:
+            n = client.sock.send(client.wbuf)
+        except BlockingIOError:
+            return
+        except OSError:
+            self._drop(client)
+            return
+        client.wbuf = client.wbuf[n:]
+
+    def _drop(self, client):
+        self.clients.pop(client.fileno(), None)
+        self.apps.disconnect(client)
+        client.sock.close()
+
+    def close(self):
+        for client in list(self.clients.values()):
+            self._drop(client)
+        self.sock.close()
+        try:
+            os.unlink(self.path)
+        except FileNotFoundError:
+            pass
 
 
 # --- evdev and uinput ----------------------------------------------------------
@@ -1353,6 +2062,16 @@ class Daemon:
         self.published = None
         self.monitor = monitor_identity()
         self.wakeup = None
+        self.apps = Apps()
+        self.apps.set_placed(config.tiles())
+        self.apps.on_tile_gone = self._tile_gone
+        # Questions show only while the bar is on screen, drawn by an
+        # extension that knows them; otherwise whoever asked hears
+        # "unavailable".
+        self.apps.asks.can_show = lambda: (self.source is not None and self.source.grabbed
+                                           and self.renderer_ready())
+        self.server = None
+        self.renderer = (None, False)  # renderer.json's mtime, and whether it is ready
 
     def _mtime(self):
         p = self.config_file or config_path()
@@ -1361,14 +2080,58 @@ class Daemon:
         except OSError:
             return None
 
+    def _tile_gone(self, name):
+        if self.bar:
+            self.bar.tile_gone(name)
+
+    def renderer_ready(self):
+        """Whether the extension draws questions and has the bar on screen
+        (renderer.json)."""
+        path = runtime_file(RENDERER_NAME)
+        try:
+            mtime = os.stat(path).st_mtime_ns
+        except OSError:
+            self.renderer = (None, False)
+            return False
+        if self.renderer[0] != mtime:
+            try:
+                with open(path) as f:
+                    said = json.load(f)
+                protocol = said.get("protocol")
+                ready = (isinstance(protocol, int) and not isinstance(protocol, bool)
+                         and protocol >= RENDERER_PROTOCOL and said.get("drawn") is True)
+            except (OSError, ValueError, AttributeError):
+                ready = False
+            self.renderer = (mtime, ready)
+        return self.renderer[1]
+
+    def scene(self):
+        """The tiles to draw: a question over the spots while one shows."""
+        pressed = self.bar.pressed() if self.bar else []
+        removing = self.bar.removing() if self.bar else []
+        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided())
+        ask = self.apps.asks.shown()
+        if ask is not None:
+            tiles = (ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (),
+                               len(self.apps.asks.queue) - 1)
+                     + [t for t in tiles if t["style"] == GRIP])
+        return tiles
+
     # The state file the GNOME Shell extension draws from.
     def publish(self):
         state = {
+            "version": SCENE_VERSION,
             "pid": os.getpid(),
             "active": self.source is not None and self.source.grabbed,
             "monitor": self.monitor,
             "panel": [PANEL_W, PANEL_H],
             "height": self.bar.height() if self.bar else self.config.height,
+            "tiles": self.scene(),
+            "divider": DIVIDER_X,
+            "apps": self.apps.names(),
+            # Version 1: the extension loaded before tiles keeps drawing the
+            # bar from these until the next login (GNOME loads new extension
+            # code only then). It shows no app tiles and no questions.
             "spots": [s.public() for s in self.config.spots],
             "pressed": self.bar.pressed() if self.bar else [],
             "removing": self.bar.removing() if self.bar else [],
@@ -1418,7 +2181,7 @@ class Daemon:
 
     def new_bar(self, keys):
         return Bar(self.config, keys, self.run_command, self.launch, self.remove_shortcut,
-                   self.resize)
+                   self.resize, tiles=self.apps, asks=self.apps.asks)
 
     def reap(self):
         self.children = [c for c in self.children if c.poll() is None]
@@ -1522,6 +2285,7 @@ class Daemon:
             log("keeping the current bar: %s" % e)
             return
         self.config = config
+        self.apps.set_placed(config.tiles())
         if self.bar:
             self.bar.set_config(config)
         log("loaded %s: bar %d px high, %d button(s), %d shortcut(s)"
@@ -1550,11 +2314,21 @@ class Daemon:
             elif self.source is not None and not self.want_active():
                 self.deactivate("%s is gone (screenpad off)" % self.flag)
                 self.publish()
-            if self.bar and self.bar.deadline() is not None:
-                timeout = min(timeout, max(self.bar.deadline() - time.monotonic(), 0))
+            self.apps.asks.refresh()
+            self.apps.asks.tick()
+            for deadline in (self.bar.deadline() if self.bar else None,
+                             self.apps.asks.deadline()):
+                if deadline is not None:
+                    timeout = min(timeout, max(deadline - time.monotonic(), 0))
+            if self.apps.take_changed():
+                self.publish()
+            if self.server:
+                self.server.flush()
             fds = ([self.source.fd] if self.source else []) + (
-                [self.wakeup] if self.wakeup is not None else [])
-            ready, _, _ = select.select(fds, [], [], timeout)
+                [self.wakeup] if self.wakeup is not None else []) + (
+                self.server.rfds() if self.server else [])
+            ready, _, _ = select.select(fds, self.server.wfds() if self.server else [], [],
+                                        timeout)
             if self.wakeup in ready:
                 try:
                     os.read(self.wakeup, 64)
@@ -1564,8 +2338,15 @@ class Daemon:
                 self.process()
                 if self.source is None:
                     self.publish()
+            for fd in ready:
+                if self.server and self.server.owns(fd):
+                    self.server.readable(fd)
             if self.bar and self.bar.tick():
                 self.publish()
+            if self.apps.take_changed():
+                self.publish()
+            if self.server:
+                self.server.flush()
 
     def main(self):
         def on_term(signum, frame):
@@ -1583,9 +2364,15 @@ class Daemon:
         signal.set_wakeup_fd(w)
         self.wakeup = r
         try:
+            self.server = AppServer(runtime_file(SOCKET_NAME), self.apps)
+        except (OSError, TouchbarError) as e:
+            log("apps cannot use the bar: %s" % e)
+        try:
             self.loop()
         finally:
             self.deactivate("stopping")
+            if self.server:
+                self.server.close()
             self.unpublish()
         return 0
 
@@ -1622,6 +2409,10 @@ def cmd_check(args):
             print(where + s.item)
         else:
             b = s.item
+            if b.tile:
+                print(where + "%s, icon %s, tile %s (an app draws it)"
+                      % (b.label or "-", b.icon or "none", b.tile))
+                continue
             action = ("key %s (codes %s)" % (b.key, "+".join(str(k) for k in b.keys)) if b.keys
                       else "command %s" % shlex.join(b.command))
             print(where + "%s, icon %s, %s %s" % (b.label or "-", b.icon or "none", b.mode, action))
@@ -1696,6 +2487,7 @@ def cmd_status(args):
             state = json.load(f)
         print("daemon: pid %d, %s, pressed %s" % (
             state["pid"], "touchpad grabbed" if state["active"] else "idle", state["pressed"]))
+        print("apps: %s" % (", ".join(state.get("apps") or []) or "none"))
     except (OSError, ValueError, KeyError):
         print("daemon: not running")
     return 0
@@ -1805,6 +2597,61 @@ def cmd_shortcut(args):
     return 0
 
 
+def cmd_ask(args):
+    """Ask a question in the bar; print the chosen answer's id."""
+    options, tones = [], {}
+    for spec in args.tone:
+        key, sep, tone = spec.partition("=")
+        if not sep:
+            log("--tone takes ID=TONE, such as allow=accept")
+            return 2
+        tones[key] = tone
+    for spec in args.option:
+        key, sep, label = spec.partition("=")
+        if not sep:
+            log("--option takes ID=LABEL, such as allow=\"Allow once\"")
+            return 2
+        option = {"id": key, "label": label}
+        if key in tones:
+            option["tone"] = tones[key]
+        options.append(option)
+    request = {"op": "ask", "id": "ask", "title": args.title, "options": options,
+               "timeout": args.timeout}
+    if args.text:
+        request["text"] = args.text
+    path = runtime_file(SOCKET_NAME)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
+    sock.settimeout(args.timeout + 10)
+    try:
+        sock.connect(path)
+        for msg in ({"op": "hello", "app": "ask"}, request):
+            sock.sendall((json.dumps(msg) + "\n").encode())
+        buf = b""
+        while True:
+            data = sock.recv(65536)
+            if not data:
+                log("the touch bar went away")
+                return 1
+            buf += data
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                msg = json.loads(line)
+                if msg.get("op") == "error":
+                    log(msg.get("message", "error"))
+                    return 2
+                if msg.get("op") == "answer" and msg.get("id") == "ask":
+                    if msg.get("option") is None:
+                        log("no answer: %s" % msg.get("reason"))
+                        return 1
+                    print(msg["option"])
+                    return 0
+    except (OSError, ValueError) as e:
+        log("the touch bar is not reachable at %s: %s" % (path, e))
+        return 1
+    finally:
+        sock.close()
+
+
 def _same_hid(a, b):
     def parent(p):
         return os.path.realpath(os.path.join(SYS_INPUT, os.path.basename(p), "device", "..", ".."))
@@ -1819,6 +2666,7 @@ COMMANDS = {
     "check": cmd_check,
     "probe": cmd_probe,
     "shortcut": cmd_shortcut,
+    "ask": cmd_ask,
 }
 
 
@@ -1841,6 +2689,18 @@ def parse_args(argv):
     add.add_argument("--spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
     remove = actions.add_parser("remove", help="remove the shortcut in a spot")
     remove.add_argument("spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
+    ask = sub.add_parser("ask", help="ask a question in the bar and print the chosen answer's "
+                                     "id; exits 1 without an answer (a timeout, or the bar "
+                                     "cannot show it)")
+    ask.add_argument("title", help="the question, at most 80 characters")
+    ask.add_argument("--text", help="a second line, at most 200 characters")
+    ask.add_argument("--option", action="append", default=[], metavar="ID=LABEL", required=True,
+                     help="an answer, up to %d: its id (printed when chosen) and label"
+                          % MAX_OPTIONS)
+    ask.add_argument("--tone", action="append", default=[], metavar="ID=TONE",
+                     help="an answer's color: %s" % ", ".join(TONES))
+    ask.add_argument("--timeout", type=float, default=ASK_TIMEOUT, metavar="SECONDS",
+                     help="give up after this long (default %d)" % ASK_TIMEOUT)
     for s in (run, status, check, probe, shortcut):
         s.add_argument("--config", metavar="FILE",
                        help="config file (default ~/.config/screenpad/touchbar.toml)")

@@ -5,9 +5,14 @@ Run with: python3 -m unittest discover -s tests
 
 import contextlib
 import io
+import json
 import os
+import re
+import select
+import socket
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -201,7 +206,13 @@ app = "firefox_firefox"
             "height = 1.5": "whole number",
             "colour = 1": "unknown setting",
             "[[button]]\nkey = \"a\"\n": "icon or a label",
-            "[[button]]\nlabel = \"A\"\n": "exactly one of key or command",
+            "[[button]]\nlabel = \"A\"\n": "exactly one of key, command or tile",
+            button + "tile = \"x\"\n": "exactly one",
+            "[[button]]\nlabel = \"A\"\ntile = \"Agents\"\n": "tile must be a name",
+            "[[button]]\nlabel = \"A\"\ntile = 3\n": "tile must be a name",
+            "[[button]]\nlabel = \"A\"\ntile = \"a\"\nmode = \"hold\"\n": "mode does not apply",
+            "[[button]]\nlabel = \"A\"\ntile = \"a\"\n" "[[button]]\nlabel = \"B\"\ntile = \"a\"\n":
+                "already in another spot",
             "[[button]]\nlabel = \"A\"\nkey = \"a\"\ncommand = \"b\"\n": "exactly one",
             button + "mode = \"toggle\"\n": "mode",
             "[[button]]\nlabel = \"A\"\nkey = \"nope\"\n": "unknown key",
@@ -804,7 +815,8 @@ class ExtensionTests(unittest.TestCase):
         # The grip is narrow (104 px); insets and icons scaled by the
         # height alone left it 1 px wide on a tall bar.
         src = self.source()
-        self.assertIn("? this._grip(width, innerHeight)", src)
+        self.assertIn("if (tile.glyph === 'grip') {\n"
+                      "            child = this._grip(width, height);", src)
         self.assertIn("Math.round(narrowest * MAX_INSET)", src)
         self.assertNotIn("list-drag-handle-symbolic", src)
         css_path = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad", "stylesheet.css")
@@ -819,17 +831,723 @@ class ExtensionTests(unittest.TestCase):
         self.assertEqual(re.findall(r"^    (Launch)\(", src, re.M), ["Launch"])
         self.assertIn("--method %s.Launch" % t.DBUS_IFACE, t.LAUNCH[2])
 
-    def test_styles_for_every_spot_kind(self):
+    def test_styles_for_every_tile_style_and_class(self):
         path = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad", "stylesheet.css")
         with open(path) as f:
             css = f.read()
-        for kind in (t.BUTTON, t.SHORTCUT, t.GRIP):
-            self.assertIn(".screenpad-touchbar-%s {" % kind, css)
+        for style in t.TILE_STYLES:
+            self.assertIn(".screenpad-touchbar-%s {" % style, css)
+        # A tap button is the plain button style; every other class has a rule.
+        for name in set(t.TILE_CLASSES) - {"tap"}:
+            self.assertRegex(css, r"\.%s[ {:.,]" % re.escape(name), name)
         for rule in (".screenpad-touchbar-button.hold:active",
                      ".screenpad-touchbar-shortcut.removing",
-                     ".screenpad-touchbar-shortcut.drop", ".screenpad-touchbar-spot.empty"):
+                     ".screenpad-touchbar-shortcut.drop", ".screenpad-touchbar-spot.empty",
+                     ".screenpad-touchbar-badge", ".screenpad-touchbar-text"):
             self.assertIn(rule + " {", css)
 
+    def test_renderer_handshake_matches_the_daemon(self):
+        src = self.source()
+        self.assertIn("const RENDERER_NAME = '%s';" % t.RENDERER_NAME, src)
+        self.assertIn("const RENDERER_PROTOCOL = %d;" % t.RENDERER_PROTOCOL, src)
+        # It says whether the bar is on screen, every time _sync decides.
+        self.assertIn("JSON.stringify({protocol: RENDERER_PROTOCOL, drawn})", src)
+        self.assertIn("const drawn = this._bar !== null;", src)
+        sync = src[src.index("    _sync() {"):src.index("    _announce() {")]
+        self.assertEqual(sync.count("this._announce();"), 2)
+        # Removed first in disable(), before the bar goes.
+        disable = src[src.index("    disable() {"):src.index("    Launch(id)")]
+        self.assertLess(disable.index("this._renderer.delete"), disable.index("this._destroyBar"))
+
+    def test_draws_tiles_without_knowing_them(self):
+        src = self.source()
+        # A press restyles a tile; it does not rebuild the bar (and its strut).
+        self.assertIn("state.tiles.map(({pressed, ...rest}) => rest)", src)
+        # Only apps shown on the bar can be opened over D-Bus.
+        self.assertIn("this._state?.tiles?.some(t => t.app === id)", src)
+        # No tile kinds in the renderer: it never asks what a tile is.
+        self.assertNotIn("state.spots", src)
+        self.assertNotRegex(src, r"\.kind\s*===")
+
+
+
+class FakeClient:
+    """An app as the daemon sees it, without a socket."""
+
+    def __init__(self):
+        self.sent = []
+        self.name = None
+
+    def send(self, msg):
+        self.sent.append(msg)
+
+    def last(self, op):
+        found = [m for m in self.sent if m.get("op") == op]
+        return found[-1] if found else None
+
+
+TILE_CONFIG = """
+[[button]]
+icon = "audio-input-microphone-symbolic"
+label = "PTT"
+mode = "hold"
+key = "F14"
+[[button]]
+label = "Agents"
+tile = "agents"
+[[shortcut]]
+app = "files.desktop"
+"""
+
+
+class SceneTests(unittest.TestCase):
+    def test_spots_as_tiles(self):
+        c = config(TILE_CONFIG)
+        tiles = t.spot_tiles(c, pressed=[0], removing=[])
+        self.assertEqual([(x["id"], x["x"], x["width"], x["style"]) for x in tiles], [
+            ("button-0", 0, 296, "button"), ("button-1", 296, 296, "button"),
+            ("button-2", 592, 296, "button"), ("shortcut-0", 928, 296, "shortcut"),
+            ("shortcut-1", 1224, 296, "shortcut"), ("shortcut-2", 1520, 296, "shortcut"),
+            ("grip", 1816, 104, "grip")])
+        self.assertEqual(tiles[0], {"id": "button-0", "x": 0, "width": 296, "style": "button",
+                                    "pressed": True, "classes": ["hold"],
+                                    "icon": "audio-input-microphone-symbolic", "label": "PTT"})
+        # No app provides "agents": its config label, dimmed.
+        self.assertEqual(tiles[1]["classes"], ["tile", "offline"])
+        self.assertEqual(tiles[1]["label"], "Agents")
+        self.assertEqual(tiles[2]["classes"], ["empty"])
+        self.assertEqual(tiles[3], {"id": "shortcut-0", "x": 928, "width": 296, "style": "shortcut",
+                                    "drop": 1, "app": "files.desktop"})
+        self.assertEqual(tiles[4]["classes"], ["empty"])
+        self.assertEqual((tiles[4]["icon"], tiles[4]["icon_scale"], tiles[4]["drop"]),
+                         ("list-add-symbolic", 0.6, 2))
+        self.assertTrue(tiles[4]["empty"])
+        self.assertEqual(tiles[6]["glyph"], "grip")
+        self.assertEqual(t.DIVIDER_X, 908)
+
+    def test_removing_and_app_tiles(self):
+        c = config(TILE_CONFIG)
+        tiles = t.spot_tiles(c, pressed=[3], removing=[3], provided={
+            "agents": {"tone": "warning", "label": "1 blocked", "badge": "3"}})
+        self.assertEqual(tiles[3]["classes"], ["removing"])
+        self.assertEqual(tiles[3]["icon"], "edit-delete-symbolic")
+        self.assertEqual(tiles[1], {"id": "button-1", "x": 296, "width": 296, "style": "button",
+                                    "classes": ["tile", "tone-warning"], "label": "1 blocked",
+                                    "badge": "3"})
+        # An app that says nothing yet shows the config's icon or label.
+        tiles = t.spot_tiles(c, provided={"agents": {}})
+        self.assertEqual((tiles[1]["classes"], tiles[1]["label"]),
+                         (["tile", "tone-neutral"], "Agents"))
+
+    def test_every_class_is_known(self):
+        c = config(TILE_CONFIG)
+        ask = t.parse_ask(None, {"id": "q", "title": "T", "options": [
+            {"id": "a", "label": "A", "tone": tone} for tone in t.TONES[:1]]}, 0)
+        tiles = (t.spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}})
+                 + t.ask_tiles(ask))
+        for tile in tiles:
+            self.assertIn(tile["style"], t.TILE_STYLES)
+            for name in tile.get("classes", []):
+                self.assertIn(name, t.TILE_CLASSES)
+
+    def test_question_tiles(self):
+        ask = t.parse_ask(None, {"id": "q", "title": "Run npm test?", "text": "in api",
+                                 "options": [{"id": "no", "label": "Deny", "tone": "reject"},
+                                             {"id": "yes", "label": "Allow", "tone": "accept"}]}, 0)
+        tiles = t.ask_tiles(ask, pressed=[1], queued=2)
+        self.assertEqual(tiles[0], {"id": "ask-text", "x": 0, "width": 888, "style": "ask-text",
+                                    "title": "Run npm test?", "text": "in api", "badge": "+2"})
+        self.assertEqual(tiles[1], {"id": "ask-option-0", "x": 928, "width": 296, "style": "option",
+                                    "classes": ["tone-reject"], "label": "Deny"})
+        self.assertEqual(tiles[2]["pressed"], True)
+        self.assertEqual([t.ask_option_at(ask, x) for x in (0, 900, 928, 1300, 1600)],
+                         [None, None, 0, 1, None])
+
+
+class AskBarTests(unittest.TestCase):
+    """The bar with questions, on a fake clock."""
+
+    def setUp(self):
+        self.now = 100.0
+        self.frames, self.launched, self.resized = [], [], []
+        self.asks = t.Asks(clock=lambda: self.now)
+        self.asks.set_available(True)
+        self.bar = t.Bar(config(BarTests.CONFIG), t.KeyEmitter(self.frames.append), lambda a: None,
+                         self.launched.append, resize=lambda h: self.resized.append(h) or True,
+                         clock=lambda: self.now, asks=self.asks)
+        self.app = FakeClient()
+
+    def ask(self, ask_id="q", n=2):
+        options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
+        self.asks.add(t.parse_ask(self.app, {"id": ask_id, "title": "T", "options": options},
+                                  self.now))
+        self.now += t.ASK_ARM
+
+    def test_lifting_on_an_answer_chooses_it(self):
+        self.ask()
+        self.assertTrue(self.bar.handle([("begin", 0, 1300, 50)]))
+        self.assertEqual(self.bar.ask_pressed(self.asks.shown()), [1])
+        self.bar.handle([("end", 0, 1310, 60)])
+        self.assertEqual(self.app.last("answer"),
+                         {"op": "answer", "id": "q", "option": "o1", "reason": "chosen"})
+        self.assertIsNone(self.asks.shown())
+        # Nothing reached the spots under the question.
+        self.assertEqual((self.frames, self.launched), ([], []))
+
+    def test_too_soon_does_nothing(self):
+        self.asks.add(t.parse_ask(self.app, {"id": "q", "title": "T", "options": [
+            {"id": "a", "label": "A"}]}, self.now))
+        self.now += t.ASK_ARM / 2
+        self.assertFalse(self.bar.handle([("begin", 0, 1000, 50)]))
+        self.now += 1
+        self.bar.handle([("end", 0, 1000, 50)])
+        self.assertIsNone(self.app.last("answer"))
+        self.assertIsNotNone(self.asks.shown())
+
+    def test_slide_away_and_text_do_nothing(self):
+        self.ask()
+        self.bar.handle([("begin", 0, 1000, 50)])
+        self.assertTrue(self.bar.handle([("move", 0, 1000, 600)]))
+        self.assertEqual(self.bar.ask_pressed(self.asks.shown()), [])
+        self.bar.handle([("end", 0, 1000, 600)])
+        # The question's text, over the button spots, is not a button.
+        self.assertFalse(self.bar.handle([("begin", 1, 100, 50)]))
+        self.bar.handle([("end", 1, 100, 50)])
+        self.assertEqual((self.app.last("answer"), self.frames), (None, []))
+
+    def test_the_grip_still_works(self):
+        self.ask()
+        self.bar.handle([("begin", 0, 1850, 100), ("move", 0, 1850, 180), ("end", 0, 1850, 180)])
+        self.assertEqual(self.resized, [240])
+
+    def test_a_held_button_stays_held(self):
+        self.bar.handle([("begin", 0, 100, 50)])
+        self.assertEqual(self.frames, [[(t.EV_KEY, 184, 1), SYN]])
+        self.ask()
+        self.bar.handle([("end", 0, 100, 50)])
+        self.assertEqual(self.frames[-1], [(t.EV_KEY, 184, 0), SYN])
+        self.assertIsNone(self.app.last("answer"))
+
+    def test_an_answer_that_went_away_does_nothing(self):
+        self.ask()
+        self.bar.handle([("begin", 0, 1000, 50)])
+        self.now += 100
+        self.asks.tick()
+        self.assertEqual(self.app.last("answer")["reason"], "timeout")
+        self.bar.handle([("end", 0, 1000, 50)])
+        self.assertEqual(len([m for m in self.app.sent if m["op"] == "answer"]), 1)
+
+    def test_queue_shows_the_next_armed_again(self):
+        self.ask("first")
+        self.ask("second")
+        self.bar.handle([("begin", 0, 1000, 50), ("end", 0, 1000, 50)])
+        self.assertEqual(self.app.last("answer")["id"], "first")
+        # The next one just appeared: a tap now is too soon.
+        self.bar.handle([("begin", 0, 1000, 50), ("end", 0, 1000, 50)])
+        self.assertEqual(self.asks.shown().id, "second")
+        self.now += t.ASK_ARM
+        self.bar.handle([("begin", 0, 1000, 50), ("end", 0, 1000, 50)])
+        self.assertEqual(self.app.last("answer")["id"], "second")
+
+
+class TileBarTests(unittest.TestCase):
+    def setUp(self):
+        self.events, self.on = [], {"agents"}
+        bar_self = self
+
+        class Tiles:
+            def online(self, name):
+                return name in bar_self.on
+
+            def event(self, name, kind, inside=None):
+                bar_self.events.append((name, kind, inside))
+        self.frames = []
+        self.bar = t.Bar(config(TILE_CONFIG), t.KeyEmitter(self.frames.append), lambda a: None,
+                         tiles=Tiles())
+
+    def test_down_and_up(self):
+        self.assertTrue(self.bar.handle([("begin", 0, 400, 50)]))
+        self.assertEqual(self.bar.pressed(), [1])
+        self.bar.handle([("end", 0, 410, 60)])
+        self.assertEqual(self.events, [("agents", "down", None), ("agents", "up", True)])
+        self.bar.handle([("begin", 0, 400, 50), ("move", 0, 400, 600), ("end", 0, 400, 600)])
+        self.assertEqual(self.events[-1], ("agents", "up", False))
+        self.assertEqual(self.frames, [])
+
+    def test_offline_tile_does_nothing(self):
+        self.on.clear()
+        self.assertFalse(self.bar.handle([("begin", 0, 400, 50), ("end", 0, 400, 50)]))
+        self.assertEqual(self.events, [])
+
+    def test_reload_release_and_app_gone(self):
+        self.bar.handle([("begin", 0, 400, 50)])
+        self.bar.set_config(config(TILE_CONFIG))       # same tile, same spot: still down
+        self.assertEqual(self.events, [("agents", "down", None)])
+        self.bar.release_all()
+        self.assertEqual(self.events[-1], ("agents", "up", False))
+        self.bar.handle([("begin", 0, 400, 50)])
+        self.bar.tile_gone("agents")
+        self.bar.handle([("end", 0, 400, 50)])
+        self.assertEqual(self.events[-1], ("agents", "down", None))
+        self.assertEqual(self.bar.pressed(), [])
+
+
+class AppsTests(unittest.TestCase):
+    def setUp(self):
+        self.now = 10.0
+        self.apps = t.Apps(clock=lambda: self.now)
+        self.apps.set_placed(["agents"])
+        self.gone = []
+        self.apps.on_tile_gone = self.gone.append
+        self.a, self.b = FakeClient(), FakeClient()
+        self.apps.connect(self.a)
+        self.apps.connect(self.b)
+
+    def test_hello_and_tiles(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents", "ci"]})
+        self.assertEqual(self.a.last("welcome"), {"op": "welcome", "app": "fleet",
+                                                  "placed": ["agents"], "unplaced": ["ci"],
+                                                  "taken": []})
+        self.apps.handle(self.b, {"op": "hello", "app": "other", "tiles": ["agents"]})
+        self.assertEqual(self.b.last("welcome")["taken"], ["agents"])
+        self.assertTrue(self.apps.online("agents"))
+        self.assertEqual(self.apps.names(), ["fleet", "other"])
+        self.assertTrue(self.apps.take_changed())
+        self.assertFalse(self.apps.take_changed())
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet"})
+        self.assertIn("already", self.a.last("error")["message"])
+
+    def test_set(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
+        self.apps.take_changed()
+        self.apps.handle(self.a, {"op": "set", "tile": "agents", "label": "1 blocked",
+                                  "tone": "warning", "badge": "2",
+                                  "icon": "dialog-warning-symbolic"})
+        self.assertEqual(self.apps.provided(), {"agents": {
+            "tone": "warning", "label": "1 blocked", "badge": "2",
+            "icon": "dialog-warning-symbolic"}})
+        self.assertTrue(self.apps.take_changed())
+        bad = [{"tile": "ci"}, {"tile": "agents", "tone": "pink"},
+               {"tile": "agents", "label": "x" * 33}, {"tile": "agents", "label": "a\nb"},
+               {"tile": "agents", "icon": "../x"}, {"tile": "agents", "colour": "red"}]
+        for msg in bad:
+            self.apps.handle(self.a, dict(msg, op="set"))
+            self.assertEqual(self.a.last("error")["request"], "set", msg)
+        self.apps.handle(self.b, {"op": "hello", "app": "other"})
+        self.apps.handle(self.b, {"op": "set", "tile": "agents", "label": "mine"})
+        self.assertIn("not yours", self.b.last("error")["message"])
+
+    def test_hello_first_and_bad_messages(self):
+        self.apps.handle(self.a, {"op": "set", "tile": "agents"})
+        self.assertIn("hello first", self.a.last("error")["message"])
+        self.apps.handle(self.a, ["not", "an", "object"])
+        self.apps.handle(self.a, {"op": "dance"})
+        self.assertEqual(len([m for m in self.a.sent if m["op"] == "error"]), 3)
+        self.apps.handle(self.a, {"op": "ping"})
+        self.assertEqual(self.a.sent[-1], {"op": "pong"})
+        for msg in ({"app": "Fleet"}, {"app": "x", "tiles": "agents"},
+                    {"app": "x", "tiles": ["A"]}):
+            self.apps.handle(self.b, dict(msg, op="hello"))
+            self.assertEqual(self.b.last("error")["request"], "hello", msg)
+
+    def test_events_go_to_the_owner(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
+        self.apps.event("agents", "down")
+        self.apps.event("agents", "up", True)
+        self.apps.event("nobody", "down")
+        self.assertEqual([m for m in self.a.sent if m["op"] == "event"], [
+            {"op": "event", "tile": "agents", "type": "down"},
+            {"op": "event", "tile": "agents", "type": "up", "inside": True}])
+        self.assertEqual(self.b.sent, [])
+
+    def test_ask_validation(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet"})
+        ok = {"op": "ask", "id": "q1", "title": "Run it?", "options": [{"id": "y", "label": "Yes"}]}
+        bad = [dict(ok, id="no spaces"), dict(ok, title=""), dict(ok, title="x" * 81),
+               dict(ok, options=[]), dict(ok, options=[{"id": "y", "label": "Y"}] * 2),
+               dict(ok, options=[{"id": str(k), "label": "L"} for k in range(4)]),
+               dict(ok, options=[{"id": "y", "label": "Y", "tone": "pink"}]),
+               dict(ok, timeout=0), dict(ok, timeout=True), dict(ok, timeout=4000),
+               dict(ok, colour=1)]
+        for msg in bad:
+            self.apps.handle(self.a, msg)
+            self.assertEqual(self.a.last("error")["request"], "ask", msg)
+        self.assertEqual(self.a.last("error")["id"], "q1")
+
+    def test_ask_answers(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet"})
+        ask = {"op": "ask", "id": "q1", "title": "Run it?", "timeout": 5,
+               "options": [{"id": "y", "label": "Yes"}, {"id": "n", "label": "No"}]}
+        # The bar cannot show questions: answered at once.
+        self.apps.handle(self.a, ask)
+        self.assertEqual(self.a.last("answer"),
+                         {"op": "answer", "id": "q1", "option": None, "reason": "unavailable"})
+        self.apps.asks.set_available(True)
+        self.apps.handle(self.a, ask)
+        self.apps.handle(self.a, ask)
+        self.assertIn("already waiting", self.a.last("error")["message"])
+        shown = self.apps.asks.shown()
+        self.assertEqual((shown.id, shown.shown_at), ("q1", 10.0))
+        self.apps.asks.choose(shown, 1)
+        self.assertEqual(self.a.last("answer")["option"], "n")
+        self.apps.handle(self.a, ask)
+        self.apps.handle(self.a, {"op": "cancel", "id": "q1"})
+        self.assertEqual(self.a.last("answer")["reason"], "cancelled")
+        self.apps.handle(self.a, {"op": "cancel", "id": "q1"})
+        self.assertEqual(self.a.last("error")["request"], "cancel")
+        self.apps.handle(self.a, ask)
+        self.assertEqual(self.apps.asks.deadline(), 15.0)
+        self.now = 15.0
+        self.apps.asks.tick()
+        self.assertEqual(self.a.last("answer")["reason"], "timeout")
+        self.apps.handle(self.a, ask)
+        self.apps.asks.set_available(False)
+        self.assertEqual(self.a.last("answer")["reason"], "unavailable")
+        self.assertIsNone(self.apps.asks.shown())
+
+    def test_disconnect(self):
+        self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
+        self.apps.asks.set_available(True)
+        self.apps.handle(self.a, {"op": "ask", "id": "q", "title": "T",
+                                  "options": [{"id": "y", "label": "Y"}]})
+        self.apps.disconnect(self.a)
+        self.assertEqual((self.apps.online("agents"), self.apps.asks.shown(), self.gone),
+                         (False, None, ["agents"]))
+        self.assertIsNone(self.a.last("answer"))
+        # The tile is free for another app now.
+        self.apps.handle(self.b, {"op": "hello", "app": "other", "tiles": ["agents"]})
+        self.assertEqual(self.b.last("welcome")["placed"], ["agents"])
+
+    def test_too_many_apps(self):
+        apps = t.Apps()
+        clients = [FakeClient() for _ in range(t.MAX_APPS + 1)]
+        self.assertEqual([apps.connect(c) for c in clients], [True] * t.MAX_APPS + [False])
+        self.assertEqual(clients[-1].last("error")["message"], "too many apps (%d)" % t.MAX_APPS)
+
+
+def pump(server, rounds=1):
+    for _ in range(rounds):
+        ready, _, _ = select.select(server.rfds(), server.wfds(), [], 0.01)
+        for fd in ready:
+            if server.owns(fd):
+                server.readable(fd)
+        server.flush()
+
+
+class Conn:
+    """An app's end of the socket, driven together with the server."""
+
+    def __init__(self, path):
+        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.s.connect(path)
+        self.buf = b""
+
+    def send(self, msg):
+        self.s.sendall((json.dumps(msg) + "\n").encode())
+
+    def recv(self, server):
+        for _ in range(200):
+            if b"\n" in self.buf:
+                line, self.buf = self.buf.split(b"\n", 1)
+                return json.loads(line)
+            pump(server)
+            self.s.settimeout(0.01)
+            try:
+                data = self.s.recv(65536)
+            except socket.timeout:
+                continue
+            if not data:
+                return None
+            self.buf += data
+        raise AssertionError("no reply")
+
+
+class AppServerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.home = ConfigHome(self.tmp.name)
+        self.home.__enter__()
+        self.addCleanup(self.home.__exit__)
+        self.path = t.runtime_file(t.SOCKET_NAME)
+        self.apps = t.Apps()
+        self.apps.set_placed(["agents"])
+        self.server = t.AppServer(self.path, self.apps)
+        self.addCleanup(self.server.close)
+
+    def conn(self):
+        app = Conn(self.path)
+        self.addCleanup(app.s.close)
+        return app
+
+    def test_hello_set_and_events(self):
+        self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
+        app = self.conn()
+        app.send({"op": "hello", "app": "fleet", "tiles": ["agents"]})
+        self.assertEqual(app.recv(self.server)["placed"], ["agents"])
+        app.send({"op": "set", "tile": "agents", "label": "2 working"})
+        app.send({"op": "ping"})
+        self.assertEqual(app.recv(self.server), {"op": "pong"})
+        self.assertEqual(self.apps.provided()["agents"]["label"], "2 working")
+        self.apps.event("agents", "down")
+        self.assertEqual(app.recv(self.server), {"op": "event", "tile": "agents", "type": "down"})
+        app.s.close()
+        pump(self.server, 3)
+        self.assertFalse(self.apps.online("agents"))
+
+    def test_bad_json_and_a_too_long_line(self):
+        app = self.conn()
+        app.s.sendall(b"{nope\n")
+        self.assertEqual(app.recv(self.server)["message"], "not a JSON object")
+        app.s.sendall(b"x" * (t.MAX_LINE + 10))
+        self.assertIsNone(app.recv(self.server))
+        self.assertEqual(self.server.clients, {})
+
+    def test_stale_and_live_sockets(self):
+        # A live daemon is not replaced.
+        with self.assertRaises(t.TouchbarError):
+            t.AppServer(self.path, t.Apps())
+        # A socket file a dead daemon left is.
+        self.server.sock.close()
+        self.assertTrue(os.path.exists(self.path))
+        other = t.AppServer(self.path, t.Apps())
+        other.close()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_ask_command(self):
+        self.apps.asks.set_available(True)
+        stop = threading.Event()
+
+        def serve():
+            while not stop.is_set():
+                pump(self.server)
+                ask = self.apps.asks.shown()
+                if ask is not None:
+                    self.apps.asks.choose(ask, 1)
+        thread = threading.Thread(target=serve)
+        thread.start()
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = t.main(["ask", "Run npm test?", "--text", "in api",
+                               "--option", "allow=Allow once", "--option", "deny=Deny",
+                               "--tone", "deny=reject", "--timeout", "5"])
+        finally:
+            stop.set()
+            thread.join()
+        self.assertEqual((code, out.getvalue()), (0, "deny\n"))
+
+    def test_ask_command_without_an_answer(self):
+        err = io.StringIO()
+        stop = threading.Event()
+
+        def serve():
+            while not stop.is_set():
+                pump(self.server)
+        thread = threading.Thread(target=serve)
+        thread.start()
+        try:
+            with contextlib.redirect_stderr(err):
+                # Unavailable (the bar is not shown), then a bad request.
+                self.assertEqual(t.main(["ask", "T", "--option", "a=A"]), 1)
+                self.assertEqual(t.main(["ask", "T", "--option", "a=A", "--timeout", "0"]), 2)
+                self.assertEqual(t.main(["ask", "T", "--option", "noequals"]), 2)
+        finally:
+            stop.set()
+            thread.join()
+        self.assertIn("no answer: unavailable", err.getvalue())
+        self.server.close()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(t.main(["ask", "T", "--option", "a=A"]), 1)
+
+
+class DaemonSceneTests(unittest.TestCase):
+    def test_publish_and_renderer(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d):
+            daemon = t.Daemon(config(TILE_CONFIG), None)
+            self.assertFalse(daemon.renderer_ready())
+            os.makedirs(os.path.dirname(t.state_path()))
+            renderer = t.runtime_file(t.RENDERER_NAME)
+            for i, (said, ready) in enumerate((('{"protocol": 2, "drawn": true}', True),
+                                ('{"protocol": 2, "drawn": false}', False),
+                                ('{"protocol": 1, "drawn": true}', False),
+                                ('{"protocol": true, "drawn": true}', False),
+                                ('{"protocol": 2}', False), ("not json at all", False),
+                                ("[2]", False), ('{"protocol": 3, "drawn": true}', True))):
+                with open(renderer, "w") as f:
+                    f.write(said)
+                os.utime(renderer, ns=(0, 1000 + i))       # a new mtime each time
+                self.assertEqual(daemon.renderer_ready(), ready, said)
+            os.unlink(renderer)
+            self.assertFalse(daemon.renderer_ready())
+            daemon.publish()
+            with open(t.state_path()) as f:
+                state = json.load(f)
+            self.assertEqual(state["version"], t.SCENE_VERSION)
+            self.assertEqual([x["id"] for x in state["tiles"]][:2], ["button-0", "button-1"])
+            # The version 1 fields, for an extension loaded before tiles.
+            self.assertEqual(len(state["spots"]), 7)
+            self.assertEqual((state["pressed"], state["removing"]), ([], []))
+            # A question shows over the spots, the grip stays.
+            app = FakeClient()
+            daemon.apps.connect(app)
+            daemon.apps.handle(app, {"op": "hello", "app": "fleet"})
+            # As if the pad were grabbed and the bar on screen.
+            daemon.apps.asks.can_show = lambda: True
+            daemon.apps.handle(app, {"op": "ask", "id": "q", "title": "T",
+                                     "options": [{"id": "y", "label": "Y"}]})
+            daemon.publish()
+            with open(t.state_path()) as f:
+                state = json.load(f)
+            self.assertEqual([x["id"] for x in state["tiles"]],
+                             ["ask-text", "ask-option-0", "grip"])
+            self.assertEqual(state["apps"], ["fleet"])
+
+
+class ContactsToAppsTests(unittest.TestCase):
+    """Device contacts through the Splitter and the Bar to an app, end to end."""
+
+    def test_tile_and_question(self):
+        now = [50.0]
+        apps = t.Apps(clock=lambda: now[0])
+        apps.set_placed(["agents"])
+        app = FakeClient()
+        apps.connect(app)
+        apps.handle(app, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
+        bar = t.Bar(config(TILE_CONFIG), t.KeyEmitter(lambda ev: None), lambda a: None,
+                    clock=lambda: now[0], tiles=apps, asks=apps.asks)
+        sp = Split()
+        # The "agents" spot is x 296..592 panel px, 592..1184 device units.
+        for groups in ([touch(0, 1, 800, 100)], [lift(0)]):
+            pad, events = sp.frame(*groups)
+            self.assertEqual(pad, [])
+            bar.handle(events)
+        self.assertEqual([m["type"] for m in app.sent if m["op"] == "event"], ["down", "up"])
+        # A question; a tap on its second answer (x 1224..1520 px), after
+        # it has been up for ASK_ARM.
+        apps.asks.set_available(True)
+        apps.handle(app, {"op": "ask", "id": "q", "title": "Run it?",
+                          "options": [{"id": "no", "label": "No"}, {"id": "yes", "label": "Yes"}]})
+        now[0] += t.ASK_ARM
+        for groups in ([touch(1, 2, 2700, 120)], [lift(1)]):
+            pad, events = sp.frame(*groups)
+            self.assertEqual(pad, [])
+            bar.handle(events)
+        self.assertEqual(app.last("answer"),
+                         {"op": "answer", "id": "q", "option": "yes", "reason": "chosen"})
+        # The pad below the bar is untouched by all this.
+        pad, events = sp.frame(touch(2, 3, 2000, 1500))
+        self.assertEqual((codes(pad, t.EV_ABS, t.ABS_MT_TRACKING_ID), events), ([3], []))
+
+
+class DaemonLoopTests(unittest.TestCase):
+    """The daemon's loop serving the socket, with a stand-in for the grabbed pad."""
+
+    class Pad:
+        """Grabbed, and never has events (a pipe nobody writes)."""
+
+        def __init__(self):
+            self.fd, self.w = os.pipe()
+            self.grabbed = True
+
+        def close(self):
+            os.close(self.fd)
+            os.close(self.w)
+
+    def test_questions_follow_the_renderer(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as d, ConfigHome(d):
+            flag = os.path.join(d, "active")
+            open(flag, "w").close()
+            daemon = t.Daemon(config(TILE_CONFIG), None, flag=flag)
+            daemon.server = t.AppServer(t.runtime_file(t.SOCKET_NAME), daemon.apps)
+            pad = self.Pad()
+            daemon.source = pad
+            thread = threading.Thread(target=daemon.loop)
+            thread.start()
+            try:
+                app = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                app.connect(t.runtime_file(t.SOCKET_NAME))
+                app.settimeout(5)
+                lines = app.makefile("rw")
+
+                def ask(ask_id):
+                    lines.write(json.dumps({"op": "ask", "id": ask_id, "title": "T",
+                                            "options": [{"id": "y", "label": "Y"}]}) + "\n")
+                    lines.flush()
+
+                lines.write(json.dumps({"op": "hello", "app": "fleet", "tiles": ["agents"]})
+                            + "\n")
+                lines.flush()
+                self.assertEqual(json.loads(lines.readline())["placed"], ["agents"])
+                # No renderer.json: the bar cannot show questions.
+                ask("q1")
+                self.assertEqual(json.loads(lines.readline())["reason"], "unavailable")
+                with open(t.runtime_file(t.RENDERER_NAME), "w") as f:
+                    f.write('{"protocol": 2, "drawn": true}')
+                ask("q2")
+                for _ in range(50):
+                    with open(t.state_path()) as f:
+                        state = json.load(f)
+                    if state["tiles"][0]["id"] == "ask-text":
+                        break
+                    threading.Event().wait(0.05)
+                self.assertEqual([x["id"] for x in state["tiles"]],
+                                 ["ask-text", "ask-option-0", "grip"])
+                self.assertEqual(state["apps"], ["fleet"])
+                # The bar leaves the screen: the waiting question is answered.
+                os.unlink(t.runtime_file(t.RENDERER_NAME))
+                self.assertEqual(json.loads(lines.readline()),
+                                 {"op": "answer", "id": "q2", "option": None,
+                                  "reason": "unavailable"})
+                app.close()
+            finally:
+                daemon.stop = True
+                thread.join()
+                daemon.source = None
+                daemon.server.close()
+                pad.close()
+
+
+class TileConfigTests(unittest.TestCase):
+    def test_tile_buttons(self):
+        c = config(TILE_CONFIG)
+        self.assertEqual(c.tiles(), ["agents"])
+        self.assertEqual((c.buttons[1].tile, c.buttons[1].keys, c.buttons[1].command),
+                         ("agents", None, None))
+
+    def test_check_lists_a_tile(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(TILE_CONFIG)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(t.main(["check"]), 0)
+            self.assertIn("button   2  x  296..592  Agents, icon none, tile agents (an app draws it)",
+                          out.getvalue())
+
+    def test_migrate_the_default_before_tiles(self):
+        with open(os.path.join(REPO, "tests", "touchbar-v3-default.toml")) as f:
+            v3 = f.read()
+        self.assertNotIn("tile", v3)
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(v3)
+            self.assertTrue(t.migrate_config())
+            with open(path) as f:
+                self.assertEqual(f.read(), t.EXAMPLE_CONFIG)
+            self.assertFalse(t.migrate_config())
+            # An edited one keeps the edits and gains the 'tile' lines once.
+            with open(path, "w") as f:
+                f.write(v3.replace("height = 160", "height = 168")
+                        + '\n[[shortcut]]\napp = "bitwarden.desktop"\n')
+            self.assertTrue(t.migrate_config())
+            self.assertFalse(t.migrate_config())
+            c = t.load_config()[0]
+            self.assertEqual((c.height, c.shortcuts), (168, ["bitwarden.desktop"]))
+            with open(path) as f:
+                self.assertEqual(f.read().count("#   tile "), 1)
 
 if __name__ == "__main__":
     unittest.main()
