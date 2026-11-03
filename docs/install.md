@@ -102,10 +102,8 @@ sudo systemctl start screenpad
 | `/var/lib/screenpad/`, `/lib/firmware/screenpad/edid.bin` | the saved, fixed EDID and the copy the kernel loads |
 | `/etc/initramfs-tools/hooks/screenpad` | only if nvidia-drm is in your initramfs (it is not on stock Ubuntu); followed by `update-initramfs -u` |
 | `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI: a link to `/usr/local/lib/screenpad/touchbar.py` |
-| `/usr/local/bin/screenpad-agents` | the [agent app](agents.md): a link to `/usr/local/lib/screenpad/agents.py` |
-| `/usr/local/lib/screenpad/` | the programs' code: `screenpad.py`, `touchbar.py` and `agents.py`, and their packages `screenpad_display/`, `screenpad_touchbar/`, `screenpad_app/` (the client library apps use) and `screenpad_agents/` |
+| `/usr/local/lib/screenpad/` | the programs' code: `screenpad.py` and `touchbar.py`, and their packages `screenpad_display/`, `screenpad_touchbar/` and `screenpad_app/` (the client library apps use) |
 | `/usr/lib/systemd/user/screenpad-touchbar.service` | the touch bar's systemd user unit, installed but not enabled |
-| `/usr/lib/systemd/user/screenpad-agents.service` | the agent app's user unit, installed but not enabled; it starts only once `~/.config/screenpad/agents.toml` exists |
 | `/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |
 | `/etc/udev/rules.d/70-screenpad-uinput.rules` | lets the user at the seat use `/dev/uinput` for the touch bar's virtual touchpad and keys |
 | `/etc/udev/rules.d/70-screenpad-backlight.rules` | lets group `input` write the ScreenPad backlight's `bl_power` and `brightness`, so the touch bar can run `screenpad light` and `dark` for [Fn+F6](touchbar.md#fnf6-touchpad-and-display); applied at once with `udevadm trigger` |
@@ -174,7 +172,7 @@ To check that touches land where the bar is drawn, `screenpad-touchbar probe` pr
 
 If something is off, see [Troubleshooting](touchbar.md#troubleshooting) for the touch bar or [If the panel stays dark](display.md#if-the-panel-stays-dark) for the display.
 
-The agent app, for Herdr's coding agents, is optional and off until you configure it: see [Turning it on](agents.md#turning-it-on).
+Apps of the touch bar install on their own: the agent app, for Herdr's coding agents, is [screenpad-agents](https://github.com/mmarsot/screenpad-agents).
 
 ## Configuration
 
@@ -190,9 +188,8 @@ sudo ./install.sh
 systemctl --user restart screenpad-touchbar
 ```
 
-If you enabled the agent app, `systemctl --user restart screenpad-agents` too.
-
 - `install.sh` replaces the installed files; it keeps your saved EDID, your boot parameter and your touch bar config.
+- Earlier versions also installed the agent app (`/usr/local/bin/screenpad-agents` and its user unit), which now has its own repository and per-user installer, [screenpad-agents](https://github.com/mmarsot/screenpad-agents#install). `install.sh` no longer updates that copy and leaves it in place, since it may be running; it prints the exact commands that remove it.
 - If the update changed the GNOME Shell extension, log out and in once. This command lists the extension files the update changed; if it prints nothing, no re-login is needed:
 
   ```sh
@@ -220,11 +217,10 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo screenpad grub remove
    ```
 
-2. Turn off the touch bar, and the agent app if you enabled it, as your user:
+2. Turn off the touch bar, as your user:
 
    ```sh
    screenpad-touchbar off
-   systemctl --user disable --now screenpad-agents
    ```
 
 3. Uninstall, from the checkout:
@@ -233,7 +229,7 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo ./install.sh uninstall
    ```
 
-   This stops the unit (which turns the ScreenPad off), then removes every installed file, including the touch bar's. It keeps the saved EDID in `/var/lib/screenpad`. The backlight stays writable by group `input` until the reboot below.
+   This stops the unit (which turns the ScreenPad off), then removes every installed file, including the touch bar's, and the agent app if an earlier version installed it (it says so; if you enabled that copy and have not installed screenpad-agents, `systemctl --user disable --now screenpad-agents` stops it). It keeps the saved EDID in `/var/lib/screenpad`. The backlight stays writable by group `input` until the reboot below.
 
    To also delete the saved EDID, run `purge` instead:
 
@@ -247,10 +243,10 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo reboot
    ```
 
-5. Optionally, remove your touch bar and agent app configs:
+5. Optionally, remove your touch bar config:
 
    ```sh
-   rm -r ~/.config/screenpad
+   rm ~/.config/screenpad/touchbar.toml
    ```
 
    GNOME keeps the ScreenPad's monitor layout in `~/.config/monitors.xml`, which is harmless once the monitor is gone.

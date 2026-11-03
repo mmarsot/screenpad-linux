@@ -7,7 +7,7 @@ description: Load before changing the touch bar daemon and CLI - touchbar.py and
 
 Owning files: `screenpad_touchbar/`, one module per concern, and `touchbar.py`, the launcher that runs its `cli.main()`. Installed as `/usr/local/lib/screenpad/`, with `/usr/local/bin/screenpad-touchbar` a link to `touchbar.py` there (see the [install](../install/SKILL.md) skill). The module map is in [docs/development.md](../../../docs/development.md#layout): `common` (constants, errors, runtime files), `codes`, `keys`, `config`, `defaults`, `config_edit`, `scene`, `splitter`, `bar`, `pager`, `protocol`, `widgets`, `notify`, `asks`, `surface`, `apps`, `devices`, `fnkey`, `daemon`, `cli`. New code goes in the module of its concern; a module nearing 500 lines is split, not grown.
 
-The client side of the app socket is `screenpad_app/` (`common`, `client`): the library apps use. It is installed next to the programs (the agent app imports it) and is all the repository builds as a package (`pyproject.toml`), so an app in another repository installs it with pip from the git URL.
+The client side of the app socket is `screenpad_app/` (`common`, `client`): the library apps use. It is installed next to the programs and is all the repository builds as a package (`pyproject.toml`), so an app in another repository installs it with pip from the git URL.
 
 Read first:
 
