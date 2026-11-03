@@ -18,7 +18,7 @@
 | `docs/` | this documentation; `docs/images/` holds the screenshots |
 | `AGENTS.md`, `.agents/skills/` | the guide for contributors and coding agents: an index and one skill per area (`.claude/skills` links to it; `CLAUDE.md` imports `AGENTS.md`) |
 | `Makefile`, `pyproject.toml`, `uv.lock`, `package.json`, `package-lock.json`, `eslint.config.js`, `.prettierrc.json` | the development checks and their pinned tools; nothing here is installed. `pyproject.toml` also makes the repository, built as a package, the client library `screenpad_app` alone (pip only; uv never builds it) |
-| `.github/workflows/ci.yml` | CI: the same checks on every push and pull request |
+| `.github/workflows/ci.yml` | CI: the same checks on every pull request |
 | `.no-mistakes.yaml` | the commands the no-mistakes review pipeline runs |
 
 The programs are Python 3 (3.11 or newer, standard library only) and run from the checkout: `./screenpad.py status`, `./touchbar.py check`, `./agents.py show`. `screenpad.py`, `touchbar.py` and `agents.py` are small launchers: run in isolated mode (`python3 -I`), they put the directory they really live in on `sys.path` and call `main()` in their package, `screenpad_display`, `screenpad_touchbar` or `screenpad_agents`. `install.sh` copies them with their packages, and the client library `screenpad_app` the agent app imports, to `/usr/local/lib/screenpad/` and links `/usr/local/sbin/screenpad`, `/usr/local/bin/screenpad-touchbar` and `/usr/local/bin/screenpad-agents` to them, so the checkout and the installed copy have the same layout. `screenpad_agents` imports nothing of `screenpad_touchbar`: it is an app like any other, on the socket, through `screenpad_app`, which imports nothing of the daemon either.
@@ -86,7 +86,7 @@ runs, in order, everything CI runs; each step is also a target of its own:
 | `make typecheck` | types | mypy, with `check_untyped_defs`, on the programs and the tests |
 | `make test` | the unit tests below | `python3 -m unittest`, standard library only |
 
-The Python tools run through [uv](https://docs.astral.sh/uv/) (versions pinned in `pyproject.toml` and `uv.lock`), the JavaScript ones through npm (`package.json`, `package-lock.json`; `make` runs `npm ci` the first time). Only `make test` works without them; it uses node, when installed, for the extension's tests. CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck once and the tests on Python 3.11 and 3.14, with node.
+The Python tools run through [uv](https://docs.astral.sh/uv/) (versions pinned in `pyproject.toml` and `uv.lock`), the JavaScript ones through npm (`package.json`, `package-lock.json`; `make` runs `npm ci` the first time). Only `make test` works without them; it uses node, when installed, for the extension's tests. CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck once and the tests on Python 3.11 and 3.14, with node, on pull requests only (a push to a pull request's branch runs it once, as the pull request; nothing runs on a push alone), each job stopped after 10 minutes so a hang fails instead of sitting in progress.
 
 Changes go through the [no-mistakes](https://github.com/kunchenguid/no-mistakes) review pipeline before they reach GitHub; the rules for contributors and agents are in [AGENTS.md](../AGENTS.md) and its skills.
 

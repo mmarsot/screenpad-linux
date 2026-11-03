@@ -1,7 +1,8 @@
 name: CI
 
+# Pull requests only: a push to a pull request's branch runs it once, as the
+# pull request; a push run besides would test the same commit twice.
 on:
-  push:
   pull_request:
 
 permissions:
@@ -11,6 +12,7 @@ jobs:
   # Format, lint and typecheck: the same commands as 'make check' runs.
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
@@ -29,8 +31,11 @@ jobs:
   # The unit tests need no root, hardware or GNOME Shell. Oldest supported
   # Python and a current one; node runs the extension's plain modules (the
   # tests fail rather than skip them under CI).
+  # The tests take about a minute; a hang fails at the timeout instead of
+  # sitting in progress.
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         python: ["3.11", "3.14"]

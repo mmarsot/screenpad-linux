@@ -23,7 +23,7 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 - `make test`: `python3 -m unittest discover -s tests`, stdlib only, so it runs without uv or npm. The extension's tests run its plain modules with node; they are skipped without node, except under CI.
 - The tool versions are pinned: ruff and mypy in `pyproject.toml` (`[dependency-groups] dev`) and `uv.lock`; Prettier and ESLint in `package.json` and `package-lock.json`. Their settings live in `pyproject.toml`, `.prettierrc.json` and `eslint.config.js`.
 - Prettier formats only `gnome-shell/**/*.js` and `eslint.config.js`, and ruff only `*.py`; never run them on `docs/`, `README.md`, JSON or CSS, where they would rewrite hand-kept tables and snippets.
-- CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck in one job and the tests on Python 3.11 and 3.14 (with node, for the extension) in another, on every push and pull request. `.no-mistakes.yaml` gives the no-mistakes pipeline the same commands.
+- CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck in one job and the tests on Python 3.11 and 3.14 (with node, for the extension) in another, on pull requests only (not on push), each job stopped after 10 minutes. `.no-mistakes.yaml` gives the no-mistakes pipeline the same commands.
 
 ## Rules
 
