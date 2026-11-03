@@ -8,6 +8,7 @@ Run with: python3 -m unittest discover -s tests
 
 import os
 import re
+import tempfile
 import unittest
 
 from touchbar_support import EXT, GRID_H, GRID_Y, TOP, Clock, hello, js, page_msg
@@ -88,13 +89,31 @@ class ExtensionTests(unittest.TestCase):
                     self.assertLessEqual(len(parts["lines"]) * parts["lineSize"] * 1.45, room + 1)
 
     def test_stylesheet(self):
-        with open(os.path.join(EXT, "stylesheet.css")) as f:
-            css = f.read()
+        rules = css_rules(os.path.join(EXT, "stylesheet.css"))
+        styled = [(selectors, body) for selectors, body in rules if body]
         for name in WIDGET_CLASSES:
-            self.assertRegex(css, r"\.%s[ {:.,]" % re.escape(name), name)
+            self.assertTrue(
+                any(name in re.findall(r"\.([\w-]+)", sel) for selectors, _ in styled for sel in selectors), name
+            )
         for rule in (".screenpad-touchbar-widget", ".screenpad-touchbar-lines"):
-            self.assertIn(rule + " {", css)
+            self.assertTrue(any(rule in selectors for selectors, _ in styled), rule)
 
+    def test_css_rules_skip_comments_and_empty_rules(self):
+        path = os.path.join(self.enterContext(tempfile.TemporaryDirectory()), "s.css")
+        with open(path, "w") as f:
+            f.write("/* .held { color: red; } */\n.a.long, .b {\n}\n.c > .d { color: red; /* x */ }\n")
+        self.assertEqual(css_rules(path), [([".a.long", ".b"], []), ([".c > .d"], ["color: red"])])
+
+
+def css_rules(path):
+    """The stylesheet's rules, comments stripped: each a list of its
+    selectors and a list of its declarations."""
+    with open(path) as f:
+        css = re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S)
+    return [
+        ([s.strip() for s in sel.split(",")], [d.strip() for d in body.split(";") if d.strip()])
+        for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+    ]
 
 if __name__ == "__main__":
     unittest.main()

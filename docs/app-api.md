@@ -122,7 +122,7 @@ The [apps page](touchbar.md#the-two-pages) is the panel below the bar, swiped to
 
 | Page field | Meaning |
 |---|---|
-| `page` | its name, as for apps (lower case letters, digits, `.`, `_`, `-`, at most 32). A page belongs to the first app that gives it, until that app disconnects or sends `unpage`; each app has at most 4 |
+| `page` | its name, as for apps (lower case letters, digits, `.`, `_`, `-`, at most 32). A page belongs to the first app that gives it, until that app disconnects or sends `unpage`; each app has at most 4, and the home page holds 8 in all: a new page past that is refused with `the apps page is full (8 pages)`, while replacing one of yours still works |
 | `title`, `text`, `icon`, `badge`, `tone` | what the home page's list shows for it (`title` at most 32 characters, else the page's name; `text` at most 48), and `title` in its header |
 | `columns`, `rows` | its grid: 1 to 6 columns (default 4) by 1 to 4 rows (default 2) |
 | `widgets` | at most 24 widgets; none may overlap |

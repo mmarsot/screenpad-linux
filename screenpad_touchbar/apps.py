@@ -7,7 +7,7 @@ import struct
 import time
 
 from .asks import Asks
-from .common import MAX_APPS, MAX_LINE, MAX_NOTIFY_WAITING, MAX_OUT, MAX_PAGES, TILE_NAME, TouchbarError
+from .common import HOME_COLUMNS, HOME_ROWS, MAX_APPS, MAX_LINE, MAX_NOTIFY_WAITING, MAX_OUT, MAX_PAGES, TILE_NAME, TouchbarError
 from .config import NotifyPolicy
 from .notify import mirror_refusal, notification_ask, parse_notify
 from .protocol import ProtocolError, known_fields, parse_ask
@@ -186,6 +186,8 @@ class Apps:
             raise ProtocolError("page %r is another app's" % page.name)
         if old is None and sum(p.client is client for p in self.pages.values()) >= MAX_PAGES:
             raise ProtocolError("at most %d pages per app" % MAX_PAGES)
+        if old is None and len(self.pages) >= HOME_COLUMNS * HOME_ROWS:
+            raise ProtocolError("the apps page is full (%d pages)" % (HOME_COLUMNS * HOME_ROWS))
         if (
             old is None
             or [w.key() for w in old.widgets] != [w.key() for w in page.widgets]

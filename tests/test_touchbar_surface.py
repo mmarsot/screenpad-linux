@@ -158,6 +158,27 @@ class AppPagesTests(unittest.TestCase):
         self.apps.handle(stranger, page_msg(page="y"))
         self.assertIn("hello", stranger.last("error")["message"])
 
+    def test_the_apps_page_holds_eight_pages(self):
+        # The home page's list is 4 by 2 (docs/app-api.md): a ninth new
+        # page is refused, while replacing one already there still works.
+        clients = [hello(self.apps, "app%d" % i) for i in range(3)]
+        for i in range(8):
+            self.apps.handle(clients[i // 3], page_msg(page="p%d" % i))
+        self.assertEqual(len(self.apps.pages), 8)
+        self.assertTrue(all(c.last("error") is None for c in clients))
+        self.apps.handle(clients[2], page_msg(page="p8"))
+        self.assertEqual(clients[2].last("error")["message"], "the apps page is full (8 pages)")
+        self.assertNotIn("p8", self.apps.pages)
+        self.apps.take_changed()
+        clients[2].sent.clear()
+        self.apps.handle(clients[2], page_msg(page="p7", text="2 blocked"))
+        self.assertIsNone(clients[2].last("error"))
+        self.assertTrue(self.apps.take_changed())
+        self.assertEqual(self.apps.pages["p7"].look["text"], "2 blocked")
+        self.apps.handle(clients[0], {"op": "unpage", "page": "p0"})
+        self.apps.handle(clients[2], page_msg(page="p8"))
+        self.assertIn("p8", self.apps.pages)
+
     def test_press_goes_to_the_owner(self):
         client = hello(self.apps)
         self.apps.handle(client, page_msg())

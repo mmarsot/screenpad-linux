@@ -151,7 +151,7 @@ class Surface:
                 "none",
             )
         ]
-        pages = list(self.apps.pages.values())[: HOME_COLUMNS * HOME_ROWS]
+        pages = list(self.apps.pages.values())
         if not pages:
             look = {"label": "No apps here yet", "text": "Programs that use the touch bar show their pages here."}
             spots.append(Spot(None, "empty", 0, y0, PANEL_W, height, look, "none"))
@@ -258,8 +258,8 @@ class Surface:
 
     def scene(self):
         """What the apps page shows (the "surface" in touchbar.json), or
-        None on the touchpad page. title, text and hint are what an
-        extension from before widgets draws; widgets the rest."""
+        None on the touchpad page: title, page and widgets for an extension
+        that draws widgets, else only the title, text and hint it draws."""
         if self.pager.page != APPS:
             return None
         if not self.can_draw():
