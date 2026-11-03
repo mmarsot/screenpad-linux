@@ -297,6 +297,31 @@ class SceneTests(unittest.TestCase):
         self.assertLess(sizes["hint"], sizes["text"])
         self.assertLess(sizes["text"], sizes["title"])
 
+    def test_battery(self):
+        # From UPower's display device, as GNOME Shell's power indicator reads
+        # it: State 1 charging, 2 discharging, 4 fully charged, 5 plugged in
+        # but not charging, 6 waiting to discharge.
+        mark = js("scene.js", "m.CHARGING_MARK")
+        self.assertEqual(mark, "\u26a1\ufe0e")
+        device = {"IsPresent": True, "Percentage": 84.4, "State": 2}
+        cases = [
+            (device, "84%"),
+            ({**device, "State": 1}, "84% " + mark),
+            ({**device, "Percentage": 100.0, "State": 4}, "100% " + mark),
+            ({**device, "Percentage": 80.0, "State": 5}, "80% " + mark),
+            ({**device, "State": 6}, "84%"),
+            ({**device, "Percentage": 84.6}, "85%"),
+            ({**device, "Percentage": 0.2}, "0%"),
+            ({**device, "Percentage": 120}, "100%"),
+            # No battery, or before UPower answers: nothing shown.
+            ({**device, "IsPresent": False}, ""),
+            ({"IsPresent": None, "Percentage": None, "State": None}, ""),
+            ({**device, "Percentage": "84"}, ""),
+            (None, ""),
+        ]
+        out = js("scene.js", "v.devices.map(m.batteryText)", devices=[d for d, _ in cases])
+        self.assertEqual(out, [text for _, text in cases])
+
     def test_divider_and_badge(self):
         state = published()
         out = js(
@@ -380,6 +405,7 @@ class StylesheetTests(unittest.TestCase):
             ".screenpad-touchbar-dot.current",
             ".screenpad-touchbar-screensaver",
             ".screenpad-touchbar-clock",
+            ".screenpad-touchbar-battery",
             ".screenpad-touchbar-surface",
             ".screenpad-touchbar-surface-title",
             ".screenpad-touchbar-surface-text",
