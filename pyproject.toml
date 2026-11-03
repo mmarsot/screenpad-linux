@@ -66,6 +66,7 @@ module = [
     "test_touchbar_apps",
     "test_touchbar_bar",
     "test_touchbar_cards",
+    "test_touchbar_clicks",
     "test_touchbar_commands",
     "test_touchbar_config",
     "test_touchbar_extension",

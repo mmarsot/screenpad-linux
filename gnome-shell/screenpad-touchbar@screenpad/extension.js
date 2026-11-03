@@ -22,7 +22,8 @@
 // - takes apps dropped on the bar (from the dock or the app grid) and has
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
-//   app if it is already open, as the dock does.
+//   app if it is already open, as the dock does;
+// - plays a soft click each time the daemon accepts a press (feedback.js).
 //
 // What it agrees on with the daemon is in contract.js, and where tiles go
 // in scene.js; both are plain modules the tests run. tiles.js builds one
@@ -52,6 +53,7 @@ import {
     STRUT_CHROME,
     rendererJson,
 } from './contract.js';
+import {CLICK_NAME, Clicker} from './feedback.js';
 import {NotificationMirror} from './notifications.js';
 import {Pages} from './pages.js';
 import {
@@ -88,6 +90,16 @@ export default class ScreenpadTouchbar extends Extension {
         this._renderer = this._dir.get_child(RENDERER_NAME);
         this._announced = null;
         this._pages = new Pages();
+        // A failure here must not fail the bar: no click, then.
+        try {
+            this._clicker = new Clicker(
+                global.display.get_sound_player(),
+                this.dir.get_child(CLICK_NAME),
+            );
+        } catch (e) {
+            logError(e, 'screenpad-touchbar: sound');
+            this._clicker = null;
+        }
 
         this._fileMonitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
         this._fileMonitor.connect('changed', (_monitor, file, other) => {
@@ -168,6 +180,7 @@ export default class ScreenpadTouchbar extends Extension {
         this._fileMonitor = null;
         this._pages.release();
         this._pages = null;
+        this._clicker = null;
         this._destroyBar();
         this._state = null;
         this._dir = null;
@@ -195,6 +208,11 @@ export default class ScreenpadTouchbar extends Extension {
         }
         this._state = sceneFrom(state);
         this._sync();
+        try {
+            this._clicker?.update(this._state);
+        } catch (e) {
+            logError(e, 'screenpad-touchbar: sound');
+        }
         // A daemon (re)started: connect to its socket.
         if (this._state) this._mirror?.wake();
     }

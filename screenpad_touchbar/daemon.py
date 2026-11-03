@@ -91,8 +91,12 @@ class Daemon:
             top=lambda: self.bar.base_height() if self.bar else self.config.height,
             cover=lambda: self.bar.touch_height() if self.bar else self.config.height,
             can_draw=lambda: self.renderer_protocol() >= WIDGETS_PROTOCOL,
+            click=self._click,
         )
         self.dots_shown = False
+        # Presses the bar and the surface accepted since the daemon started:
+        # the extension plays a click each time this goes up.
+        self.clicks = 0
         self.server = None
         # renderer.json's mtime, and the protocol it says it draws while
         # the bar is on screen (0 when it is not)
@@ -104,6 +108,9 @@ class Daemon:
             return os.stat(p).st_mtime_ns
         except OSError:
             return None
+
+    def _click(self):
+        self.clicks += 1
 
     def _tile_gone(self, name):
         if self.bar:
@@ -171,6 +178,9 @@ class Daemon:
             "page": self.pager.name(),
             "screensaver": {"clock": self.config.pages.clock},
             "surface": self.surface.scene(),
+            # Presses accepted so far (Bar and Surface click()): the
+            # extension plays its click when this goes up.
+            "clicks": self.clicks,
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension
             # code only then). It shows no app tiles and no questions.
@@ -232,6 +242,7 @@ class Daemon:
             tiles=self.apps,
             asks=self.apps.asks,
             pager=self.pager,
+            click=self._click,
         )
 
     def reap(self):
