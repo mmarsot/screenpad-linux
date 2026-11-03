@@ -1,10 +1,12 @@
 // The scene in touchbar.json as the extension draws it: which states it
 // draws, when the bar must be rebuilt, and where each tile, its icon, text,
-// badge and the grip go, in logical pixels.
+// badge, the grip and the page dots go, in logical pixels; and the pages
+// below the bar: the black screensaver and the apps page.
 //
 // Plain JavaScript with no GNOME imports, so the tests run it under node on
 // scenes the daemon builds. It never asks what a tile is: it reads a tile's
 // geometry and what to draw (glyph, icon, app, text), nothing else.
+// What the pages show below the bar comes from the scene the same way.
 
 // Visual gap around each tile, as a fraction of the bar height. The touch
 // area is the whole tile rectangle.
@@ -58,8 +60,9 @@ export function barGeometry(state, monitor) {
     const own = Math.min(Math.round((strutRows * monitor.height) / panelHeight), height);
     const narrowest = Math.min(...state.tiles.map(t => t.width)) * sx;
     const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
-    const iconWidth =
-        Math.min(...state.tiles.filter(t => t.glyph !== 'grip').map(t => t.width)) * sx;
+    // The narrow tiles drawn by their own code (the grip, the page dots)
+    // do not limit the icons.
+    const iconWidth = Math.min(...state.tiles.filter(t => !t.glyph).map(t => t.width)) * sx;
     const iconSize = Math.max(
         Math.min(Math.round(own * ICON), Math.round((iconWidth - 2 * inset) * MAX_ICON)),
         8,
@@ -113,10 +116,11 @@ export function tileClasses(tile) {
     return classes;
 }
 
-// What a tile shows, in this order of preference: the grip (drawn by its
-// own code), an icon, an app's icon, or text.
+// What a tile shows, in this order of preference: the grip or the page
+// dots (drawn by their own code), an icon, an app's icon, or text.
 export function tileContent(tile) {
     if (tile.glyph === 'grip') return 'grip';
+    if (tile.glyph === 'dots') return 'dots';
     if (tile.icon) return 'icon';
     if (tile.app) return 'app';
     return 'text';
@@ -166,6 +170,24 @@ export function gripSizes(width, height) {
     return {bar, gap, arrow, barWidth: Math.max(Math.round(width * 0.6), arrow)};
 }
 
+// The page dots in a tile of this size: one dot per page, the shown one
+// (page) bigger, in a row that fits the tile, and the size of the page's
+// name under them.
+export function dotsSizes(tile, width, height, iconSize) {
+    const pages = Number.isInteger(tile.pages) && tile.pages > 0 ? Math.min(tile.pages, 8) : 1;
+    const page = Number.isInteger(tile.page) ? tile.page : 0;
+    const fit = Math.floor((width * 0.8) / (2 * pages));
+    const dot = Math.max(Math.min(Math.round(iconSize * 0.28), fit, Math.round(height * 0.3)), 4);
+    return {
+        pages,
+        page,
+        dot,
+        current: Math.round(dot * 1.4),
+        gap: dot,
+        textSize: Math.max(Math.round(iconSize * 0.26), 8),
+    };
+}
+
 // Whether the bar grows into a card from what was drawn before: taller over
 // an unchanged own height. It then unrolls downwards instead of jumping.
 export function grows(previous, drawn) {
@@ -185,4 +207,33 @@ export function dropTile(tiles, px) {
 export function dropArgs(tiles, index, px) {
     const tile = tiles[index];
     return tile.x <= px && px < tile.x + tile.width ? ['--spot', String(tile.drop)] : [];
+}
+
+// What the pages draw below the bar, from the scene: the touchpad page's
+// black screensaver (null when the scene has none), with or without a
+// clock, and the apps page's surface (null on the touchpad page), with its
+// title, text and the hint on how to go back.
+export function pagesFrom(state) {
+    const text = value => (typeof value === 'string' ? value : '');
+    const saver = state?.screensaver;
+    const surface = state?.surface;
+    return {
+        screensaver: saver && typeof saver === 'object' ? {clock: saver.clock === true} : null,
+        surface:
+            surface && typeof surface === 'object'
+                ? {title: text(surface.title), text: text(surface.text), hint: text(surface.hint)}
+                : null,
+    };
+}
+
+// The font sizes in px the pages use on a monitor this many logical pixels
+// tall: the screensaver's clock and the apps page's title, text and hint.
+export function pageSizes(monitorHeight) {
+    const size = fraction => Math.max(Math.round(monitorHeight * fraction), 8);
+    return {clock: size(0.06), title: size(0.045), text: size(0.03), hint: size(0.026)};
+}
+
+// How long until the clock next changes, in ms, at a Date: the next minute.
+export function msToNextMinute(date) {
+    return 60000 - (date.getSeconds() * 1000 + date.getMilliseconds());
 }

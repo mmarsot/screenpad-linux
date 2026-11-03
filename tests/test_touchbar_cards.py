@@ -27,7 +27,7 @@ from screenpad_touchbar.common import (
 from screenpad_touchbar.daemon import Daemon
 from screenpad_touchbar.keys import KeyEmitter
 from screenpad_touchbar.protocol import parse_ask
-from screenpad_touchbar.splitter import Splitter
+from screenpad_touchbar.splitter import BAR, PAD, Splitter
 
 
 class Card:
@@ -166,7 +166,7 @@ class ElasticSplitTests(unittest.TestCase):
 
     def setUp(self):
         self.height = 160
-        self.s = Splitter(AXES, 5, lambda px, py: py < self.height)
+        self.s = Splitter(AXES, 5, lambda px, py: BAR if py < self.height else PAD)
 
     def frame(self, *groups):
         out = None
@@ -176,25 +176,25 @@ class ElasticSplitTests(unittest.TestCase):
 
     def test_contacts_keep_their_kind_and_new_ones_take_the_new_height(self):
         # A touchpad finger at panel row 300, in the band a card would cover.
-        pad, bar = self.frame(touch(0, 1, 2000, 600))
+        pad, bar, _ = self.frame(touch(0, 1, 2000, 600))
         self.assertEqual((codes(pad, EV_ABS, ABS_MT_TRACKING_ID), bar), ([1], []))
         self.assertTrue(self.s.pad_in_band(160, CARD_HEIGHT))
         self.height = CARD_HEIGHT
         # It stays a touchpad contact, at its full device coordinates.
-        pad, bar = self.frame(touch(0, None, 2010, 620))
+        pad, bar, _ = self.frame(touch(0, None, 2010, 620))
         self.assertEqual((codes(pad, EV_ABS, ABS_MT_POSITION_Y), bar), ([620], []))
         # A new contact in the band is the bar's now.
-        pad, bar = self.frame(touch(1, 2, 1000, 600))
+        pad, bar, _ = self.frame(touch(1, 2, 1000, 600))
         self.assertEqual((pad, bar), ([], [("begin", 1, 500.0, 300.0)]))
         self.height = 160
         # It stays the bar's after the bar shrank, to its end.
-        pad, bar = self.frame(touch(1, None, 1000, 700), lift(0))
+        pad, bar, _ = self.frame(touch(1, None, 1000, 700), lift(0))
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [-1])
         self.assertEqual(bar, [("move", 1, 500.0, 350.0)])
-        pad, bar = self.frame(lift(1))
+        pad, bar, _ = self.frame(lift(1))
         self.assertEqual((pad, bar), ([], [("end", 1, 500.0, 350.0)]))
         # A new contact in the band is the touchpad's again.
-        pad, bar = self.frame(touch(2, 3, 1000, 600))
+        pad, bar, _ = self.frame(touch(2, 3, 1000, 600))
         self.assertEqual((codes(pad, EV_ABS, ABS_MT_TRACKING_ID), bar), ([3], []))
 
     def test_band_check(self):
@@ -219,7 +219,7 @@ class DaemonCardTests(unittest.TestCase):
             daemon.apps.asks.can_show = lambda: True
             daemon.bar = daemon.new_bar(KeyEmitter(lambda ev: None))
             daemon.bar.clock = lambda: now[0]
-            daemon.splitter = Splitter(AXES, 5, lambda px, py: py < daemon.bar.touch_height())
+            daemon.splitter = Splitter(AXES, 5, daemon._zone)
             app = FakeClient()
             daemon.apps.connect(app)
             daemon.apps.handle(app, {"op": "hello", "app": "fleet"})
@@ -250,7 +250,7 @@ class DaemonCardTests(unittest.TestCase):
                 for ev in groups + [(EV_SYN, SYN_REPORT, 0)]:
                     out = sp.feed(*ev)
                 assert out is not None
-                pad, bar = out
+                pad, bar, _ = out
                 self.assertEqual(pad, [])
                 daemon.bar.handle(bar)
             self.assertEqual(app.last("answer"), {"op": "answer", "id": "q", "option": "y", "reason": "chosen"})

@@ -27,7 +27,7 @@ from screenpad_touchbar.codes import (
     SYN_REPORT,
 )
 from screenpad_touchbar.config import parse_config
-from screenpad_touchbar.splitter import Axes, Splitter
+from screenpad_touchbar.splitter import BAR, PAD, Axes, Splitter
 
 # The GDX1505 as it reports itself: 3840x2160 units, 32 units/mm, 5 slots.
 AXES = Axes(0, 3840, 0, 2160)
@@ -56,7 +56,7 @@ class Split:
     """A Splitter with a 160 px bar, fed whole frames."""
 
     def __init__(self, height=160):
-        self.s = Splitter(AXES, 5, lambda px, py: py < height)
+        self.s = Splitter(AXES, 5, lambda px, py: BAR if py < height else PAD)
 
     def frame(self, *groups, left=None):
         events = [e for g in groups for e in g]
@@ -164,7 +164,8 @@ class Conn:
         raise AssertionError("no reply")
 
 
-# Buttons at x 0, 296, 592; shortcuts at 928, 1224, 1520; grip 1816. The
+# Buttons at x 0, 272, 544; shortcuts at 856, 1128, 1400; the page dots at
+# 1672; the grip at 1816. The
 # bar is 160 px high (device rows 0..320); a card makes it 456 (0..912).
 CONFIG = """
 [[button]]
@@ -208,8 +209,8 @@ def js(module, expr, **values):
     return json.loads(run.stdout)
 
 
-# The bar tests' config. Spots: buttons at x 0, 296, 592; shortcuts at 928,
-# 1224, 1520; grip 1816.
+# The bar tests' config. Spots: buttons at x 0, 272, 544; shortcuts at 856,
+# 1128, 1400; the page dots at 1672; the grip at 1816.
 BAR_CONFIG = """
 [[button]]
 label = "PTT"

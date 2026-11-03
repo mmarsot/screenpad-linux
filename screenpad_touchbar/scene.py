@@ -1,6 +1,6 @@
 """The scene in touchbar.json: the tiles the extension draws, for the spots and for a question."""
 
-from .common import GRIP, GROUP_GAP, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
+from .common import DOTS, GRIP, GROUP_GAP, PAGE_NAMES, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
 
 # What touchbar.json shows the extension: tiles, each a rectangle in the bar
 # (x and width in panel pixels, as tall as the bar) and what to draw in it.
@@ -9,7 +9,8 @@ from .common import GRIP, GROUP_GAP, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
 #
 # Every tile has "id", "x", "width" and "style" (its CSS class is
 # screenpad-touchbar-<style>). It may have "classes" (more CSS classes),
-# "pressed", "glyph" ("grip": drawn by the extension's own code), "icon" (an
+# "pressed", "glyph" ("grip" or "dots": drawn by the extension's own code;
+# the dots with "pages" and "page", the one shown), "icon" (an
 # icon name or an image path) and "icon_scale", "app" (a desktop file id,
 # drawn as that app's icon; the extension opens only apps shown this way),
 # "label", "title" and "text" (text lines), "badge" (a short text in a
@@ -19,7 +20,7 @@ from .common import GRIP, GROUP_GAP, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
 # "strut" its own height, which windows keep clear of; the extension
 # animates a growth of height over an unchanged strut.
 
-TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
+TILE_STYLES = ("button", "shortcut", "grip", "dots", "ask-text", "option")
 # Every CSS class a tile can carry besides its style. The stylesheet has a
 # rule for each but "tap", which is the plain button
 # (tests/test_touchbar_scene.py checks it).
@@ -37,19 +38,29 @@ def _looks(button):
     return {k: v for k, v in (("icon", button.icon), ("label", button.label)) if v}
 
 
-def spot_tiles(config, pressed=(), removing=(), provided=None):
-    """The tiles of the config's spots: buttons, shortcuts and the grip.
+def spot_tiles(config, pressed=(), removing=(), provided=None, dots=None):
+    """The tiles of the config's spots: buttons, shortcuts, the grip and the
+    page dots.
 
     provided maps the names of the tiles apps provide now to what they draw.
+    dots is the pager's dots() while the pages turn; without it, no dots.
     """
     provided = provided or {}
     tiles = []
     for i, s in enumerate(config.spots):
+        if s.kind == DOTS and dots is None:
+            continue
         tile = {"id": "%s-%d" % (s.kind, s.index), "x": s.x, "width": s.width, "style": s.kind}
         if i in pressed:
             tile["pressed"] = True
         if s.kind == GRIP:
             tile["id"], tile["glyph"] = GRIP, GRIP
+        elif s.kind == DOTS:
+            name = PAGE_NAMES[dots["page"]]
+            tile.update(
+                id=DOTS, glyph=DOTS, text=name, label="Page %d of %d, %s" % (dots["page"] + 1, dots["pages"], name)
+            )
+            tile.update(dots)
         elif s.kind == SHORTCUT:
             tile["drop"] = s.index + 1
             if s.item is None:

@@ -9,7 +9,7 @@
 // handshake this extension writes, and the daemon's app socket.
 export const STATE_NAME = 'touchbar.json';
 export const RENDERER_NAME = 'renderer.json';
-export const RENDERER_PROTOCOL = 2;
+export const RENDERER_PROTOCOL = 3;
 export const SOCKET_NAME = 'touchbar.sock';
 
 // How long the bar takes to grow into a card, in ms. Less than the daemon's
@@ -37,7 +37,8 @@ export const BAR_CHROME = {};
 export const STRUT_CHROME = {affectsStruts: true};
 
 // renderer.json: the protocol this extension draws, and whether the bar is
-// on screen now. The daemon shows questions only while both say so.
+// on screen now. The daemon shows questions (protocol 2) and the pages
+// (protocol 3) only while both say so.
 export function rendererJson(drawn) {
     return JSON.stringify({protocol: RENDERER_PROTOCOL, drawn});
 }

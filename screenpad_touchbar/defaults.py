@@ -1,6 +1,6 @@
 """The default touchbar.toml, and what earlier versions wrote by default, for migrate_config()."""
 
-from .common import DEFAULT_HEIGHT, MAX_HEIGHT, MIN_HEIGHT, NOTIFY_TIMEOUT
+from .common import DEFAULT_HEIGHT, MAX_HEIGHT, MIN_HEIGHT, NOTIFY_TIMEOUT, RETURN_AFTER
 
 # The push-to-talk button's block in the default config.
 PTT_BLOCK = """\
@@ -42,17 +42,27 @@ TILE_DOC = """\
 #                    icon or label shows, dimmed, while no app provides it.
 """
 
+# How the default config described the bar before the page dots.
+OLD_LAYOUT_DOC = """\
+# The bar, left to right: three button spots, three shortcut spots, and a
+# grip at the right end. Units are ScreenPad pixels as you see the panel
+# with the laptop open: 1920 wide, 1080 tall, the top being the edge
+# nearest the screen hinge. 16 pixels are about 1 mm.
+"""
+LAYOUT_DOC = """\
+# The bar, left to right: three button spots, three shortcut spots, the
+# page dots and a grip at the right end. Units are ScreenPad pixels as you
+# see the panel with the laptop open: 1920 wide, 1080 tall, the top being
+# the edge nearest the screen hinge. 16 pixels are about 1 mm.
+"""
+
 EXAMPLE_CONFIG = """\
 # ScreenPad touch bar. Edit and save: the daemon picks changes up within a
 # second. 'screenpad-touchbar check' validates this file. The bar writes
 # here too, when you resize it or add or remove a shortcut; it changes only
 # the height line and the [[shortcut]] blocks and keeps the rest as it is.
 #
-# The bar, left to right: three button spots, three shortcut spots, and a
-# grip at the right end. Units are ScreenPad pixels as you see the panel
-# with the laptop open: 1920 wide, 1080 tall, the top being the edge
-# nearest the screen hinge. 16 pixels are about 1 mm.
-
+%(layout)s
 # Height of the bar at the top of the panel, %(min)d to %(max)d. Touches that
 # start in it never move the pointer or click; everything below stays a
 # touchpad. Drag the grip at the bar's right end down or up to change it.
@@ -108,7 +118,21 @@ key = "printscreen"
 # deny = ["org.gnome.Evolution.desktop"]     # never these apps
 # allow = ["org.gnome.Calendar.desktop"]     # only these apps
 # timeout = %(notify_timeout)d                               # seconds a card shows
+
+# Two pages, shown by the page dots. The touchpad page is the usual one:
+# below the bar a touchpad, drawn black behind your windows (black pixels;
+# the brightness stays as it is), with a faint clock. A swipe along the bar
+# (one finger, at least 25 mm, quickly, moving left) or a tap on the dots
+# turns to the apps page: below the bar, touches go to apps and never move
+# the pointer. A swipe to the right, a tap on the dots, or %(return_after)d seconds
+# without a touch bring the touchpad back. To change that:
+# [screensaver]
+# clock = false                              # black, without the clock
+# [pager]
+# return_after = %(return_after)d                           # seconds before the touchpad
 """ % {
+    "layout": LAYOUT_DOC,
+    "return_after": RETURN_AFTER,
     "height": DEFAULT_HEIGHT,
     "min": MIN_HEIGHT,
     "max": MAX_HEIGHT,
@@ -125,6 +149,8 @@ OLD_DEFAULTS = {
     "a764addfad0135d0272d89ed390b4013ed575819ca224fd3fa704508dde2a755",
     # Before notifications (tests/touchbar-v4-default.toml).
     "d6137e89e4ace61da259ef3accf7645b090baee1863076db4145bc08d54d8456",
+    # Before the pages (tests/touchbar-v5-default.toml).
+    "f1c38e99d337195743b369674044d2f71053781a51822ebf10797d7dccf7d53c",
 }
 
 # Default blocks earlier versions wrote, each with its current text. A config
@@ -146,4 +172,5 @@ OLD_BLOCKS = (
     # The blank line after it marks the block without 'tile' yet, so this
     # applies once.
     (COMMAND_DOC + "\n", COMMAND_DOC + TILE_DOC + "\n"),
+    (OLD_LAYOUT_DOC, LAYOUT_DOC),
 )

@@ -16,6 +16,7 @@ from .common import (
     ACTIVE_FLAG,
     ASK_TIMEOUT,
     CARD_HEIGHT,
+    DOTS,
     GRIP,
     MAX_OPTIONS,
     MAX_SHORTCUTS,
@@ -37,7 +38,7 @@ from .config_edit import add_shortcut, edit_config, migrate_config
 from .daemon import Daemon
 from .defaults import EXAMPLE_CONFIG
 from .devices import Source, find_source
-from .splitter import BAR, Splitter
+from .splitter import BAR, PAD, Splitter
 
 
 def cmd_run(args):
@@ -63,10 +64,13 @@ def cmd_check(args):
         % (config.height, PANEL_H, config.height / 16, max(config.height, CARD_HEIGHT))
     )
     print("notifications: %s" % config.notifications.describe())
-    for s in config.spots:
+    print("pages: %s" % config.pages.describe())
+    for s in sorted(config.spots, key=lambda s: s.x):
         where = "  %-8s %d  x %4d..%-4d " % (s.kind, s.index + 1, s.x, s.x + s.width)
         if s.kind == GRIP:
             print(where + "drag to resize")
+        elif s.kind == DOTS:
+            print(where + "tap or swipe the bar to turn the page")
         elif s.item is None:
             print(where + "empty")
         elif s.kind == SHORTCUT:
@@ -156,6 +160,8 @@ def cmd_status(args):
             "daemon: pid %d, %s, pressed %s"
             % (state["pid"], "touchpad grabbed" if state["active"] else "idle", state["pressed"])
         )
+        if state.get("page"):
+            print("page: %s" % state["page"])
         print("apps: %s" % (", ".join(state.get("apps") or []) or "none"))
     except (OSError, ValueError, KeyError):
         print("daemon: not running")
@@ -174,7 +180,7 @@ def cmd_probe(args):
         log(str(e))
         return 2
     source = Source(path)
-    splitter = Splitter(source.axes(), source.nslots, lambda px, py: py < config.height)
+    splitter = Splitter(source.axes(), source.nslots, lambda px, py: BAR if py < config.height else PAD)
     others = [
         p
         for p in (os.path.join("/dev/input", n) for n in os.listdir(SYS_INPUT) if n.startswith("event"))

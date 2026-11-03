@@ -130,3 +130,53 @@
     padding: 0 6px;
     font-weight: bold;
 }
+
+/* The page dots: one per page, the page shown white and bigger, the page's
+   name under them; lighter while a finger is on them. */
+.screenpad-touchbar-dots {
+    background-color: #202024;
+    border: 2px solid #4a4a56;
+}
+
+.screenpad-touchbar-dots:active {
+    background-color: #3a3a40;
+}
+
+.screenpad-touchbar-dot {
+    background-color: #6a6a72;
+}
+
+.screenpad-touchbar-dot.current {
+    background-color: #ffffff;
+}
+
+/* The touchpad page: black below the bar, behind windows, with a faint
+   clock in the corner. Black is drawn, the backlight stays as it is. */
+.screenpad-touchbar-screensaver {
+    background-color: #000000;
+}
+
+.screenpad-touchbar-clock {
+    color: #26262c;
+    font-weight: bold;
+    padding: 0 48px 32px 0;
+}
+
+/* The apps page: over windows and under the bar, every touch below the bar
+   is its own. */
+.screenpad-touchbar-surface {
+    background-color: #0b0b0e;
+    color: #ffffff;
+}
+
+.screenpad-touchbar-surface-title {
+    font-weight: bold;
+}
+
+.screenpad-touchbar-surface-text {
+    color: #c8c8d0;
+}
+
+.screenpad-touchbar-surface-hint {
+    color: #9a9aa2;
+}

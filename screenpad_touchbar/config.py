@@ -1,4 +1,4 @@
-"""touchbar.toml: the bar's spots, buttons and shortcuts, the [notifications] policy, parsing and loading."""
+"""touchbar.toml: the spots, buttons and shortcuts, [notifications], [screensaver] and [pager]; parsing and loading."""
 
 import os
 import re
@@ -8,15 +8,20 @@ from .common import (
     BUTTON,
     DEFAULT_CONFIG,
     DEFAULT_HEIGHT,
+    DOTS,
+    DOTS_W,
+    DOTS_X,
     GRIP,
     GRIP_X,
     MAX_ASK_TIMEOUT,
     MAX_BUTTONS,
     MAX_HEIGHT,
+    MAX_RETURN_AFTER,
     MAX_SHORTCUTS,
     MIN_HEIGHT,
     NOTIFY_TIMEOUT,
     PANEL_W,
+    RETURN_AFTER,
     SHORTCUT,
     SHORTCUTS_X,
     SPOT_W,
@@ -82,12 +87,27 @@ class NotifyPolicy:
         return out
 
 
+class Pages:
+    """The pages' settings: [screensaver] and [pager]."""
+
+    def __init__(self, clock=True, return_after=RETURN_AFTER):
+        self.clock = clock  # a faint clock on the black below the bar
+        self.return_after = return_after
+
+    def describe(self):
+        return "screensaver black%s; apps page back to the touchpad after %d s" % (
+            " with a clock" if self.clock else "",
+            self.return_after,
+        )
+
+
 class Config:
-    def __init__(self, height, buttons, shortcuts=(), notifications=None):
+    def __init__(self, height, buttons, shortcuts=(), notifications=None, pages=None):
         self.height = height
         self.buttons = list(buttons)
         self.shortcuts = list(shortcuts)
         self.notifications = notifications or NotifyPolicy()
+        self.pages = pages or Pages()
         self.spots = (
             [
                 Spot(BUTTON, i, i * SPOT_W, SPOT_W, self.buttons[i] if i < len(self.buttons) else None)
@@ -104,6 +124,9 @@ class Config:
                 for i in range(MAX_SHORTCUTS)
             ]
             + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)]
+            # Last, so the other spots keep the numbers an extension from
+            # before the pages knows them by.
+            + [Spot(DOTS, 0, DOTS_X, DOTS_W)]
         )
 
     def spot_at(self, px, py, height=None):
@@ -118,9 +141,11 @@ class Config:
                 return i
         return None
 
-    def near_spot(self, i, px, py):
+    def near_spot(self, i, px, py, height=None):
+        """Whether px, py is on or near spot i, in a bar of height (the
+        config's, or taller while a card shows)."""
         s = self.spots[i]
-        return near(s.x, s.width, self.height, px, py)
+        return near(s.x, s.width, height or self.height, px, py)
 
     def tiles(self):
         """The tile names the config places, in spot order."""
@@ -229,7 +254,7 @@ def parse_config(text):
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(str(e))
-    unknown = set(data) - {"height", "button", "shortcut", "notifications"}
+    unknown = set(data) - {"height", "button", "shortcut", "notifications", "screensaver", "pager"}
     if unknown:
         raise ConfigError("unknown setting(s): %s" % ", ".join(sorted(unknown)))
     height = _int(data.get("height", DEFAULT_HEIGHT), "height")
@@ -257,7 +282,7 @@ def parse_config(text):
         notifications = _notifications(data.get("notifications", {}))
     except ConfigError as e:
         raise ConfigError("notifications: %s" % e)
-    return Config(height, buttons, shortcuts, notifications)
+    return Config(height, buttons, shortcuts, notifications, _pages(data))
 
 
 NOTIFY_KEYS = {"mirror", "allow", "deny", "timeout"}
@@ -284,6 +309,32 @@ def _notifications(table):
     if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= MAX_ASK_TIMEOUT:
         raise ConfigError("timeout must be a whole number of seconds, 1 to %d" % MAX_ASK_TIMEOUT)
     return NotifyPolicy(mirror, allow, deny, timeout)
+
+
+def _table(data, name, keys):
+    table = data.get(name, {})
+    if not isinstance(table, dict):
+        raise ConfigError("%s: must be a [%s] table" % (name, name))
+    unknown = set(table) - keys
+    if unknown:
+        raise ConfigError("%s: unknown setting(s): %s" % (name, ", ".join(sorted(unknown))))
+    return table
+
+
+def _bool(table, name, key):
+    value = table.get(key, True)
+    if not isinstance(value, bool):
+        raise ConfigError("%s: %s must be true or false" % (name, key))
+    return value
+
+
+def _pages(data):
+    saver = _table(data, "screensaver", {"clock"})
+    pager = _table(data, "pager", {"return_after"})
+    after = pager.get("return_after", RETURN_AFTER)
+    if isinstance(after, bool) or not isinstance(after, int) or not 1 <= after <= MAX_RETURN_AFTER:
+        raise ConfigError("pager: return_after must be a whole number of seconds, 1 to %d" % MAX_RETURN_AFTER)
+    return Pages(_bool(saver, "screensaver", "clock"), after)
 
 
 def config_path():
