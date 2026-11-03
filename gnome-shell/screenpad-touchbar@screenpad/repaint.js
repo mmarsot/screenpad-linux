@@ -13,8 +13,8 @@
 //   main case: a bad copy while things move stays while they are still),
 //   or every MAX_WAIT_MS while it keeps changing;
 // - on a display event (resume, monitors changed, the bar drawn again, as
-//   after unlock): at once, and again once things settle;
-// - every BACKSTOP_MS while the bar is drawn, whatever happened.
+//   after unlock): at once, and again once things settle.
+// Otherwise nothing runs: no timer is armed while the pad is idle.
 // docs/touchbar.md ("The repaint safeguard") explains it, with the mutter
 // source it relies on.
 //
@@ -32,8 +32,6 @@
 export const SETTLE_MS = 1500;
 // The longest the settle repaint waits while the content keeps changing.
 export const MAX_WAIT_MS = 10000;
-// The repaint while the bar is drawn, whatever happened.
-export const BACKSTOP_MS = 5 * 60 * 1000;
 // Frames in a row with the whole monitor damaged: one per scanout buffer.
 export const FULL_FRAMES = 2;
 // How long to wait for a forced frame before giving up (no frame comes
@@ -55,7 +53,6 @@ export class RepaintPlan {
         // enough, and the latest it may wait for that.
         this._settleAt = null;
         this._settleBy = null;
-        this._backstopAt = null;
         // When the one timer fires; null if none is armed.
         this._armedAt = null;
     }
@@ -117,7 +114,7 @@ export class RepaintPlan {
             this._again = false;
         }
         const settled = this._settleAt !== null && (now >= this._settleAt || now >= this._settleBy);
-        if (settled || now >= this._backstopAt) {
+        if (settled) {
             this._start(now);
             return this._step(true, now);
         }
@@ -130,7 +127,6 @@ export class RepaintPlan {
         this._again = false;
         this._settleAt = null;
         this._settleBy = null;
-        this._backstopAt = now + BACKSTOP_MS;
     }
 
     _settle(now) {
@@ -142,9 +138,8 @@ export class RepaintPlan {
     _next() {
         if (!this.on) return null;
         if (this._frames > 0) return this._frameBy;
-        const times = [this._backstopAt];
-        if (this._settleAt !== null) times.push(Math.min(this._settleAt, this._settleBy));
-        return Math.min(...times);
+        if (this._settleAt === null) return null;
+        return Math.min(this._settleAt, this._settleBy);
     }
 
     _step(redraw, now) {

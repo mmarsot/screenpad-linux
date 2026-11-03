@@ -1,9 +1,9 @@
 """Tests for the extension's repaint.js, the repaint safeguard's plan, run
 under node with a stand-in clock: when the whole ScreenPad monitor is
 repainted (once the content settles, at most MAX_WAIT_MS apart while it
-keeps changing, on display events, the backstop), that a repaint is
-FULL_FRAMES frames in a row, that its own frames are not activity, and that
-a burst of activity re-arms the one timer only when it must fire earlier.
+keeps changing, on display events), that nothing runs while the pad is
+idle, that a repaint is FULL_FRAMES frames in a row, that its own frames
+are not activity, and that a burst of activity re-arms the one timer only when it must fire earlier.
 
 Run with: python3 -m unittest discover -s tests
 """
@@ -61,7 +61,7 @@ SIM = """(() => {
 
 
 def constants():
-    return js("repaint.js", "[m.SETTLE_MS, m.MAX_WAIT_MS, m.BACKSTOP_MS, m.FULL_FRAMES, m.FRAME_WAIT_MS]")
+    return js("repaint.js", "[m.SETTLE_MS, m.MAX_WAIT_MS, m.FULL_FRAMES, m.FRAME_WAIT_MS]")
 
 
 def sim(events, until, stage=True):
@@ -75,23 +75,26 @@ def starts(out):
     return [t for t, input in out["redraws"] if input in ("on", "request", "wake")]
 
 
+# Long enough that any periodic repaint would show.
+IDLE_MS = 60 * 60 * 1000
+
+
 class RepaintPlanTests(unittest.TestCase):
     """repaint.js: when the safeguard repaints, and what it costs."""
 
     def setUp(self):
-        self.settle, self.max_wait, self.backstop, self.frames, self.frame_wait = constants()
+        self.settle, self.max_wait, self.frames, self.frame_wait = constants()
 
     def test_constants(self):
         # Two frames, one per NVIDIA scanout buffer (mutter's buffer age 2);
-        # the settle repaint 1 to 2 s after the last change; the backstop
-        # every few minutes; the cap well above the settle time.
+        # the settle repaint 1 to 2 s after the last change; the cap well
+        # above the settle time.
         self.assertEqual(self.frames, 2)
         self.assertTrue(1000 <= self.settle <= 2000)
-        self.assertTrue(self.settle < self.max_wait < self.backstop)
-        self.assertTrue(60_000 <= self.backstop <= 10 * 60_000)
+        self.assertTrue(self.settle < self.max_wait)
 
     def test_off_does_nothing(self):
-        out = sim([[0, "paint", None], [10, "request", None], [20, "paint", None]], 10 * self.backstop)
+        out = sim([[0, "paint", None], [10, "request", None], [20, "paint", None]], IDLE_MS)
         self.assertEqual(out["redraws"], [])
         self.assertEqual(out["arms"], 0)
 
@@ -122,8 +125,8 @@ class RepaintPlanTests(unittest.TestCase):
         self.assertLess(out["arms"], 15)
 
     def test_its_own_frames_are_not_activity(self):
-        # After a settle repaint, nothing more until the backstop: no loop.
-        out = sim([[0, "on", True], [10_000, "paint", None]], 10_000 + self.backstop - 1)
+        # After a settle repaint, nothing more: no loop.
+        out = sim([[0, "on", True], [10_000, "paint", None]], IDLE_MS)
         self.assertEqual(starts(out), [0, 32 + self.settle, 10_000 + self.settle])
 
     def test_still_content_repaints_at_most_max_wait_apart(self):
@@ -137,13 +140,12 @@ class RepaintPlanTests(unittest.TestCase):
         self.assertTrue(all(gap <= self.max_wait + 500 for gap in gaps), gaps)
         self.assertLessEqual(len(later), 50_000 // self.max_wait + 1)
 
-    def test_backstop_while_drawn(self):
-        settled = 32 + self.settle
-        out = sim([[0, "on", True]], settled + 3 * self.backstop)
-        self.assertEqual(
-            starts(out),
-            [0, settled, settled + self.backstop, settled + 2 * self.backstop, settled + 3 * self.backstop],
-        )
+    def test_nothing_runs_while_idle(self):
+        # Drawn and untouched for an hour: the startup repaint and its
+        # settle repaint, then no timer left armed.
+        out = sim([[0, "on", True]], IDLE_MS)
+        self.assertEqual(starts(out), [0, 32 + self.settle])
+        self.assertIsNone(out["timerAt"])
 
     def test_display_event_repaints_now_and_again_once_settled(self):
         out = sim([[0, "on", True], [20_000, "request", None]], 30_000)
@@ -159,14 +161,15 @@ class RepaintPlanTests(unittest.TestCase):
 
     def test_gives_up_when_no_frame_comes(self):
         # Blanked: the redraw is queued but no frame is painted. It gives up
-        # after FRAME_WAIT_MS, with no settle repaint, and the backstop
-        # tries again.
-        out = sim([[0, "on", True]], 3 * self.backstop, stage=False)
-        self.assertEqual(starts(out), [0, self.backstop, 2 * self.backstop, 3 * self.backstop])
-        self.assertEqual(out["arms"], 7)
+        # after FRAME_WAIT_MS, with no settle repaint, and waits for the
+        # next trigger with no timer armed.
+        out = sim([[0, "on", True]], IDLE_MS, stage=False)
+        self.assertEqual(starts(out), [0])
+        self.assertEqual(out["arms"], 1)
+        self.assertIsNone(out["timerAt"])
 
     def test_turning_off_cancels_the_timer(self):
-        out = sim([[0, "on", True], [10_000, "paint", None], [10_100, "on", False]], 10 * self.backstop)
+        out = sim([[0, "on", True], [10_000, "paint", None], [10_100, "on", False]], IDLE_MS)
         self.assertEqual(starts(out), [0, 32 + self.settle])
         self.assertEqual(out["last"], {"redraw": False, "timer": -1})
         self.assertIsNone(out["timerAt"])
