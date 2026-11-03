@@ -17,7 +17,6 @@ ConfigError naming it.
   poll = 60                    # seconds, at least 60
   lavish = "lavish-axi"        # or a list: the program that lists Lavish's
                                # sessions, where the decisions board is open
-  opener = ["gio", "open"]     # what opens the board's URL in the browser
 """
 
 import os
@@ -31,12 +30,11 @@ BEARINGS = os.path.join("bin", "fm-bearings-snapshot.sh")
 CONTROL = os.path.join("bin", "fm-control.sh")
 BOARD = os.path.join("bin", "fm-bearings-board.sh")
 LAVISH = ["lavish-axi"]
-OPENER = ["gio", "open"]
 
 
 class Config:
     """The settings: Herdr's command and session, and firstmate's paths
-    and the commands that find and open its decisions board (home None when
+    and the command that finds its decisions board (home None when
     the config has no [firstmate])."""
 
     __slots__ = (
@@ -48,7 +46,6 @@ class Config:
         "herdr_poll",
         "home",
         "lavish",
-        "opener",
         "path",
         "session",
     )
@@ -58,7 +55,7 @@ class Config:
     ):
         self.path, self.herdr, self.session, self.herdr_poll = path, herdr, session, herdr_poll
         self.home, self.bearings, self.firstmate_poll, self.control = home, bearings, firstmate_poll, control
-        self.board, self.lavish, self.opener = None, list(LAVISH), list(OPENER)
+        self.board, self.lavish = None, list(LAVISH)
 
 
 def load(path):
@@ -89,7 +86,7 @@ def parse(path, data):
     config = Config(path, command, session, herdr_poll)
     fm = _table(path, data, "firstmate")
     if fm is not None:
-        _known(path, fm, {"home", "code", "poll", "lavish", "opener"}, "key in [firstmate]")
+        _known(path, fm, {"home", "code", "poll", "lavish"}, "key in [firstmate]")
         config.home = _directory(path, fm, "home")
         code = _directory(path, fm, "code")
         config.bearings, config.control = os.path.join(code, BEARINGS), os.path.join(code, CONTROL)
@@ -97,7 +94,6 @@ def parse(path, data):
         # it still runs the rest of the app.
         config.board = os.path.join(code, BOARD)
         config.lavish = _command(path, fm.get("lavish", LAVISH), "[firstmate] lavish", "lavish-axi")
-        config.opener = _command(path, fm.get("opener", OPENER), "[firstmate] opener", "gio")
         for script in (BEARINGS, CONTROL):
             if not os.access(os.path.join(code, script), os.X_OK):
                 raise ConfigError("%s: [firstmate] code has no executable %s" % (path, script))

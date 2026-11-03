@@ -78,7 +78,6 @@ To turn it off: `systemctl --user disable --now screenpad-agents`. Removing the 
 | `[firstmate] code` | the firstmate checkout, an absolute path; it must have an executable `bin/fm-bearings-snapshot.sh` and `bin/fm-control.sh` |
 | `[firstmate] poll` | seconds between two reads of firstmate, 60 to 3600, default 60 |
 | `[firstmate] lavish` | the program that lists Lavish's sessions, to find the decisions board open: `"lavish-axi"` by default; or a list of words, such as a `node` and the script |
-| `[firstmate] opener` | what opens the board's URL in the browser: `["gio", "open"]` by default (the desktop's URL handler); or a program, such as `"xdg-open"` |
 
 ## The Agents page
 
@@ -95,7 +94,7 @@ firstmate's Captain's Calls are free text, with no list of answers a button coul
 3. If it is, it opens that URL with the desktop's URL handler (`gio open <url>`), the way Lavish itself opens firstmate's boards: your browser shows the board's session in its window. The app moves no window: the board shows where your browser's window is, which is the main screen unless you moved that window to the ScreenPad (where the apps page would cover it). Only a URL on this machine (`http://127.0.0.1`, `localhost` or `[::1]`) is opened.
 4. If no board is open, it opens nothing and builds nothing (firstmate composes the board): a card in the bar says **No decisions board open** and to ask firstmate for `/bearings lavish`, with an OK that only closes it. A command that fails shows **Decisions board not opened** and why on the same card.
 
-A second tap while the board is opening does nothing more. The tap sends nothing to an agent and writes nothing into firstmate; the board answers through firstmate's own intake. `screenpad-agents show` prints the board's URL, or that none is open, without opening it.
+A second tap while the board is opening does nothing more. The tap sends nothing to an agent and writes nothing into firstmate; the board answers through firstmate's own intake.
 
 ## An agent's card
 
@@ -144,7 +143,7 @@ A dialog that matches none of this, or one that must never be answered with a ke
   FM_HOME=<home> <code>/bin/fm-bearings-snapshot.sh --json --fields endpoints
   ```
 
-  It takes about 3 s, and runs at most once a minute plus when you tap Captain's Call. That tap also runs `FM_HOME=<home> <code>/bin/fm-bearings-board.sh path` and `lavish-axi`, and the opener with the board's URL, [above](#captains-call-and-the-decisions-board), in the thread of firstmate's control. Interrupting a task's agent runs `FM_HOME=<home> <code>/bin/fm-control.sh <task> interrupt` in a thread of its own; it is the only firstmate command the app runs that acts on anything (`fm-bearings-board.sh` runs only as `path`; the app never builds or arms a board). The count is the number of open decisions plus the captain's contributions (`decisions_open` and `contributions.captain` in its `fm-bearings.v1` output), shown with a `+` when the reader left some out. Each task's endpoint, `<session>:<pane id>` for Herdr, joins the task to the agent Herdr reports in that pane. The app passes firstmate's commands only `FM_HOME`, and `lavish-axi` and the opener none of `FM_*`, none of the other `FM_*` variables of its own environment.
+  It takes about 3 s, and runs at most once a minute plus when you tap Captain's Call. That tap also runs `FM_HOME=<home> <code>/bin/fm-bearings-board.sh path` and `lavish-axi`, and `gio open` with the board's URL, [above](#captains-call-and-the-decisions-board), in the thread of firstmate's control. Interrupting a task's agent runs `FM_HOME=<home> <code>/bin/fm-control.sh <task> interrupt` in a thread of its own; it is the only firstmate command the app runs that acts on anything (`fm-bearings-board.sh` runs only as `path`; the app never builds or arms a board). The count is the number of open decisions plus the captain's contributions (`decisions_open` and `contributions.captain` in its `fm-bearings.v1` output), shown with a `+` when the reader left some out. Each task's endpoint, `<session>:<pane id>` for Herdr, joins the task to the agent Herdr reports in that pane. The app passes firstmate's commands only `FM_HOME`, and `lavish-axi` and `gio` none of `FM_*`, none of the other `FM_*` variables of its own environment.
 - **The touch bar:** the socket in `$XDG_RUNTIME_DIR/screenpad/touchbar.sock`, as app `agents` with tiles `agents` and `calls` (only `agents` without firstmate) and page `agents`. It sends a page or tile only when it changed, and connects again every 5 s while the daemon is not running.
 
 ## Troubleshooting
@@ -155,8 +154,8 @@ A dialog that matches none of this, or one that must never be answered with a ke
 | The page says **Herdr unavailable** | `screenpad-agents show` prints Herdr's error. Is the Herdr server running, and is `[herdr] session` the session your agents are in (`herdr session list`)? |
 | **No agents** | Herdr reports none in that session; `herdr agent list --session <session>` |
 | An agent shows without its task | firstmate has no Herdr endpoint for that pane in that session; `screenpad-agents show` lists the join |
-| Tapping Captain's Call says **No decisions board open** | firstmate has no Lavish board open: ask it for `/bearings lavish`, then tap again. `screenpad-agents show` says what the app sees |
-| It says **Decisions board not opened** | the card says which command failed: `lavish-axi` not found by the unit (set `[firstmate] lavish`, above), the URL handler (`[firstmate] opener`), or a firstmate checkout without `bin/fm-bearings-board.sh` |
+| Tapping Captain's Call says **No decisions board open** | firstmate has no Lavish board open: ask it for `/bearings lavish`, then tap again to open it |
+| It says **Decisions board not opened** | the card says which command failed: `lavish-axi` not found by the unit (set `[firstmate] lavish`, above), the desktop's URL handler (`gio open`), or a firstmate checkout without `bin/fm-bearings-board.sh` |
 | Captain's Call says **firstmate unreadable** or **(stale)** | the reader failed; the app logs why once (`journalctl --user -u screenpad-agents`) |
 | A blocked agent's card has no answer buttons | Its harness has no keymap, or its screen is not a permission dialog the keymap knows (the card says "answer it in its pane" for a harness with no keymap or an unreadable screen, "no dialog this card knows" for a screen its keymap does not recognise); answer it there, through **Focus** |
 | An answer says **nothing sent** | The dialog or the agent's state changed between the card being drawn and your tap; read the new card and tap again |

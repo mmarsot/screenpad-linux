@@ -5,16 +5,7 @@ import subprocess
 import tempfile
 import unittest
 
-from agents_support import (
-    REPO,
-    fake_bearings,
-    fake_herdr,
-    fake_lavish,
-    fake_opener,
-    lavish_listing,
-    read_calls,
-    write_json,
-)
+from agents_support import REPO, fake_bearings, fake_herdr, read_calls, write_json
 
 from screenpad_agents.cli import clients
 from screenpad_agents.common import ConfigError
@@ -59,16 +50,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.control, os.path.join(self.code, "bin", "fm-control.sh"))
         self.assertEqual(c.firstmate_poll, 120.0)
         self.assertEqual(c.board, os.path.join(self.code, "bin", "fm-bearings-board.sh"))
-        self.assertEqual((c.lavish, c.opener), (["lavish-axi"], ["gio", "open"]))
+        self.assertEqual(c.lavish, ["lavish-axi"])
         c = load(
             self.write(
                 '[herdr]\nsession = "lab"\n[firstmate]\nhome = "%s"\ncode = "%s"\n'
-                'lavish = ["/usr/bin/node", "/opt/lavish-axi"]\nopener = "xdg-open"\n' % (self.home, self.code)
+                'lavish = ["/usr/bin/node", "/opt/lavish-axi"]\n' % (self.home, self.code)
             )
         )
-        self.assertEqual((c.lavish, c.opener), (["/usr/bin/node", "/opt/lavish-axi"], ["xdg-open"]))
+        self.assertEqual(c.lavish, ["/usr/bin/node", "/opt/lavish-axi"])
         _, firstmate = clients(c)
-        self.assertEqual((firstmate.board, firstmate.lavish, firstmate.opener), (c.board, c.lavish, c.opener))
+        self.assertEqual((firstmate.board, firstmate.lavish, firstmate.opener), (c.board, c.lavish, ["gio", "open"]))
 
     def test_the_clients_interrupt_through_the_configured_control_plane(self):
         c = load(
@@ -113,7 +104,6 @@ class ConfigTests(unittest.TestCase):
             ),
             ('[herdr]\nsession = "x"\n' + fm + "extra = 1\n", "unknown key in \\[firstmate\\] 'extra'"),
             ('[herdr]\nsession = "x"\n' + fm + "lavish = []\n", "\\[firstmate\\] lavish must be a program"),
-            ('[herdr]\nsession = "x"\n' + fm + 'opener = ["gio", ""]\n', "\\[firstmate\\] opener must be"),
             ('[herdr]\nsession = "x"\n' + fm.replace(self.code, self.nocontrol), "no executable bin/fm-control.sh"),
             ("[herdr\n", "agents.toml"),
         ]
@@ -170,15 +160,11 @@ class CommandTests(unittest.TestCase):
                 "endpoints": [{"id": "fix-api", "backend": "herdr", "target": "lab:w1:p1"}],
             },
         )
-        lavish, opener = fake_lavish(self.dir), fake_opener(self.dir)
-        board = os.path.join(self.dir, ".lavish", "bearings-board.html")
-        with open(os.path.join(self.dir, "listing.txt"), "w") as f:
-            f.write(lavish_listing((board, "open", "http://127.0.0.1:4387/session/b0a2d")))
         path = os.path.join(self.dir, "agents.toml")
         with open(path, "w") as f:
             f.write(
                 '[herdr]\ncommand = "%s"\nsession = "lab"\n[firstmate]\nhome = "%s"\ncode = "%s"\n'
-                'lavish = "%s"\nopener = "%s"\n' % (herdr, self.dir, code, lavish, opener)
+                % (herdr, self.dir, code)
             )
         done = self.agents("show", "--config", path)
         self.assertEqual(done.returncode, 0, done.stderr)
@@ -189,15 +175,8 @@ class CommandTests(unittest.TestCase):
                 "  w1:p1    claude   blocked    fix-api",
                 "  w2:p1    codex    working    -",
                 "Captain's Call: 2 waiting",
-                "Decisions board: http://127.0.0.1:4387/session/b0a2d",
             ],
         )
-        # show only says where the board is; it opens nothing.
-        self.assertEqual(read_calls(os.path.join(self.dir, "opened.jsonl")), [])
-        with open(os.path.join(self.dir, "listing.txt"), "w") as f:
-            f.write(lavish_listing())
-        done = self.agents("show", "--config", path)
-        self.assertEqual(done.stdout.splitlines()[-1], "Decisions board: none open; ask firstmate for /bearings lavish")
         done = self.agents("show", "--json", "--config", path)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn('"page": "agents"', done.stdout)
