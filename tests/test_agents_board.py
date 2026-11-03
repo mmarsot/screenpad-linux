@@ -89,6 +89,15 @@ class BoardTests(unittest.TestCase):
         self.listing((os.path.join(self.dir, "real", "bearings-board.html"), "open", URL))
         self.assertEqual(self.fm.board_url(), URL)
 
+    def test_the_board_is_found_when_lavish_lists_it_unresolved(self):
+        os.makedirs(os.path.join(self.dir, "real"))
+        os.rmdir(os.path.join(self.home, ".lavish"))
+        os.symlink(os.path.join(self.dir, "real"), os.path.join(self.home, ".lavish"))
+        for listed in (self.board, self.home + "/./.lavish//bearings-board.html"):
+            with self.subTest(listed=listed):
+                self.listing((listed, "open", URL))
+                self.assertEqual(self.fm.board_url(), URL)
+
     def test_no_board_open_opens_nothing(self):
         for rows in (
             (),

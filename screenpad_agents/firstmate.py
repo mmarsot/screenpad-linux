@@ -194,13 +194,18 @@ def parse(model):
 
 
 def listed_url(listing, path):
-    """The URL lavish-axi's listing gives the session open on path, None
-    when it lists none open; FirstmateError for a URL off this machine."""
+    """The URL lavish-axi's listing gives the session open on path (a real
+    path; a row's file is resolved too), None when it lists none open;
+    FirstmateError for a URL off this machine."""
     for line in listing.splitlines():
         line = line.strip()
-        if not line.startswith(path + ","):
-            continue
-        row = SESSION_ROW.match(line[len(path) + 1 :])
+        if line.startswith(path + ","):
+            rest = line[len(path) + 1 :]
+        else:
+            file, comma, rest = line.partition(",")
+            if not comma or not os.path.isabs(file) or os.path.realpath(file) != path:
+                continue
+        row = SESSION_ROW.match(rest)
         if row is None or row["status"] != "open":
             continue
         if not BOARD_URL.fullmatch(row["url"]):
