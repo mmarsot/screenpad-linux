@@ -69,6 +69,19 @@ class Item:
             return {"kind": "shortcut", "app": self.name}
         return {"kind": "button", "label": self.label, "icon": self.icon, "mode": self.mode}
 
+    def title(self):
+        """A short name for it in a sentence: its label, else its app's
+        name (app_name()), its tile's or page's name, its key or its command."""
+        if self.label:
+            return self.label
+        if self.kind == APP:
+            return app_name(self.name)
+        if self.kind == KEY:
+            return self.key
+        if self.kind == COMMAND:
+            return self.command[2] if self.command[:2] == ["/bin/sh", "-c"] else shlex.join(self.command)
+        return self.name
+
     def describe(self):
         """One line for 'check' and 'shortcut list'."""
         if self.kind == APP:
@@ -81,6 +94,27 @@ class Item:
         if self.kind == KEY:
             return "%s, %s key %s (codes %s)" % (looks, self.mode, self.key, "+".join(str(k) for k in self.keys))
         return "%s, %s command %s" % (looks, self.mode, shlex.join(self.command))
+
+
+def app_name(desktop_id):
+    """An app's name as its desktop file gives it (Name= in [Desktop
+    Entry]), looked up in the XDG data directories; else its id without
+    .desktop."""
+    dirs = [os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")]
+    dirs += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    for d in dirs:
+        try:
+            with open(os.path.join(d, "applications", desktop_id), encoding="utf-8") as f:
+                section = None
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("["):
+                        section = line
+                    elif section == "[Desktop Entry]" and line.startswith("Name=") and line[5:].strip():
+                        return line[5:].strip()
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+    return desktop_id.removesuffix(".desktop")
 
 
 def app_id(value):

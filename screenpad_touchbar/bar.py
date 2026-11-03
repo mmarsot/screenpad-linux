@@ -18,15 +18,21 @@ from .common import (
     TILE,
 )
 from .config import near
+from .moves import BAR_LIST
 from .scene import DISMISS, ask_option_at, option_x
 
 
 class Touch:
-    __slots__ = ("armed", "removing", "spot", "start", "start_height", "start_y")
+    """A contact on a spot. source is the item it can drag to the apps
+    page (moves.py), and an inert touch (on a tile no app provides, or a
+    page that cannot open) does nothing but that."""
 
-    def __init__(self, spot, start, start_y=0, start_height=0):
-        self.spot, self.armed, self.start, self.removing = spot, True, start, False
+    __slots__ = ("armed", "inert", "removing", "source", "spot", "start", "start_height", "start_y")
+
+    def __init__(self, spot, start, start_y=0, start_height=0, source=None, inert=False):
+        self.spot, self.armed, self.start, self.removing = spot, not inert, start, False
         self.start_y, self.start_height = start_y, start_height
+        self.source, self.inert = source, inert
 
 
 class AskTouch:
@@ -61,6 +67,9 @@ class Bar:
       nothing. The page button and the grip stay.
     A touch keeps what it started on: an item held when a question appears
     stays held, and a touch on a question that goes away does nothing.
+    With a mover (moves.Mover), a touch on an item that lifts over the
+    apps page's home list moves the item there instead: its own action
+    is cancelled, as when sliding away (a held key goes up on the lift).
     launch(app), remove(index), resize(height) and open_page(name) do
     the saving, launching and opening; remove and resize return whether
     they did. click() is called once for each press the bar accepts, when
@@ -86,6 +95,7 @@ class Bar:
         pager=None,
         click=None,
         open_page=None,
+        mover=None,
     ):
         self.config = config
         self.keys = keys  # KeyEmitter
@@ -99,6 +109,7 @@ class Bar:
         self.pager = pager
         self.click = click or (lambda: None)
         self.open_page = open_page or (lambda name: None)
+        self.mover = mover
         self.touch = {}  # slot -> Touch
         self.ask_touch = {}  # slot -> AskTouch
         self.preview = None  # the height while the grip moves
@@ -128,6 +139,10 @@ class Bar:
                         self.preview = h
                         changed = True
                     continue
+                if t.source is not None:
+                    changed |= self.mover.over(t.source, px, py)
+                if t.inert:
+                    continue
                 near = self.config.near_spot(t.spot, px, py, self.touch_height())
                 if (s.kind == PAGE or not s.item.hold()) and near != t.armed:
                     t.armed = near
@@ -135,6 +150,13 @@ class Bar:
                 continue
             del self.touch[slot]
             changed = True
+            if t.source is not None:
+                if kind == "end" and self.mover.drop(t.source, px, py):
+                    self._release(t)
+                    continue
+                self.mover.leave(t.source)
+            if t.inert:
+                continue
             lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py, self.touch_height())
             if lifted and s.kind != GRIP and not (s.item and s.item.hold()):
                 self.click()
@@ -195,16 +217,19 @@ class Bar:
             self.preview = self.config.height
             self.touch[slot] = Touch(i, self.clock(), py, self.config.height)
             return True
-        if s.kind != GRIP and s.item.kind == TILE:
-            if not (self.tiles and self.tiles.online(s.item.name)):
-                return False
-            self.touch[slot] = Touch(i, self.clock())
+        source = (BAR_LIST, s.index, s.item) if self.mover else None
+        if (s.item.kind == TILE and not (self.tiles and self.tiles.online(s.item.name))) or (
+            s.item.kind == PAGE_ITEM and not self.page_open(s.item.name)
+        ):
+            # It does nothing, but can still be dragged to the apps page.
+            if source:
+                self.touch[slot] = Touch(i, self.clock(), source=source, inert=True)
+            return False
+        self.touch[slot] = Touch(i, self.clock(), source=source)
+        if s.item.kind == TILE:
             self.tiles.event(s.item.name, "down")
             return True
-        if s.kind != GRIP and s.item.kind == PAGE_ITEM and not self.page_open(s.item.name):
-            return False
-        self.touch[slot] = Touch(i, self.clock())
-        if s.kind != GRIP and s.item.hold():
+        if s.item.hold():
             self.fire(s.item, press=True)
             self.click()
         return True
@@ -300,7 +325,15 @@ class Bar:
 
     def _end(self, slot):
         t = self.touch.pop(slot)
+        if t.source is not None:
+            self.mover.leave(t.source)
+        self._release(t)
+
+    def _release(self, t):
+        """End what a touch holds: a tile's touch (not inside), a held key."""
         s = self.spot(t)
+        if t.inert:
+            return
         if s.item is not None and s.item.kind == TILE:
             self.tiles.event(s.item.name, "up", False)
         elif s.item is not None and s.item.hold():
@@ -314,6 +347,9 @@ class Bar:
             s, n = self.spot(t), config.spots[t.spot]
             if not (s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()):
                 self._end(slot)
+            elif t.source is not None:
+                self.mover.leave(t.source)
+                t.source = (BAR_LIST, n.index, n.item)
         self.config = config
         self.preview = None
 
@@ -323,6 +359,8 @@ class Bar:
             s = self.spot(t)
             if s.item is not None and s.item.kind == TILE and s.item.name == name:
                 del self.touch[slot]
+                if t.source is not None:
+                    self.mover.leave(t.source)
 
     def release_all(self):
         for slot in list(self.touch):

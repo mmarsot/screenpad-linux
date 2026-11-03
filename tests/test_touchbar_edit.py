@@ -1,4 +1,5 @@
-"""Tests for writing touchbar.toml in place: the height, and adding, moving and removing apps among the items.
+"""Tests for writing touchbar.toml in place: the height, adding, moving and removing apps among the items,
+and moving items of any kind between the bar and the apps page.
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests"""
 
@@ -128,6 +129,26 @@ class WithItemsTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 with_items(MIXED, "bar", c.bar, new)
 
+    def test_moving_items_between_the_lists(self):
+        c = config(MIXED)
+        lines = MIXED.splitlines(keepends=True)
+        ptt = lines[lines.index("# Talk.\n") + 1 : lines.index('key = "F14"  # mine\n') + 1]
+        # A key moves to the apps page with its block as it is, under [[apps]].
+        out = with_items(MIXED, "apps", c.apps, c.apps + [c.bar[0]], {id(c.bar[0]): ptt})
+        self.assertTrue(
+            out.endswith('app = "settings.desktop"\n\n[[apps]]\nlabel = "PTT"\nmode = "hold"\nkey = "F14"  # mine\n')
+        )
+        out = with_items(out, "bar", c.bar, c.bar[1:], {id(c.bar[0]): ptt})
+        moved = config(out)
+        self.assertEqual([i.spec() for i in moved.apps], [i.spec() for i in c.apps + [c.bar[0]]])
+        self.assertEqual(names(moved.bar), ["files.desktop", "Agents"])
+        # Its comment stays where it was, as when an app is removed.
+        self.assertIn("# Talk.\n\n[[bar]]\napp", out)
+        # Without its block, a key is not written nor removed.
+        for name, old, new in (("apps", c.apps, c.apps + [c.bar[0]]), ("bar", c.bar, c.bar[1:])):
+            with self.assertRaises(ConfigError):
+                with_items(MIXED, name, old, new)
+
     def test_add_app(self):
         a, b, c, key = Item.app("a"), Item.app("b"), Item.app("c"), Item("key", "K", mode="tap", key="k", keys=(37,))
         self.assertEqual(names(add_app([], "a")), ["a"])
@@ -187,6 +208,36 @@ class EditConfigTests(unittest.TestCase):
             self.assertIn("fix this first", str(cm.exception))
             with open(path) as f:
                 self.assertEqual(f.read(), "height = 'x'\n")
+
+    def test_moving_and_swapping_items(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(MIXED)
+            # The key and the tile go to the apps page, the app there to the bar.
+            c = edit_config(lambda c: {"bar": [c.bar[1], c.apps[0]], "apps": [c.bar[0], c.bar[2]]})
+            self.assertEqual((names(c.bar), names(c.apps)), (["files.desktop", "settings.desktop"], ["PTT", "Agents"]))
+            with open(path) as f:
+                text = f.read()
+            self.assertTrue(
+                text.endswith(
+                    '[notifications]\nmirror = false\n\n[[apps]]\nlabel = "PTT"\nmode = "hold"\nkey = "F14"  # mine\n'
+                    '\n[[apps]]\nlabel = "Agents"\ntile = "agents"\n'
+                ),
+                text,
+            )
+            # Swapped back, in the same places: every block where it began.
+            c = edit_config(lambda c: {"bar": [c.apps[0], c.bar[0], c.apps[1]], "apps": [c.bar[1]]})
+            self.assertEqual(
+                [i.spec() for i in c.bar + c.apps], [i.spec() for i in config(MIXED).bar + config(MIXED).apps]
+            )
+            # The same item twice is refused, the file untouched.
+            with open(path) as f:
+                before = f.read()
+            with self.assertRaises(ConfigError):
+                edit_config(lambda c: {"apps": c.apps + [c.bar[0]]})
+            with open(path) as f:
+                self.assertEqual(f.read(), before)
 
     def test_refuses_an_unsafe_edit(self):
         # A [[bar]]-looking line inside a multi-line string would be cut.

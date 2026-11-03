@@ -1,4 +1,4 @@
-"""Editing touchbar.toml in place: the height, and the apps among the bar's and the apps page's items."""
+"""Editing touchbar.toml in place: the height, the apps among the items, items moved between the two lists."""
 
 import fcntl
 import json
@@ -10,11 +10,13 @@ from .config import Config, config_path, parse_config
 from .defaults import EXAMPLE_CONFIG
 from .items import Item
 
-# The bar changes two things in the user's file: the height line, and the
+# The bar changes three things in the user's file: the height line, the
 # apps among the items (it adds, moves and removes app items, never any
-# other). It edits those lines and leaves every other line, comments
-# included, as it was, then checks that the result parses to the old config
-# with only that change before it replaces the file.
+# other), and items of any kind moved from the bar to the apps page or
+# back (their block goes from one list to the other as it is). It edits
+# those lines and leaves every other line, comments included, as it was,
+# then checks that the result parses to the old config with only that
+# change before it replaces the file.
 
 TABLE = re.compile(r"\s*\[\[?\s*([A-Za-z0-9_.\"' -]+?)\s*\]\]?\s*(#.*)?")
 HEIGHT_LINE = re.compile(r"\s*height\s*=.*")
@@ -75,15 +77,30 @@ def app_block(name, item):
     return lines
 
 
-def with_items(text, name, old, new):
+def retitled(lines, name):
+    """A block's lines (its header first) as a [[name]] block."""
+    m = TABLE.fullmatch(lines[0].rstrip("\n"))
+    assert m is not None  # blocks() found it as a header
+    return [lines[0][: m.start(1)] + name + lines[0][m.end(1) :]] + lines[1:]
+
+
+ONLY = "the bar only adds and removes apps, and moves items between the bar and the apps page"
+
+
+def with_items(text, name, old, new, carried=None):
     """text with its [[name]] items changed from old to new (lists of
     items.Item, old those text has).
 
-    The items new keeps from old (the same objects) keep their blocks as
-    they are, and stay in the same order; the others in new must be apps,
-    and get a block, before the next item kept or after the last block;
-    the ones new drops must be apps too, and lose their block. Raises
-    ConfigError for any other change."""
+    carried maps id() of the items moving between the two lists to the
+    lines of their block where they come from (its header to its last
+    setting, as blocks() finds it). The items new keeps from old (the same
+    objects) keep their blocks as they are, and stay in the same order;
+    the others in new must be apps or carried, and get a block (an app's
+    written anew, a carried one's lines under a [[name]] header), before
+    the next item kept or after the last block; the ones new drops must
+    be apps or carried too, and lose their block (the comments above it
+    stay). Raises ConfigError for any other change."""
+    carried = carried or {}
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
@@ -93,21 +110,27 @@ def with_items(text, name, old, new):
     where = [next((i for i, o in enumerate(old) if o is x), None) for x in new]
     kept = [i for i in where if i is not None]
     if kept != sorted(set(kept)):
-        raise ConfigError("the bar only adds, moves and removes apps")
+        raise ConfigError(ONLY)
     for i, o in enumerate(old):
-        if i not in kept and o.kind != APP:
-            raise ConfigError("the bar only adds, moves and removes apps")
+        if i not in kept and o.kind != APP and id(o) not in carried:
+            raise ConfigError(ONLY)
+
+    def block(item):
+        if id(item) in carried:
+            return retitled(carried[id(item)], name)
+        if item.kind != APP:
+            raise ConfigError(ONLY)
+        return app_block(name, item)
+
     inserts: dict[int, list[str]] = {}
     pending: list[Item] = []
     for x, w in zip(new, where, strict=True):
         if w is None:
-            if x.kind != APP:
-                raise ConfigError("the bar only adds, moves and removes apps")
             pending.append(x)
         elif pending:
             at = inserts.setdefault(found[w][0], [])
             for p in pending:
-                at += app_block(name, p) + ["\n"]
+                at += block(p) + ["\n"]
             pending = []
     if pending:
         at_line = found[-1][2] if found else len(lines)
@@ -116,7 +139,7 @@ def with_items(text, name, old, new):
             # After the last block, or at the end of the file, a blank line first.
             if found or n or (lines and lines[-1].strip()):
                 at.append("\n")
-            at += app_block(name, p)
+            at += block(p)
     deleted: set[int] = set()
     for i, (_lead, start, end) in enumerate(found):
         if i in kept:
@@ -154,8 +177,9 @@ def edit_config(change, path=None):
     """Apply change(config) to the user's file and return the new Config.
 
     change returns a dict of what changes: "height", and "bar" or "apps",
-    the new list of that place's items (as with_items() takes it). Writes
-    the default first if there is no file.
+    the new list of that place's items (as with_items() takes it); an item
+    of one list (the same object) in the other's new list moves there,
+    with its block. Writes the default first if there is no file.
     """
     path = path or config_path()
     fd = _lock()
@@ -176,9 +200,13 @@ def edit_config(change, path=None):
         if height != old.height:
             new_text = with_height(new_text, height)
         try:
+            placed = [id(i) for items in lists.values() for i in items]
+            if len(placed) != len(set(placed)):
+                raise ConfigError("an item cannot be in two places")
+            carried = _carried(text, old, lists)
             for name, items in lists.items():
                 if [id(i) for i in items] != [id(i) for i in old.items(name)]:
-                    new_text = with_items(new_text, name, old.items(name), items)
+                    new_text = with_items(new_text, name, old.items(name), items, carried)
             new = parse_config(new_text)
         except ConfigError as e:
             raise ConfigError("%s: could not edit it safely (%s); change it by hand" % (path, e))
@@ -189,6 +217,23 @@ def edit_config(change, path=None):
         return new
     finally:
         os.close(fd)
+
+
+def _carried(text, old, lists):
+    """The block lines, in text, of the items of old (a Config) that lists
+    puts in the other list, by id(): what with_items() carries."""
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    carried = {}
+    for name, other in (("bar", "apps"), ("apps", "bar")):
+        moving = {id(i) for i in lists[other]}
+        found = blocks(lines, name)
+        if len(found) == len(old.items(name)):
+            for item, (_lead, start, end) in zip(old.items(name), found, strict=True):
+                if id(item) in moving:
+                    carried[id(item)] = lines[start:end]
+    return carried
 
 
 def add_app(items, app, spot=None, limit=BAR_ITEMS):

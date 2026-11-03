@@ -16,7 +16,9 @@ on the apps page is the surface's, and acts on the widget under it:
   surface's own widgets (Home, the home page's pages) open pages instead,
   and the home page's items do what they do on the bar (act()).
 A touch keeps what it started on, like the bar's: one that started on a
-widget stays that widget's (or nothing) until it lifts.
+widget stays that widget's (or nothing) until it lifts. One that started on
+an [[apps]] item and lifts over the bar moves the item there instead
+(moves.py); its own action is cancelled, as when sliding away.
 """
 
 import json
@@ -39,6 +41,7 @@ from .common import (
     TONES,
 )
 from .items import Item
+from .moves import APPS_LIST
 from .scene import page_look
 
 # The surface's own widgets: Home, a page in the home page's list, and an
@@ -52,19 +55,20 @@ BACK_HINT = (
 )
 # Every CSS class a widget can carry; the stylesheet has a rule for each
 # (tests/test_touchbar_surface.py checks it).
-WIDGET_CLASSES = ("inert", "long", "held") + tuple("tone-" + tone for tone in TONES)
+WIDGET_CLASSES = ("inert", "long", "held", "moving", "target") + tuple("tone-" + tone for tone in TONES)
 
 
 class Spot:
     """A widget as drawn: where (panel pixels), what, and whose."""
 
-    __slots__ = ("client", "h", "item", "look", "page", "touch", "w", "wid", "x", "y")
+    __slots__ = ("client", "entry", "h", "item", "look", "page", "touch", "w", "wid", "x", "y")
 
-    def __init__(self, page, wid, x, y, w, h, look, touch, client=None, item=None):
+    def __init__(self, page, wid, x, y, w, h, look, touch, client=None, item=None, entry=None):
         # page and client are None for the surface's own widgets; item is
-        # the config's item a home page widget shows
+        # the config's item a home page widget acts as, entry the index in
+        # the [[apps]] items of the one it shows (a page item's too)
         self.page, self.wid, self.x, self.y, self.w, self.h = page, wid, x, y, w, h
-        self.look, self.touch, self.client, self.item = look, touch, client, item
+        self.look, self.touch, self.client, self.item, self.entry = look, touch, client, item, entry
 
     def key(self):
         action = self.item.action() if self.item else None
@@ -83,13 +87,15 @@ class Spot:
 
 
 class Press:
-    """A contact on the surface: on a widget (spot), or inert (spot None)."""
+    """A contact on the surface: on a widget (spot), or inert (spot None);
+    source is the [[apps]] item it can drag to the bar (moves.py)."""
 
-    __slots__ = ("held", "inside", "key", "spot", "start")
+    __slots__ = ("held", "inside", "key", "source", "spot", "start")
 
-    def __init__(self, spot, start):
+    def __init__(self, spot, start, source=None):
         self.spot, self.start, self.inside, self.held = spot, start, spot is not None, False
         self.key = spot.key() if spot else None
+        self.source = source
 
 
 def grid(x0, y0, width, height, columns, rows, col, row, cols, nrows):
@@ -126,6 +132,7 @@ class Surface:
         self.presses = {}  # slot -> Press
         self.since = {}  # Spot.key() -> when it appeared as it is
         self.covered = None  # cover() when the widgets were last drawn
+        self.mover = None  # moves.Mover: drags between the home list and the bar
 
     def shown(self):
         return self.pager.page == APPS and bool(self.can_draw())
@@ -186,12 +193,13 @@ class Surface:
         rows = max(HOME_ROWS, -(-len(cells) // HOME_COLUMNS))
         for i, (wid, look, touch, item) in enumerate(cells):
             x, y, wd, h = grid(0, y0, PANEL_W, height, HOME_COLUMNS, rows, i % HOME_COLUMNS, i // HOME_COLUMNS, 1, 1)
-            spots.append(Spot(None, wid, x, y, wd, h, look, touch, item=item))
+            entry = i if i < len(self.items()) else None
+            spots.append(Spot(None, wid, x, y, wd, h, look, touch, item=item, entry=entry))
         return spots
 
     def home_cells(self):
         """The home page's list: (widget id, look, touch, item) for each
-        [[apps]] item, then each app's page that no item places."""
+        [[apps]] item, in order, then each app's page that no item places."""
         cells: list[tuple[str, dict, str, Item | None]] = []
         items: list[Item] = self.items()
         provided = self.apps.provided()
@@ -241,6 +249,23 @@ class Surface:
                 ended = True
         return ended
 
+    def drop_cell(self, px, py):
+        """Where on the home list an item dragged from the bar lands if
+        lifted at px, py: the index of the [[apps]] item under it, or
+        len(items) elsewhere on the list (a page, a free cell); None while
+        the home list does not show, off it (the header, under a card), or
+        on an item that appeared or changed within ASK_ARM."""
+        if self.pager.page != APPS or not (max(self.top() + HEADER_H, self.cover()) <= py < PANEL_H):
+            return None
+        if not 0 <= px < PANEL_W or not self.shown() or self.page() is not None:
+            return None
+        spot = next((s for s in self.spots() if s.entry is not None and s.on(px, py)), None)
+        if spot is None:
+            return len(self.items())
+        if self.clock() < self.since.get(spot.key(), self.clock()) + ASK_ARM:
+            return None
+        return spot.entry
+
     def open_page(self, name):
         """A page item's tap on the bar: the apps page, on that app's page."""
         if self.pager.available() and name in self.apps.pages:
@@ -264,9 +289,13 @@ class Surface:
         for kind, slot, px, py in events:
             if kind == "begin":
                 spot = next((s for s in self.spots() if s.on(px, py)), None)
-                if spot is not None and (spot.touch == "none" or now < self.since.get(spot.key(), now) + ASK_ARM):
+                fresh = spot is not None and now < self.since.get(spot.key(), now) + ASK_ARM
+                source = None
+                if self.mover and spot is not None and spot.entry is not None and not fresh:
+                    source = (APPS_LIST, spot.entry, self.items()[spot.entry])
+                if spot is not None and (spot.touch == "none" or fresh):
                     spot = None
-                self.presses[slot] = Press(spot, now)
+                self.presses[slot] = Press(spot, now, source)
                 if spot is not None:
                     self._send(spot, "down")
                     if spot.item is not None and spot.item.hold():
@@ -278,11 +307,19 @@ class Surface:
             if p is None:
                 continue
             if kind == "move":
+                if p.source is not None and self.mover:
+                    changed |= self.mover.over(p.source, px, py)
                 if p.spot is not None and p.spot.near(px, py) != p.inside:
                     p.inside = not p.inside
                     changed = True
                 continue
             del self.presses[slot]
+            if p.source is not None and self.mover:
+                if kind == "end" and self.mover.drop(p.source, px, py):
+                    self._cancel(p)
+                    changed = True
+                    continue
+                changed |= self.mover.leave(p.source)
             if p.spot is None:
                 continue
             changed = True
@@ -327,6 +364,8 @@ class Surface:
     def release_all(self):
         for p in self.presses.values():
             self._cancel(p)
+            if p.source is not None and self.mover:
+                self.mover.leave(p.source)
         self.presses.clear()
 
     def scene(self):
@@ -342,6 +381,8 @@ class Surface:
                 "hint": BACK_HINT % self.pager.return_after,
             }
         self.refresh()
+        marks = self.mover.marks(APPS_LIST) if self.mover else {}
+        hint = self.mover.hint() if self.mover else None
         widgets = []
         for s in self.spots():
             tile = {"id": "%s/%s" % (s.page or "surface", s.wid), "x": s.x, "y": s.y, "width": s.w, "height": s.h}
@@ -356,6 +397,10 @@ class Surface:
                     tile["pressed"] = True
                     if p.held:
                         classes.append("held")
+            if s.page is None and s.entry in marks:
+                classes.append(marks[s.entry])
+            if hint and s.page is None and s.wid == "title":
+                tile["text"] = hint
             tile["classes"] = classes
             widgets.append(tile)
         page = self.page()

@@ -217,3 +217,18 @@
     font-weight: normal;
     color: #e0e0e6;
 }
+
+/* An item dragged between the bar and the apps page: it is faded where it
+   is while the finger is over the other place, and the spot or widget it
+   would land on is blue, as an app dragged onto the bar lights its spot. */
+.screenpad-touchbar-spot.moving {
+    background-color: #202024;
+    border: 2px solid #5a5a62;
+    color: #8a8a92;
+}
+
+.screenpad-touchbar-spot.target {
+    background-color: rgba(53, 132, 228, 0.3);
+    border: 2px solid #3584e4;
+    color: #ffffff;
+}
