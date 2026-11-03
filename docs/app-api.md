@@ -241,24 +241,6 @@ while True:
 
 The library sends `"protocol": 2`, so against a touch bar from before the version it fails with `ProtocolMismatch` (`supported` `None`); `Touchbar(..., protocol=1)` says no version, for an app that wants to run there.
 
-### Testing an app
-
-`screenpad_app.testing.FakeBar` stands in for the daemon's socket in an app's tests, so an app's repository never needs the touch bar's code. It runs in its own thread, in a temporary directory laid out like `$XDG_RUNTIME_DIR` (`environ` holds that variable), answers `hello` as the daemon does (`min_protocol` and `max_protocol` set the versions it speaks, `legacy=True` makes it a daemon from before the version), and keeps what the apps sent: `tiles` (each tile's last look), `pages`, `asks` (the waiting questions), `apps` and `received` (every message). The test drives the touches with `press(tile)`, `tap(page, widget, kind="tap")`, `answer(id, option, reason="chosen")`, `send(app, msg)` and `drop()` (a daemon restarting), and `wait(check)` waits for what the app does.
-
-```python
-from screenpad_app import Touchbar, socket_path
-from screenpad_app.testing import FakeBar
-
-with FakeBar(placed=["agents"]) as bar:
-    app = Touchbar(socket_path(bar.environ), "counter", ["agents"])
-    app.handshake()
-    bar.press("agents")
-    ...  # the app handles the tap
-    bar.wait(lambda: bar.tiles["agents"].get("label") == "1")
-```
-
-It checks the handshake, unknown ops, a message before `hello` and someone else's tile or page, and nothing else: the limits and the touch rules (arming, cancels) are the daemon's, as this page gives them.
-
 ## What the extension draws
 
 The daemon publishes the bar as a scene of tiles in `touchbar.json` (`"version": 2`), with `height`, the height drawn (the card's while one shows), and `strut`, the bar's own height, which is the work area windows on the ScreenPad keep clear of: a card covers them for a moment rather than resizing them. The extension animates a growth of `height` over an unchanged `strut`. It draws each tile without knowing what it is, so new kinds of tiles and new apps need no extension update (GNOME loads extension code only at login). The tile fields are documented at the top of `screenpad_touchbar/scene.py`. The version 1 fields (`spots`, `pressed`, `removing`) are still published, so an extension loaded before this version keeps drawing the ordinary bar until the next login. It shows no app tiles and no questions.

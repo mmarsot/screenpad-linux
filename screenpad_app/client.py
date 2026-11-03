@@ -53,6 +53,8 @@ class Touchbar:
         return self.sock.fileno()
 
     def send(self, msg):
+        if msg.get("op") == "unpage":
+            self._sent.pop(("page", msg.get("page")), None)
         try:
             self.sock.sendall(json.dumps(msg, separators=(",", ":")).encode() + b"\n")
         except OSError as e:
@@ -75,7 +77,6 @@ class Touchbar:
         self.show([{"op": "set", "tile": tile, **look}])
 
     def unpage(self, page):
-        self._sent.pop(("page", page), None)
         self.send({"op": "unpage", "page": page})
 
     def ask(self, id, title, options, text=None, timeout=None):

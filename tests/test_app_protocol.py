@@ -1,22 +1,20 @@
 """Tests for the app protocol's version: the daemon's side of the handshake,
 and the client library (screenpad_app) against the daemon's own socket, so
-the library, its FakeBar and the daemon agree.
+the library and the daemon agree. The rest of the client is test_app_client.py.
 
 Run with: python3 -m unittest discover -s tests"""
 
-import os
 import select
-import tempfile
-import threading
 import unittest
 
-from touchbar_support import FakeClient, pump
+from app_support import DaemonBar
+from touchbar_support import FakeClient
 
 import screenpad_app
 from screenpad_app import ProtocolMismatch, Touchbar
 from screenpad_app import common as lib
 from screenpad_touchbar import common
-from screenpad_touchbar.apps import Apps, AppServer
+from screenpad_touchbar.apps import Apps
 
 
 class HelloTests(unittest.TestCase):
@@ -89,33 +87,6 @@ class HelloTests(unittest.TestCase):
         ):
             self.apps.handle(client, {"op": "page", "page": "p", "widgets": [widget]})
             self.assertEqual(client.last("error")["request"], "page")
-
-
-class DaemonBar:
-    """The daemon's own Apps on its AppServer, served in a thread."""
-
-    def __init__(self, test):
-        tmp = tempfile.TemporaryDirectory(dir="/tmp")
-        test.addCleanup(tmp.cleanup)
-        self.environ = {"XDG_RUNTIME_DIR": tmp.name}
-        self.apps = Apps()
-        self.apps.set_placed(["counter"])
-        self.server = AppServer(os.path.join(tmp.name, "screenpad", common.SOCKET_NAME), self.apps)
-        self.lock = threading.Lock()
-        self.stop = threading.Event()
-        self.thread = threading.Thread(target=self.serve, daemon=True)
-        self.thread.start()
-        test.addCleanup(self.close)
-
-    def serve(self):
-        while not self.stop.is_set():
-            with self.lock:
-                pump(self.server)
-
-    def close(self):
-        self.stop.set()
-        self.thread.join(timeout=2.0)
-        self.server.close()
 
 
 class DaemonTests(unittest.TestCase):

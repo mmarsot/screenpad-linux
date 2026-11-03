@@ -9,9 +9,7 @@ builds only this package).
 - common: the protocol version it speaks (PROTOCOL), the socket's path, the
   bar's limits an app writes within, clip(), and the errors;
 - client: Touchbar, one connection (hello and its answer, tiles, pages,
-  questions, what comes back), and Link, a connection kept up;
-- testing: FakeBar, a small stand-in for the daemon's socket for an app's
-  own tests.
+  questions, what comes back), and Link, a connection kept up.
 """
 
 from .client import Link, Touchbar
