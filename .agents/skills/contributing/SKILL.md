@@ -19,7 +19,7 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 - `make check`: everything CI runs, in order: format check, lint, typecheck, tests. **Run it before finishing every change.**
 - `make format-check`: `ruff format --check` on the Python, Prettier `--check` on the extension's JavaScript. `make format` applies both.
 - `make lint`: `ruff check` and ESLint (`eslint.config.js`).
-- `make typecheck`: mypy with `check_untyped_defs` on the launchers `screenpad.py`, `touchbar.py` and `agents.py`, their packages `screenpad_display/`, `screenpad_touchbar/`, `screenpad_app/` and `screenpad_agents/`, and `tests/`.
+- `make typecheck`: mypy with `check_untyped_defs` on the launchers `screenpad.py` and `touchbar.py`, their packages `screenpad_display/` and `screenpad_touchbar/`, the client library `screenpad_app/`, and `tests/`.
 - `make test`: `python3 -m unittest discover -s tests`, stdlib only, so it runs without uv or npm. The extension's tests run its plain modules with node; they are skipped without node, except under CI.
 - The tool versions are pinned: ruff and mypy in `pyproject.toml` (`[dependency-groups] dev`) and `uv.lock`; Prettier and ESLint in `package.json` and `package-lock.json`. Their settings live in `pyproject.toml`, `.prettierrc.json` and `eslint.config.js`.
 - Prettier formats only `gnome-shell/**/*.js` and `eslint.config.js`, and ruff only `*.py`; never run them on `docs/`, `README.md`, JSON or CSS, where they would rewrite hand-kept tables and snippets.
@@ -28,7 +28,7 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 ## Rules
 
 - **The checks pass before a change is done.** Formatting, lint, typecheck and tests are all green under `make check`. Fix the code rather than silencing a check; a `# type: ignore[code]` or `# noqa: CODE` names its code and says why on the same line.
-- **The programs stay standard-library Python 3.11+.** `screenpad.py`, `touchbar.py`, `agents.py`, their packages and the client library `screenpad_app` run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
+- **The programs stay standard-library Python 3.11+.** `screenpad.py`, `touchbar.py`, their packages and the client library `screenpad_app` run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
 - **Keep files small: about 500 lines per module is the soft limit.** Split a module along its responsibilities instead of growing it past that, and put new code in the module of its area. Every file is under it today, the extension's and the tests included (tests go one file per area); keep it so.
 - **Document what you write, in the same change.** A behavior, command, setting, file or installed path that changes updates the page that describes it (README and `docs/`, see below), the test list in [docs/development.md](../../../docs/development.md#tests) when tests change, and the matching skill.
 - **Work in steps.** A step is one coherent change with its tests, docs and skill update, `make check` green, and committed. Finish and document a step before moving on to the next; a large change goes in as several such steps (and pull requests), each complete on its own.
@@ -45,12 +45,11 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 | [docs/touchbar.md](../../../docs/touchbar.md) | how the touch bar works and behaves |
 | [docs/configuration.md](../../../docs/configuration.md) | `touchbar.toml`, every setting |
 | [docs/app-api.md](../../../docs/app-api.md) | the touch bar socket protocol for apps and questions |
-| [docs/agents.md](../../../docs/agents.md) | the agent app: what it shows, its config, turning it on |
 | [docs/development.md](../../../docs/development.md) | code layout, the checks, what the tests cover, the screenshots |
 
 ## Tests
 
-- `tests/` holds stdlib `unittest` tests, one file per area: `test_screenpad*.py` (the display CLI), `test_install.py` (`install.sh`), `test_touchbar_*.py` (the touch bar; the area skills list them), `test_agents_*.py` (the agent app), `test_app_*.py` (the app protocol's version and the client library), `test_skills.py` (the skills and this index). `screenpad_support.py`, `touchbar_support.py`, `agents_support.py` and `app_support.py` hold what each program's tests share and put the checkout on `sys.path`; isort keeps them imported before the packages (`[tool.ruff.lint.isort]` in `pyproject.toml`).
+- `tests/` holds stdlib `unittest` tests, one file per area: `test_screenpad*.py` (the display CLI), `test_install.py` (`install.sh`), `test_touchbar_*.py` (the touch bar; the area skills list them), `test_app_*.py` (the app protocol's version and the client library), `test_skills.py` (the skills and this index). `screenpad_support.py`, `touchbar_support.py` and `app_support.py` hold what each program's tests share and put the checkout on `sys.path`; isort keeps them imported before the packages (`[tool.ruff.lint.isort]` in `pyproject.toml`).
 - They import the programs' packages from the checkout (the support modules set `sys.path` to the repository root). A new test goes in the file of its area; a new area gets its own file, added to the test modules listed under `[[tool.mypy.overrides]]` in `pyproject.toml`.
 - The extension is tested through its plain modules (`contract.js`, `scene.js`, `widgets.js`, `cards.js`, `feedback.js`), run under node on what the daemon builds. Reading the extension's source with regular expressions shows only that text is in a file: two such checks remain, for names crossing into `extension.js` (the [gnome-extension](../gnome-extension/SKILL.md) skill), and no new one is added. After changing the extension run `make test`, not only the JavaScript checks.
 

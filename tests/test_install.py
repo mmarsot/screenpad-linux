@@ -3,7 +3,6 @@ on PATH. Skipped when run as root.
 
 Run with: python3 -m unittest discover -s tests"""
 
-import configparser
 import os
 import shutil
 import subprocess
@@ -23,8 +22,14 @@ class InstallTests(Base):
         "usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad",
         "etc/udev/rules.d/70-screenpad-uinput.rules",
         "etc/udev/rules.d/70-screenpad-backlight.rules",
+    )
+    # Where earlier versions installed the agent app, which now has its own
+    # repository and installer.
+    OLD_AGENT_APP = (
         "usr/local/bin/screenpad-agents",
         "usr/lib/systemd/user/screenpad-agents.service",
+        "usr/local/lib/screenpad/agents.py",
+        "usr/local/lib/screenpad/screenpad_agents",
     )
 
     def setUp(self):
@@ -158,32 +163,75 @@ class InstallTests(Base):
         # The touch bar is the user's to turn on; install never enables it.
         self.assertNotIn(["systemctl", "--user"], self.called())
 
-    def test_install_the_agent_app_off(self):
+    def old_agent_app(self):
+        """The agent app as an earlier version installed it."""
+        self.s.write("usr/lib/systemd/user/screenpad-agents.service", "[Service]\n")
+        self.s.write("usr/local/lib/screenpad/agents.py", "old\n")
+        self.s.write("usr/local/lib/screenpad/screenpad_agents/app.py", "old\n")
+        os.makedirs(self.s.p("usr/local/bin"), exist_ok=True)
+        os.symlink("../lib/screenpad/agents.py", self.s.p("usr/local/bin/screenpad-agents"))
+
+    def test_install_has_no_agent_app(self):
         r = self.install()
         self.assertEqual(r.returncode, 0, r.stderr)
-        unit = self.s.read("usr/lib/systemd/user/screenpad-agents.service")
-        self.assertEqual(unit, repo_file("systemd/screenpad-agents.service"))
-        parsed = configparser.ConfigParser(interpolation=None, strict=False)
-        parsed.optionxform = str  # type: ignore[assignment,method-assign]  # systemd keys are case-sensitive
-        parsed.read_string(unit.decode())
-        self.assertEqual(parsed["Unit"]["ConditionPathExists"], "%E/screenpad/agents.toml")
-        self.assertEqual(parsed["Service"]["ExecStart"], "/usr/local/bin/screenpad-agents run")
-        self.assertEqual(parsed["Service"]["Restart"], "on-failure")
-        self.assertEqual(parsed["Service"]["RestartPreventExitStatus"], "2")
-        # Installed but off: nothing enables or starts it, and without its
-        # config the command refuses to run.
-        self.assertIn("Agent app: installed but off", r.stdout)
+        for rel in self.OLD_AGENT_APP:
+            self.assertFalse(os.path.lexists(self.s.p(rel)), rel)
+        self.assertNotIn("agent", r.stdout)
+
+    def test_install_leaves_the_old_agent_app_and_says_how_to_remove_it(self):
+        self.old_agent_app()
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Left as it was: it may be running, and nothing stops or disables it.
+        self.assertEqual(os.readlink(self.s.p("usr/local/bin/screenpad-agents")), "../lib/screenpad/agents.py")
+        self.assertEqual(self.s.read("usr/local/lib/screenpad/agents.py"), b"old\n")
+        self.assertEqual(self.s.read("usr/local/lib/screenpad/screenpad_agents/app.py"), b"old\n")
+        self.assertEqual(self.s.read("usr/lib/systemd/user/screenpad-agents.service"), b"[Service]\n")
         self.assertNotIn("screenpad-agents", " ".join(" ".join(c) for c in self.called()))
-        env = dict(os.environ, XDG_CONFIG_HOME=self.s.p("home/config"), XDG_RUNTIME_DIR=self.tmp.name)
-        run = subprocess.run(
-            [sys.executable, "-I", self.s.p("usr/local/bin/screenpad-agents"), "run"],
-            cwd=self.tmp.name,
-            capture_output=True,
-            text=True,
-            env=env,
+        lines = r.stdout.splitlines()
+        self.assertIn(
+            "The agent app moved to https://github.com/mmarsot/screenpad-agents and installs per user;", lines
         )
-        self.assertEqual(run.returncode, 2)
-        self.assertIn("agents.toml does not exist", run.stderr)
+        self.assertIn("  systemctl --user disable --now screenpad-agents", lines)
+        self.assertIn("  sudo rm -rf " + " ".join("/" + rel for rel in self.OLD_AGENT_APP), lines)
+        self.assertIn("./install.sh: https://github.com/mmarsot/screenpad-agents#install", r.stdout)
+        # The printed command removes exactly the old app and nothing the
+        # install put there.
+        rm = next(line for line in lines if line.startswith("  sudo rm -rf "))
+        for path in rm.split()[3:]:
+            target = self.s.p(path.lstrip("/"))
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+        for rel in self.OLD_AGENT_APP:
+            self.assertFalse(os.path.lexists(self.s.p(rel)), rel)
+        for rel in ("usr/local/bin/screenpad-touchbar", "usr/local/lib/screenpad/screenpad_app/client.py"):
+            self.assertTrue(os.path.exists(self.s.p(rel)), rel)
+
+    def test_install_names_only_the_old_files_still_there(self):
+        # A link left dangling still counts; files already removed are not named.
+        os.makedirs(self.s.p("usr/local/bin"))
+        os.symlink("../lib/screenpad/agents.py", self.s.p("usr/local/bin/screenpad-agents"))
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("  sudo rm -rf /usr/local/bin/screenpad-agents\n", r.stdout)
+        self.assertTrue(os.path.islink(self.s.p("usr/local/bin/screenpad-agents")))
+
+    def test_uninstall_removes_the_old_agent_app(self):
+        self.old_agent_app()
+        self.assertEqual(self.install().returncode, 0)
+        r = self.install("uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel in self.OLD_AGENT_APP:
+            self.assertFalse(os.path.lexists(self.s.p(rel)), rel)
+        self.assertIn("The agent app an earlier version installed was removed too.", r.stdout)
+        self.assertIn("systemctl --user disable --now screenpad-agents", r.stdout)
+        # Without it, uninstall does not mention it.
+        self.assertEqual(self.install().returncode, 0)
+        r = self.install("uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("agent", r.stdout)
 
     def test_install_programs(self):
         # An earlier version installed the programs as single files, and a
@@ -196,12 +244,11 @@ class InstallTests(Base):
         for link, script in (
             ("usr/local/sbin/screenpad", "screenpad.py"),
             ("usr/local/bin/screenpad-touchbar", "touchbar.py"),
-            ("usr/local/bin/screenpad-agents", "agents.py"),
         ):
             self.assertEqual(os.readlink(self.s.p(link)), "../lib/screenpad/" + script)
             self.assertEqual(self.s.read("%s/%s" % (lib, script)), repo_file(script))
             self.assertTrue(os.access(self.s.p(lib, script), os.X_OK))
-        for pkg in ("screenpad_display", "screenpad_touchbar", "screenpad_app", "screenpad_agents"):
+        for pkg in ("screenpad_display", "screenpad_touchbar", "screenpad_app"):
             modules = sorted(n for n in os.listdir(os.path.join(REPO, pkg)) if n.endswith(".py"))
             self.assertEqual(sorted(os.listdir(self.s.p(lib, pkg))), modules)
             for name in modules:
@@ -211,7 +258,6 @@ class InstallTests(Base):
         for link, prog in (
             ("usr/local/sbin/screenpad", "screenpad"),
             ("usr/local/bin/screenpad-touchbar", "screenpad-touchbar"),
-            ("usr/local/bin/screenpad-agents", "screenpad-agents"),
         ):
             run = subprocess.run(
                 [sys.executable, "-I", self.s.p(link), "--help"], cwd=self.tmp.name, capture_output=True, text=True
