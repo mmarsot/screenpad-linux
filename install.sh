@@ -30,6 +30,7 @@ AGENTS=/usr/local/bin/screenpad-agents
 AGENTS_UNIT=/usr/lib/systemd/user/screenpad-agents.service
 EXTENSION=/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad
 UDEV_RULE=/etc/udev/rules.d/70-screenpad-uinput.rules
+BACKLIGHT_RULE=/etc/udev/rules.d/70-screenpad-backlight.rules
 PRODUCT="ZenBook UX450FDX_UX480FD"
 
 die() {
@@ -87,8 +88,10 @@ install_all() {
         install -D -m 0644 "$f" "$R$EXTENSION/$(basename "$f")"
     done
     install -D -m 0644 "$here/udev/70-screenpad-uinput.rules" "$R$UDEV_RULE"
+    install -D -m 0644 "$here/udev/70-screenpad-backlight.rules" "$R$BACKLIGHT_RULE"
     udevadm control --reload
     udevadm trigger --sysname-match=uinput
+    udevadm trigger --subsystem-match=backlight --sysname-match=asus_screenpad
     install -d -m 0755 "$R$STATE"
     if [ -e "$R$STATE/edid.bin" ]; then
         install -D -m 0644 "$R$STATE/edid.bin" "$R$FIRMWARE"
@@ -121,6 +124,7 @@ uninstall_all() {
         systemctl disable --now screenpad.service || true
     fi
     rm -f "$R$BIN" "$R$UNIT" "$R$HOOK" "$R$FIRMWARE" "$R$TOUCHBAR" "$R$TOUCHBAR_UNIT" "$R$UDEV_RULE"
+    rm -f "$R$BACKLIGHT_RULE"
     rm -f "$R$AGENTS" "$R$AGENTS_UNIT"
     rm -rf "$R$EXTENSION" "$R$LIB"
     udevadm control --reload

@@ -49,6 +49,26 @@ A swipe must start on the bar: a sideways stroke below the bar on the touchpad p
 
 Resizing and shortcuts write to `~/.config/screenpad/touchbar.toml`. The daemon edits only the `height` line and the `[[shortcut]]` blocks, keeps every other line and comment, and replaces the file only if the result parses to the same config apart from that change. If it cannot, it logs why and leaves the file alone.
 
+## Fn+F6: touchpad and display
+
+Fn+F6, the laptop's touchpad key, turns the ScreenPad's display on and off as well as the touchpad. "Display off" means the ScreenPad's backlight off: the monitor stays connected and driven by the GPU, and GNOME keeps it as a monitor (`sudo screenpad off` disconnects it). Each press goes one step round three states:
+
+| State | Touchpad | ScreenPad display | The panel |
+|---|---|---|---|
+| 1 | off | off | dark, and touches do nothing |
+| 2 | on | off | dark, and the whole panel is a plain touchpad: no bar, no pages |
+| 3 | on | on | the bar and the pages, as above |
+
+From 3 a press goes to 1, from 1 to 2, from 2 to 3. Nothing counts presses: the daemon reads where you are from GNOME's touchpad setting (`org.gnome.desktop.peripherals.touchpad send-events`) and the ScreenPad's backlight (`bl_power` 4 is lit), and a press goes on from there. Only presses change the display, and the cycle stays right after anything else changes them:
+
+- **The touchpad turned off elsewhere** (Settings > Mouse & Touchpad, or a reboot with it left off) leaves the display as it is; the next press goes to state 2.
+- **Resume** keeps a display Fn+F6 turned off dark (the resume hook runs `screenpad replug --keep-dark`). **A reboot** lights it again with `screenpad on`.
+- **GNOME toggles the touchpad on every press itself** (gsd-media-keys), and the daemon lets it: for 3 to 1 and 1 to 2 that is the right step. Only from 2 to 3, where the touchpad stays on, does the daemon set it back on once GNOME has turned it off, so for that press GNOME's on-screen icon shows the touchpad off for a moment. If GNOME does not handle the key, the daemon sets the touchpad itself after 1 s.
+
+**While the display is off** the daemon lets go of the touchpad, as after `screenpad off`, so the extension draws nothing: no bar, no screensaver, no clock, and no repaints. Touches go straight to GNOME as a plain touchpad (state 2) or nowhere (state 1). The daemon itself only looks at the backlight once a second, as it already looks for `screenpad on`. The panel's backlight is off, but the NVIDIA GPU still drives the ScreenPad output and GNOME keeps it as a monitor; `sudo screenpad off` turns that off too.
+
+How it reaches the daemon: asus-nb-wmi sends Fn+F6 as `KEY_TOUCHPAD_TOGGLE` on the `Asus WMI hotkeys` input device. The daemon reads that device without grabbing it, so GNOME and every other key there are unaffected, and needs group `input` for it, as for the touchpad. It follows the touchpad setting with `gsettings monitor`, and lights and darkens the panel with `screenpad light` and `screenpad dark` (see the [display commands](display.md#commands)), which install.sh's udev rule lets group `input` run without root. All of this works only while the touch bar daemon runs and the ScreenPad is on; otherwise Fn+F6 only toggles the touchpad, as before. The logic is `screenpad_touchbar/fnkey.py`.
+
 ## Commands
 
 After `sudo ./install.sh` (which installs the udev rule for `/dev/uinput`), and with your user in group `input` (see the [install guide](install.md#prerequisites)), as your user:
@@ -78,7 +98,8 @@ Start with `screenpad-touchbar status`. It shows the config, the touchpad node, 
 
 | Symptom | Cause and fix |
 |---|---|
-| No bar at all, touchpad normal | The bar runs only while the ScreenPad is on (`screenpad: off` in `status`): `sudo screenpad on`. Otherwise check `unit:` and `daemon:` in `status`, and `journalctl --user -u screenpad-touchbar` |
+| No bar at all, touchpad normal | The bar runs only while the ScreenPad is on (`screenpad: off` in `status`): `sudo screenpad on`. If the ScreenPad is dark but on, Fn+F6 turned its display off ([state 2](#fnf6-touchpad-and-display)): press Fn+F6. Otherwise check `unit:` and `daemon:` in `status`, and `journalctl --user -u screenpad-touchbar` |
+| Fn+F6 only toggles the touchpad | `journalctl --user -u screenpad-touchbar` logs a hotkeys device it cannot read (not in group `input`), a touchpad setting it cannot follow, or a failed `screenpad light` or `dark` (the backlight not writable: re-run `sudo ./install.sh`, which installs the udev rule) |
 | `touchpad: … not readable` | Your user is not in group `input`: `sudo usermod -aG input $USER`, then log out and in |
 | `uinput: not writable` | The udev rule is missing or you are not the user at the seat: re-run `sudo ./install.sh`, then log out and in |
 | Bar drawn but the extension is missing after install | GNOME loads new extension code only at login: log out and in once. `gnome-extensions info screenpad-touchbar@screenpad` should say `State: ACTIVE` |
@@ -102,7 +123,7 @@ To get the plain touchpad back at once: `screenpad-touchbar off`. If the daemon 
 
 A user daemon grabs the GDX1505 touchpad's evdev node (`EVIOCGRAB`), so libinput no longer reads it. It creates two uinput devices: `ScreenPad Touchpad`, a clone of the real pad (same multitouch axes, ranges, resolution, `BUTTONPAD`/`POINTER` properties, bus and ids), which gets every contact that starts outside the bar, and `ScreenPad Touch Bar Keys`, which sends the buttons' keys. libinput treats the clone as a touchpad, so GNOME's touchpad settings apply to it; because it keeps the real pad's I2C bus id, libinput should also count it as internal for disable-while-typing (unverified). Bar contacts are handled by the daemon itself. A physical click (the pad is a clickpad) reaches the desktop only while a touchpad finger is down. Palms the firmware flags (`MT_TOOL_PALM`) never press a button.
 
-The daemon grabs only while the ScreenPad is on: `screenpad on` creates `/run/screenpad/active` and `screenpad off` removes it, and within a second the daemon lets go, so after `screenpad off` the panel is a plain touchpad again. It grabs only when no finger is down, and before letting go it ends every touch on the clone and waits up to 2 s for fingers to lift, so the desktop never keeps a touch whose end it will not see. If the daemon stops or dies, the kernel drops the grab and destroys both uinput devices, and the plain touchpad works again at once.
+The daemon grabs only while the ScreenPad is on and its display lit: `screenpad on` creates `/run/screenpad/active` and `screenpad off` removes it, and Fn+F6 darkens and relights the display ([Fn+F6](#fnf6-touchpad-and-display)); within a second of either the daemon lets go, so the panel is a plain touchpad again. It grabs only when no finger is down, and before letting go it ends every touch on the clone and waits up to 2 s for fingers to lift, so the desktop never keeps a touch whose end it will not see. If the daemon stops or dies, the kernel drops the grab and destroys both uinput devices, and the plain touchpad works again at once.
 
 The visual is a GNOME Shell extension, since GNOME has no layer-shell protocol for a client to put a panel on one output. The daemon publishes the bar as a **scene of tiles** in `$XDG_RUNTIME_DIR/screenpad/touchbar.json` (`"version": 2`): the bar's height (live while the grip moves, and taller while a card shows) and, for each tile, its rectangle in the bar and what to draw there (an icon, an app's icon, text, the grip), its CSS classes and whether a finger is on it. A narrow tile has a `glyph` (`"grip"`, or `"page"` for the page button, drawn as its icon fitted to the tile), so it does not shrink the other tiles' icons. The extension draws the tiles without knowing what they are, along the top of the ScreenPad's monitor, and draws nothing while the daemon does not hold the pad. So the daemon decides everything the bar shows: today's buttons, shortcuts and grip are the first tiles, apps' tiles and questions are more, and none of them needs an extension update. It also counts the presses it has taken since it started (`clicks`, see [The click](#the-bar)): each time that count goes up in the same daemon (`pid`), the extension plays `click.wav` through GNOME's sound player (`global.display.get_sound_player()`, in `feedback.js`). The sound is generated, not recorded, by `gnome-shell/make_click.py`; an extension from before the click ignores the count. The daemon still publishes the earlier fields (`spots`, `pressed`, `removing`), so an extension from before tiles, which GNOME keeps until the next login, still draws the ordinary bar.
 
