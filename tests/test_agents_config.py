@@ -5,8 +5,9 @@ import subprocess
 import tempfile
 import unittest
 
-from agents_support import REPO, fake_bearings, fake_herdr, write_json
+from agents_support import REPO, fake_bearings, fake_herdr, read_calls, write_json
 
+from screenpad_agents.cli import clients
 from screenpad_agents.common import ConfigError
 from screenpad_agents.config import load, parse
 
@@ -18,6 +19,10 @@ class ConfigTests(unittest.TestCase):
         self.dir = tmp.name
         self.code = os.path.join(self.dir, "fm")
         fake_bearings(self.code)
+        # A checkout with the reader and without the control plane.
+        self.nocontrol = os.path.join(self.dir, "old")
+        fake_bearings(self.nocontrol)
+        os.remove(os.path.join(self.nocontrol, "bin", "fm-control.sh"))
         self.home = os.path.join(self.dir, "home")
         os.mkdir(self.home)
 
@@ -42,7 +47,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual((c.herdr, c.session, c.herdr_poll), (["wrap", "herdr"], "lab-1", 5.0))
         self.assertEqual(c.home, self.home)
         self.assertEqual(c.bearings, os.path.join(self.code, "bin", "fm-bearings-snapshot.sh"))
+        self.assertEqual(c.control, os.path.join(self.code, "bin", "fm-control.sh"))
         self.assertEqual(c.firstmate_poll, 120.0)
+
+    def test_the_clients_interrupt_through_the_configured_control_plane(self):
+        c = load(
+            self.write('[herdr]\nsession = "lab"\n[firstmate]\nhome = "%s"\ncode = "%s"\n' % (self.home, self.code))
+        )
+        _, firstmate = clients(c)
+        self.assertEqual(firstmate.interrupt("fix-api"), "delivered verified=agent-alive cancel=unconfirmed")
+        calls = read_calls(os.path.join(self.code, "bin", "control.jsonl"))
+        self.assertEqual(calls, [{"FM_HOME": self.home, "fm": ["FM_HOME"], "args": ["fix-api", "interrupt"]}])
+        self.assertIsNone(clients(load(self.write('[herdr]\nsession = "lab"\n')))[1])
 
     def test_a_missing_config_is_no_opt_in(self):
         with self.assertRaisesRegex(ConfigError, "runs only once you write it"):
@@ -76,6 +92,7 @@ class ConfigTests(unittest.TestCase):
                 "no executable",
             ),
             ('[herdr]\nsession = "x"\n' + fm + "extra = 1\n", "unknown key in \\[firstmate\\] 'extra'"),
+            ('[herdr]\nsession = "x"\n' + fm.replace(self.code, self.nocontrol), "no executable bin/fm-control.sh"),
             ("[herdr\n", "agents.toml"),
         ]
         for text, error in cases:
@@ -85,7 +102,7 @@ class ConfigTests(unittest.TestCase):
     def test_no_default_points_at_a_firstmate_home(self):
         # Without [firstmate] nothing of firstmate is read; its paths have no default.
         c = parse("x", {"herdr": {"session": "default"}})
-        self.assertEqual((c.home, c.bearings), (None, None))
+        self.assertEqual((c.home, c.bearings, c.control), (None, None, None))
 
 
 class CommandTests(unittest.TestCase):

@@ -39,6 +39,12 @@ MAX_BADGE = 4
 WIDGET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 COLUMNS = 4
 MIN_ROWS, MAX_ROWS = 2, 4
+# A widget's fixed-width lines: at most 16, each at most 120 characters.
+MAX_LINES = 16
+MAX_LINE_CHARS = 120
+# firstmate's interrupt (bin/fm-control.sh <task> interrupt) waits for the
+# harness to acknowledge, about 5 s; past this it is reported failed.
+CONTROL_TIMEOUT = 60.0
 
 
 class AgentsError(Exception):

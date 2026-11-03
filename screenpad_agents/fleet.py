@@ -6,12 +6,14 @@ is a grid of COLUMNS columns: the Captain's Call widget first (when firstmate
 is configured), then one widget per agent, in Herdr's order so a widget stays
 where it is while its agent runs. Herdr's state colors it: working green,
 blocked amber, the rest grey. An agent's widget is named after its firstmate
-task, or else its directory.
+task, or else its directory. Tapping one opens its card (card.py) in place of
+the grid, until Back, an answer sent, or the agent leaving Herdr's list.
 """
 
 import hashlib
 import os
 
+from . import card as cards
 from .common import (
     CALLS_TILE,
     COLUMNS,
@@ -27,6 +29,7 @@ from .common import (
     WIDGET_ID,
     clip,
 )
+from .keymap import interrupt_keys
 
 CALLS_WIDGET = "calls"
 
@@ -50,6 +53,7 @@ class Fleet:
         self.herdr_error = None
         self.bearings = None
         self.firstmate_error = None
+        self.card = None
         self._panes = {}
 
     def tiles(self):
@@ -57,6 +61,8 @@ class Fleet:
 
     def set_agents(self, agents, error=None):
         self.agents, self.herdr_error = (None, error) if error else (list(agents), None)
+        if self.card is not None and self.agents is not None and self.agent_of(self.card.pane) is None:
+            self.card = None
 
     def set_bearings(self, bearings, error=None):
         if error:
@@ -68,6 +74,13 @@ class Fleet:
         if self.bearings is None:
             return None
         return self.bearings.tasks.get("%s:%s" % (self.session, agent.pane))
+
+    def agent_of(self, pane):
+        return next((a for a in self.agents or [] if a.pane == pane), None)
+
+    def name(self, agent):
+        task = self.task(agent)
+        return task.id if task else os.path.basename((agent.cwd or "").rstrip("/")) or agent.kind
 
     def counts(self):
         counts: dict[str, int] = {}
@@ -83,6 +96,39 @@ class Fleet:
 
     def first_blocked(self):
         return next((a.pane for a in self.agents or [] if a.state == "blocked"), None)
+
+    # --- the card --------------------------------------------------------------
+
+    def open_card(self, pane):
+        self.card = cards.Card(pane) if self.agent_of(pane) is not None else None
+        return self.card
+
+    def shown_card(self):
+        """The card the page shows: the open one while its agent is in
+        Herdr's list (the grid shows while Herdr cannot say)."""
+        if self.card is not None and self.agent_of(self.card.pane) is not None:
+            return self.card
+        return None
+
+    def close_card(self):
+        self.card = None
+
+    def set_screen(self, screen):
+        """A fresh read of the open card's pane; ignored for any other pane."""
+        if self.card is not None and screen.pane == self.card.pane:
+            self.card.screen = screen
+
+    def interrupt_route(self, agent):
+        """How Interrupt reaches agent: ("firstmate", task id) for a firstmate
+        task, ("keys", keys) through Herdr for another agent whose harness
+        the keymap knows, or (None, why it cannot)."""
+        task = self.task(agent)
+        if task is not None:
+            return "firstmate", task.id
+        if self.firstmate and self.bearings is None:
+            return None, "firstmate unreadable" if self.firstmate_error else "reading firstmate…"
+        keys = interrupt_keys(agent.kind)
+        return ("keys", keys) if keys else (None, "no interrupt known for %s" % agent.kind)
 
     # --- the messages --------------------------------------------------------
 
@@ -106,9 +152,18 @@ class Fleet:
 
     def page(self):
         blocked = self.counts().get("blocked", 0)
-        widgets, rows = self._widgets()
+        card = self.shown_card()
+        if card is not None:
+            agent = self.agent_of(card.pane)
+            self._panes = {}
+            route, why = self.interrupt_route(agent)
+            widgets = card.widgets(self.name(agent), agent, (True, None) if route else (False, why))
+            columns, rows = cards.COLUMNS, cards.ROWS
+        else:
+            widgets, rows = self._widgets()
+            columns = COLUMNS
         msg = {"op": "page", "page": PAGE, "title": "Agents", "text": clip(self.summary(), MAX_TILE_TEXT)}
-        msg.update({"tone": self.tone(), "columns": COLUMNS, "rows": rows, "widgets": widgets})
+        msg.update({"tone": self.tone(), "columns": columns, "rows": rows, "widgets": widgets})
         if blocked:
             msg["badge"] = clip(str(blocked), MAX_BADGE)
         return msg
@@ -191,8 +246,7 @@ class Fleet:
         line = [agent.kind, agent.state]
         if task and task.doing:
             line.append(task.doing)
-        name = task.id if task else os.path.basename((agent.cwd or "").rstrip("/")) or agent.kind
-        widget = {"id": wid, "label": clip(name, MAX_LABEL)}
+        widget = {"id": wid, "label": clip(self.name(agent), MAX_LABEL)}
         widget["text"] = clip(" · ".join(line), MAX_TEXT)
         widget["tone"] = STATE_TONES.get(agent.state, "neutral")
         return widget
