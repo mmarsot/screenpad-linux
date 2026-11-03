@@ -159,4 +159,4 @@ The bridge presents a portrait 1080x1920 mode. In **Settings > Displays**:
 
 mutter saves this to `~/.config/monitors.xml` and restores it whenever the ScreenPad appears. To get the same layout on the login screen, copy that file to `/var/lib/gdm3/.config/monitors.xml` (owner `gdm`).
 
-GNOME composites on the Intel GPU and copies each frame to the NVIDIA output. That costs some CPU/GPU time and memory bandwidth; check `top` once the panel is on if your machine has little RAM to spare.
+GNOME composites on the Intel GPU and copies each frame to the NVIDIA output. That costs some CPU/GPU time and memory bandwidth; check `top` once the panel is on if your machine has little RAM to spare. The copy covers only what changed, so a bad copy can stay on the panel as noise until that area is drawn again; the touch bar's extension repaints the whole ScreenPad now and then to clear it (see [the repaint safeguard](touchbar.md#the-repaint-safeguard)).

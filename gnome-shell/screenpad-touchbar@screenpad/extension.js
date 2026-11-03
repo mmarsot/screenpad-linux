@@ -19,6 +19,10 @@
 //   shows those with buttons as cards;
 // - draws the pages below the bar (pages.js): the touchpad page's black
 //   screensaver and the apps page, as the scene says;
+// - repaints the whole ScreenPad monitor once its content settles, on
+//   display events and now and then (safeguard.js, when in repaint.js), so
+//   mutter's damage-only copy into the NVIDIA GPU's buffers never leaves a
+//   bad copy on the panel;
 // - takes apps dropped on the bar (from the dock or the app grid) and has
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
@@ -27,8 +31,9 @@
 //
 // What it agrees on with the daemon is in contract.js, and where tiles go
 // in scene.js; both are plain modules the tests run. tiles.js builds one
-// tile's actors, pages.js the pages below the bar. This file does the rest of what needs GNOME Shell: the
-// bar and its strut, files, D-Bus, drag and drop.
+// tile's actors, pages.js the pages below the bar. This file does the rest
+// of what needs GNOME Shell: the bar and its strut, files, D-Bus, drag and
+// drop.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -56,6 +61,7 @@ import {
 import {CLICK_NAME, Clicker} from './feedback.js';
 import {NotificationMirror} from './notifications.js';
 import {Pages} from './pages.js';
+import {RepaintSafeguard} from './safeguard.js';
 import {
     badgeBox,
     barGeometry,
@@ -100,14 +106,16 @@ export default class ScreenpadTouchbar extends Extension {
             logError(e, 'screenpad-touchbar: sound');
             this._clicker = null;
         }
+        this._safeguard = new RepaintSafeguard();
 
         this._fileMonitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
         this._fileMonitor.connect('changed', (_monitor, file, other) => {
             if ([file, other].some(f => f && f.get_basename() === STATE_NAME)) this._load();
         });
-        this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () =>
-            this._sync(),
-        );
+        this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => {
+            this._sync();
+            this._safeguard.request();
+        });
         // The daemon's unit removes the file when it stops; this catches a
         // daemon killed outside systemd.
         this._aliveId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, 3, () => {
@@ -178,6 +186,8 @@ export default class ScreenpadTouchbar extends Extension {
         Main.layoutManager.disconnect(this._monitorsChangedId);
         this._fileMonitor.cancel();
         this._fileMonitor = null;
+        this._safeguard.destroy();
+        this._safeguard = null;
         this._pages.release();
         this._pages = null;
         this._clicker = null;
@@ -244,6 +254,7 @@ export default class ScreenpadTouchbar extends Extension {
         if (!monitor) {
             this._pages.update(null, null, null, 0);
             this._destroyBar();
+            this._safeguard.update(null);
             this._announce();
             return;
         }
@@ -262,6 +273,7 @@ export default class ScreenpadTouchbar extends Extension {
         });
         this._highlight(this._drop);
         this._pages.update(state, monitor, this._bar, this._drawn?.own ?? 0);
+        this._safeguard.update(this._bar ? monitor : null);
         this._announce();
     }
 
