@@ -39,7 +39,7 @@ All of them refuse to run on any machine other than the UX480FD. Everything exce
 | `screenpad off` | The rollback: reset override / runtime `edid_firmware` entry, `detect`, darken. |
 | `screenpad replug` | Connector off, 1 s, EDID, connector on, wait for a compositor to enable it, light. Used after resume. `--if-active` makes it do nothing unless `on` ran since boot; `--keep-dark` darkens instead of lighting when `dark` had turned the panel off (`bl_power` reads 0 while it is on), which the resume hook uses so Fn+F6's choice survives a suspend. |
 | `screenpad light` | Lights the panel again after `dark` (the same two `bl_power` writes as `on`), leaving the connector and the EDID alone. Refuses unless `on` ran. |
-| `screenpad dark` | Darkens the panel (`bl_power` 0 and a `brightness` rewrite), leaving the connector forced on and the ScreenPad on: GNOME keeps the monitor, the touch bar lets go of the touchpad. |
+| `screenpad dark` | Turns the panel's backlight off (`bl_power` 0 and a `brightness` rewrite), leaving the connector forced on and the ScreenPad on: the monitor stays connected and driven by the GPU, GNOME keeps it as a monitor, and the touch bar lets go of the touchpad. `sudo screenpad off` disconnects it. |
 | `screenpad grub [show]` | Prints the exact `/etc/default/grub` line before and after, and how to apply or remove it. Writes nothing. |
 | `screenpad grub apply` | Adds `drm.edid_firmware=HDMI-A-2:screenpad/edid.bin` to `GRUB_CMDLINE_LINUX_DEFAULT`, keeps a copy of the original as `/etc/default/grub.screenpad-backup`, runs `update-grub`. Takes effect at the next boot. |
 | `screenpad grub remove` | Deletes exactly that parameter again and runs `update-grub`. |

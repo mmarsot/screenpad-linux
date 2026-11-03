@@ -76,21 +76,19 @@ class FakeSetting:
 
 
 class FakePanel(Panel):
-    """The panel, with 'screenpad light' and 'dark' done at once (or failing)."""
+    """The panel, with 'screenpad light' and 'dark' done at once."""
 
     def __init__(self, lit=True):
         super().__init__(power="/nonexistent", command=["false"])
         self.is_lit = lit
         self.ran = []
-        self.fail = False
 
     def lit(self):
         return self.is_lit
 
     def spawn(self, on):
         self.ran.append("light" if on else "dark")
-        if not self.fail:
-            self.is_lit = on
+        self.is_lit = on
 
 
 class Clock:
@@ -189,32 +187,14 @@ class CycleTests(unittest.TestCase):
         self.assertEqual(self.state(), PAD_ONLY)
         self.assertEqual(self.setting.written, [])
 
-    def test_a_touchpad_turned_off_elsewhere_darkens_the_display_once(self):
-        self.panel.fail = True
+    def test_a_touchpad_turned_off_elsewhere_leaves_the_display_alone(self):
         self.setting.change("disabled")  # the Settings panel, no key
         self.toggle.readable([self.setting.fd()])
         self.toggle.tick()
-        self.toggle.tick()
-        self.assertEqual(self.panel.ran, ["dark"])
-        # Turned back on there, the display stays as it is: state (2).
-        self.panel.fail = False
-        self.panel.is_lit = False
-        self.setting.change("enabled")
-        self.toggle.readable([self.setting.fd()])
-        self.toggle.tick()
-        self.assertEqual(self.state(), PAD_ONLY)
-        self.assertEqual(self.panel.ran, ["dark"])
-
-    def test_a_display_lit_with_the_touchpad_off_is_darkened(self):
-        # A reboot or 'screenpad on' with the touchpad left off in GNOME.
-        os.unlink(self.flag)
-        self.make(value="disabled", lit=False)
-        self.panel.is_lit = True
-        self.toggle.tick()
         self.assertEqual(self.panel.ran, [])
-        open(self.flag, "w").close()
-        self.toggle.tick()
-        self.assertEqual(self.state(), BOTH_OFF)
+        # The next press goes on from (touchpad off, display on): state (2).
+        self.press()
+        self.assertEqual(self.state(), PAD_ONLY)
 
     def test_nothing_while_the_screenpad_is_off(self):
         os.unlink(self.flag)

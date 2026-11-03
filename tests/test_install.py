@@ -68,6 +68,39 @@ class InstallTests(Base):
         with open(self.s.p("var/lib/screenpad/edid.bin"), "wb") as f:
             f.write(tsb_edid())
 
+    def resume(self, active):
+        """Run the installed resume hook with 'post', systemd-run stubbed; its calls."""
+        flag = os.path.join(self.tmp.name, "active")
+        if active:
+            open(flag, "w").close()
+        runs = os.path.join(self.tmp.name, "systemd-run.calls")
+        stub = os.path.join(self.bin, "systemd-run")
+        with open(stub, "w") as f:
+            f.write('#!/bin/sh\necho "$*" >> "%s"\n' % runs)
+        os.chmod(stub, 0o755)
+        env = dict(os.environ, PATH=self.path, SCREENPAD_ACTIVE_FLAG=flag)
+        r = subprocess.run(
+            ["sh", self.s.p("usr/lib/systemd/system-sleep/screenpad"), "post"], env=env, capture_output=True, text=True
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        try:
+            with open(runs) as f:
+                return [line.split() for line in f]
+        except FileNotFoundError:
+            return []
+
+    def test_resume_keeps_a_darkened_display_dark(self):
+        # docs/install.md: after resume the hook queues 'screenpad replug
+        # --if-active --keep-dark', so a display Fn+F6 turned off stays dark.
+        self.saved()
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.resume(active=False), [])
+        (argv,) = self.resume(active=True)
+        self.assertIn("--property=After=nvidia-resume.service", argv)
+        tail = argv[argv.index("/usr/local/sbin/screenpad") :]
+        self.assertEqual(tail[:4], ["/usr/local/sbin/screenpad", "replug", "--if-active", "--keep-dark"])
+
     def test_install_copies_the_edid_to_firmware(self):
         self.saved()
         r = self.install()
@@ -83,8 +116,6 @@ class InstallTests(Base):
         ):
             self.assertTrue(os.path.exists(self.s.p(rel)), rel)
         self.assertFalse(os.path.exists(self.s.p("etc/initramfs-tools/hooks/screenpad")))
-        # After resume, a display Fn+F6 turned off stays dark.
-        self.assertIn(b"replug --if-active --keep-dark", self.s.read("usr/lib/systemd/system-sleep/screenpad"))
         self.assertEqual(
             self.called(),
             [

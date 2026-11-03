@@ -1,6 +1,5 @@
 """The on, replug, off, light, dark, capture-edid and status commands."""
 
-import errno
 import os
 
 from . import system
@@ -120,10 +119,6 @@ def panel_access(env, action):
             "%s: run as root, or let the input group write the backlight with the udev rule "
             "install.sh installs (70-screenpad-backlight.rules)" % e
         )
-    except OSError as e:
-        if e.errno != errno.EACCES:
-            raise
-        raise ScreenpadError(str(e))
 
 
 def cmd_light(env, args):

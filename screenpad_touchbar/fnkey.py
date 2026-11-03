@@ -6,13 +6,12 @@ counted: it is read from GNOME's touchpad setting (send-events, followed with
 'gsettings monitor') and the panel's backlight (bl_power), and a press goes
 from what they say now. GNOME flips the setting on every press itself
 (gsd-media-keys), so the daemon lets it and writes the setting back only for
-the step that keeps the touchpad on, (2) to (3). Without a press, a touchpad
-turned off any other way (Settings, a reboot with it off) darkens the display
-too, so state (1) is the only one with the touchpad off. The display is lit and
-darkened by 'screenpad light' and 'screenpad dark', which the udev rule lets
-the input group run. The daemon grabs the touchpad only while the display is
-on, so in (1) and (2) the bar draws nothing and the ScreenPad is a plain
-touchpad.
+the step that keeps the touchpad on, (2) to (3). Only presses change the
+display. "Display off" is the ScreenPad's backlight off: 'screenpad light' and
+'screenpad dark', which the udev rule lets the input group run, leave the
+connector on, so the GPU still drives it and GNOME keeps it as a monitor. The
+daemon grabs the touchpad only while the display is on, so in (1) and (2) the
+bar draws nothing and the ScreenPad is a plain touchpad.
 """
 
 import os
@@ -292,9 +291,6 @@ class Toggle:
         self.hotkey: Hotkey | None = None
         self.hotkey_at = 0.0
         self.pending: Pending | None = None
-        # The (touchpad, display) last looked at, so a touchpad turned off
-        # darkens the display once, not again after a failed 'screenpad dark'.
-        self.seen: tuple[bool, bool] | None = None
 
     def screenpad_on(self):
         return os.path.exists(self.flag)
@@ -356,16 +352,6 @@ class Toggle:
             if touchpad_on(self.setting.value) != pending.target[0]:
                 self.setting.set(ON if pending.target[0] else OFF)
             self.panel.set(pending.target[1])
-        if self.pending:
-            return
-        if not self.screenpad_on() or self.setting.value is None:
-            self.seen = None
-            return
-        state = (touchpad_on(self.setting.value), self.panel.lit())
-        if state != self.seen:
-            self.seen = state
-            if not state[0] and state[1]:
-                self.panel.set(False)
 
     def deadline(self):
         times = [self.pending.deadline] if self.pending else []

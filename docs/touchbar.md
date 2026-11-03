@@ -51,7 +51,7 @@ Resizing and shortcuts write to `~/.config/screenpad/touchbar.toml`. The daemon 
 
 ## Fn+F6: touchpad and display
 
-Fn+F6, the laptop's touchpad key, turns the ScreenPad's display on and off as well as the touchpad. Each press goes one step round three states:
+Fn+F6, the laptop's touchpad key, turns the ScreenPad's display on and off as well as the touchpad. "Display off" means the ScreenPad's backlight off: the monitor stays connected and driven by the GPU, and GNOME keeps it as a monitor (`sudo screenpad off` disconnects it). Each press goes one step round three states:
 
 | State | Touchpad | ScreenPad display | The panel |
 |---|---|---|---|
@@ -59,15 +59,15 @@ Fn+F6, the laptop's touchpad key, turns the ScreenPad's display on and off as we
 | 2 | on | off | dark, and the whole panel is a plain touchpad: no bar, no pages |
 | 3 | on | on | the bar and the pages, as above |
 
-From 3 a press goes to 1, from 1 to 2, from 2 to 3. Nothing counts presses: the daemon reads where you are from GNOME's touchpad setting (`org.gnome.desktop.peripherals.touchpad send-events`) and the ScreenPad's backlight (`bl_power` 4 is lit), and a press goes on from there. So the cycle stays right after anything else changes them:
+From 3 a press goes to 1, from 1 to 2, from 2 to 3. Nothing counts presses: the daemon reads where you are from GNOME's touchpad setting (`org.gnome.desktop.peripherals.touchpad send-events`) and the ScreenPad's backlight (`bl_power` 4 is lit), and a press goes on from there. Only presses change the display, and the cycle stays right after anything else changes them:
 
-- **The touchpad turned off elsewhere** (Settings > Mouse & Touchpad, or a reboot with it left off) turns the display off too: state 1 is the only one with the touchpad off. Turned back on there, the display stays off (state 2); Fn+F6 lights it.
-- **Resume** keeps a display Fn+F6 turned off dark (the resume hook runs `screenpad replug --keep-dark`). **A reboot** lights it again with `screenpad on`, then, if the touchpad is off, the daemon darkens it.
+- **The touchpad turned off elsewhere** (Settings > Mouse & Touchpad, or a reboot with it left off) leaves the display as it is; the next press goes to state 2.
+- **Resume** keeps a display Fn+F6 turned off dark (the resume hook runs `screenpad replug --keep-dark`). **A reboot** lights it again with `screenpad on`.
 - **GNOME toggles the touchpad on every press itself** (gsd-media-keys), and the daemon lets it: for 3 to 1 and 1 to 2 that is the right step. Only from 2 to 3, where the touchpad stays on, does the daemon set it back on once GNOME has turned it off, so for that press GNOME's on-screen icon shows the touchpad off for a moment. If GNOME does not handle the key, the daemon sets the touchpad itself after 1 s.
 
 **While the display is off** the daemon lets go of the touchpad, as after `screenpad off`, so the extension draws nothing: no bar, no screensaver, no clock, and no repaints. Touches go straight to GNOME as a plain touchpad (state 2) or nowhere (state 1). The daemon itself only looks at the backlight once a second, as it already looks for `screenpad on`. The panel's backlight is off, but the NVIDIA GPU still drives the ScreenPad output and GNOME keeps it as a monitor (windows on it stay there, the pointer can still go there); `sudo screenpad off` turns that off too.
 
-How it reaches the daemon: asus-nb-wmi sends Fn+F6 as `KEY_TOUCHPAD_TOGGLE` on the `Asus WMI hotkeys` input device. The daemon reads that device without grabbing it, so GNOME and every other key there are unaffected, and needs group `input` for it, as for the touchpad. It follows the touchpad setting with `gsettings monitor`, and lights and darkens the panel with `screenpad light` and `screenpad dark` (see the [display commands](display.md#commands)), which install.sh's udev rule lets group `input` run without root. All of this works only while the touch bar daemon runs and the ScreenPad is on; otherwise Fn+F6 only toggles the touchpad, as before. `screenpad-touchbar status` says on its `fn+f6:` line whether it can. The logic is `screenpad_touchbar/fnkey.py`.
+How it reaches the daemon: asus-nb-wmi sends Fn+F6 as `KEY_TOUCHPAD_TOGGLE` on the `Asus WMI hotkeys` input device. The daemon reads that device without grabbing it, so GNOME and every other key there are unaffected, and needs group `input` for it, as for the touchpad. It follows the touchpad setting with `gsettings monitor`, and lights and darkens the panel with `screenpad light` and `screenpad dark` (see the [display commands](display.md#commands)), which install.sh's udev rule lets group `input` run without root. All of this works only while the touch bar daemon runs and the ScreenPad is on; otherwise Fn+F6 only toggles the touchpad, as before. The logic is `screenpad_touchbar/fnkey.py`.
 
 ## Commands
 
@@ -83,7 +83,7 @@ It writes the default config to `~/.config/screenpad/touchbar.toml` if there is 
 |---|---|
 | `screenpad-touchbar on` | as above |
 | `screenpad-touchbar off` | stops and disables the user unit; the plain touchpad comes back at once |
-| `screenpad-touchbar status` | config, touchpad node, ScreenPad on/off, `/dev/uinput` access, whether Fn+F6 can cycle the display, unit and daemon state, the page shown |
+| `screenpad-touchbar status` | config, touchpad node, ScreenPad on/off, `/dev/uinput` access, unit and daemon state, the page shown |
 | `screenpad-touchbar check` | validates the config and lists every spot |
 | `screenpad-touchbar shortcut list\|add APP [--spot N]\|remove N` | the shortcuts, from a terminal |
 | `screenpad-touchbar probe` | prints where touches land (panel pixels, bar or pad, which spot) without grabbing; stop the daemon first (`screenpad-touchbar off`), whose grab keeps every other reader from seeing touches |
@@ -99,7 +99,7 @@ Start with `screenpad-touchbar status`. It shows the config, the touchpad node, 
 | Symptom | Cause and fix |
 |---|---|
 | No bar at all, touchpad normal | The bar runs only while the ScreenPad is on (`screenpad: off` in `status`): `sudo screenpad on`. If the ScreenPad is dark but on, Fn+F6 turned its display off ([state 2](#fnf6-touchpad-and-display)): press Fn+F6. Otherwise check `unit:` and `daemon:` in `status`, and `journalctl --user -u screenpad-touchbar` |
-| Fn+F6 only toggles the touchpad | The `fn+f6:` line of `status` says why: no hotkeys device, not in group `input`, or the backlight not writable (re-run `sudo ./install.sh`, which installs the udev rule). The daemon logs a failed `screenpad light` or `dark` in `journalctl --user -u screenpad-touchbar` |
+| Fn+F6 only toggles the touchpad | `journalctl --user -u screenpad-touchbar` logs a hotkeys device it cannot read (not in group `input`), a touchpad setting it cannot follow, or a failed `screenpad light` or `dark` (the backlight not writable: re-run `sudo ./install.sh`, which installs the udev rule) |
 | `touchpad: … not readable` | Your user is not in group `input`: `sudo usermod -aG input $USER`, then log out and in |
 | `uinput: not writable` | The udev rule is missing or you are not the user at the seat: re-run `sudo ./install.sh`, then log out and in |
 | Bar drawn but the extension is missing after install | GNOME loads new extension code only at login: log out and in once. `gnome-extensions info screenpad-touchbar@screenpad` should say `State: ACTIVE` |

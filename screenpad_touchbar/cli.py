@@ -38,7 +38,6 @@ from .config_edit import add_shortcut, edit_config, migrate_config
 from .daemon import Daemon
 from .defaults import EXAMPLE_CONFIG
 from .devices import Source, find_source
-from .fnkey import BL_POWER, HOTKEYS_NAME, find_hotkeys
 from .splitter import BAR, PAD, Splitter
 
 
@@ -152,7 +151,6 @@ def cmd_status(args):
         % ("on (%s)" % ACTIVE_FLAG if os.path.exists(ACTIVE_FLAG) else "off; the bar waits for 'screenpad on'")
     )
     print("uinput: %s" % ("writable" if os.access("/dev/uinput", os.W_OK) else "not writable"))
-    print("fn+f6: %s" % fn_key_status())
     r = subprocess.run(["systemctl", "--user", "is-active", UNIT], capture_output=True, text=True)
     print("unit: %s %s" % (UNIT, r.stdout.strip() or "unknown"))
     try:
@@ -168,18 +166,6 @@ def cmd_status(args):
     except (OSError, ValueError, KeyError):
         print("daemon: not running")
     return 0
-
-
-def fn_key_status():
-    """Whether Fn+F6 can cycle the display: the hotkeys readable, the backlight writable."""
-    hotkeys = find_hotkeys()
-    if not hotkeys:
-        return "no %s device; it only toggles the touchpad" % HOTKEYS_NAME
-    if not os.access(hotkeys, os.R_OK):
-        return "%s not readable: add your user to group input and log in again" % hotkeys
-    if not os.access(BL_POWER, os.W_OK):
-        return "%s not writable: install.sh's udev rule lets the input group write it" % BL_POWER
-    return "cycles the touchpad and the display (%s)" % hotkeys
 
 
 def cmd_probe(args):

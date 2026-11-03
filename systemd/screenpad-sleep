@@ -5,9 +5,10 @@
 # Hooks run inside systemd-suspend.service, before nvidia-resume.service has
 # brought the GPU back, and their children are killed when it finishes. So
 # queue the replug as its own transient unit ordered after nvidia-resume.
+# SCREENPAD_ACTIVE_FLAG names another active flag, for the tests.
 case "$1" in
 post)
-    [ -e /run/screenpad/active ] || exit 0
+    [ -e "${SCREENPAD_ACTIVE_FLAG:-/run/screenpad/active}" ] || exit 0
     systemd-run --no-block --collect --quiet \
         --unit="screenpad-replug-$(date +%s)" \
         --property=After=nvidia-resume.service \

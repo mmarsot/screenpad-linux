@@ -26,5 +26,5 @@ Read first:
 
 ## Tests
 
-- The `install.sh` tests in `tests/test_install.py` run it against a fake root (`DESTDIR`) with stub `id`, `systemctl`, `lsinitramfs`, `update-initramfs` and `udevadm` first on `PATH`: install, the programs (links, packages, and the installed commands running in isolated mode, the extension's `CLI_FALLBACK` among them), the touch bar's files and the backlight rule, the agent app installed off, the initramfs case, uninstall refusing while GRUB loads the EDID, uninstall and purge. They are skipped when run as root.
+- The `install.sh` tests in `tests/test_install.py` run it against a fake root (`DESTDIR`) with stub `id`, `systemctl`, `lsinitramfs`, `update-initramfs` and `udevadm` first on `PATH`: install, the programs (links, packages, and the installed commands running in isolated mode, the extension's `CLI_FALLBACK` among them), the touch bar's files and the backlight rule, the installed resume hook run with a stub `systemd-run` (`SCREENPAD_ACTIVE_FLAG` points it at a test flag), the agent app installed off, the initramfs case, uninstall refusing while GRUB loads the EDID, uninstall and purge. They are skipped when run as root.
 - Never run `install.sh` on the machine you work on to test a change; the fake root covers it.
