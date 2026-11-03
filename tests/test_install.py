@@ -3,6 +3,7 @@ on PATH. Skipped when run as root.
 
 Run with: python3 -m unittest discover -s tests"""
 
+import configparser
 import os
 import shutil
 import subprocess
@@ -21,6 +22,8 @@ class InstallTests(Base):
         "usr/lib/systemd/user/screenpad-touchbar.service",
         "usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad",
         "etc/udev/rules.d/70-screenpad-uinput.rules",
+        "usr/local/bin/screenpad-agents",
+        "usr/lib/systemd/user/screenpad-agents.service",
     )
 
     def setUp(self):
@@ -114,6 +117,33 @@ class InstallTests(Base):
         # The touch bar is the user's to turn on; install never enables it.
         self.assertNotIn(["systemctl", "--user"], self.called())
 
+    def test_install_the_agent_app_off(self):
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        unit = self.s.read("usr/lib/systemd/user/screenpad-agents.service")
+        self.assertEqual(unit, repo_file("systemd/screenpad-agents.service"))
+        parsed = configparser.ConfigParser(interpolation=None, strict=False)
+        parsed.optionxform = str  # type: ignore[assignment,method-assign]  # systemd keys are case-sensitive
+        parsed.read_string(unit.decode())
+        self.assertEqual(parsed["Unit"]["ConditionPathExists"], "%E/screenpad/agents.toml")
+        self.assertEqual(parsed["Service"]["ExecStart"], "/usr/local/bin/screenpad-agents run")
+        self.assertEqual(parsed["Service"]["Restart"], "on-failure")
+        self.assertEqual(parsed["Service"]["RestartPreventExitStatus"], "2")
+        # Installed but off: nothing enables or starts it, and without its
+        # config the command refuses to run.
+        self.assertIn("Agent app: installed but off", r.stdout)
+        self.assertNotIn("screenpad-agents", " ".join(" ".join(c) for c in self.called()))
+        env = dict(os.environ, XDG_CONFIG_HOME=self.s.p("home/config"), XDG_RUNTIME_DIR=self.tmp.name)
+        run = subprocess.run(
+            [sys.executable, "-I", self.s.p("usr/local/bin/screenpad-agents"), "run"],
+            cwd=self.tmp.name,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("agents.toml does not exist", run.stderr)
+
     def test_install_programs(self):
         # An earlier version installed the programs as single files, and a
         # module it had must not linger in the package.
@@ -125,11 +155,12 @@ class InstallTests(Base):
         for link, script in (
             ("usr/local/sbin/screenpad", "screenpad.py"),
             ("usr/local/bin/screenpad-touchbar", "touchbar.py"),
+            ("usr/local/bin/screenpad-agents", "agents.py"),
         ):
             self.assertEqual(os.readlink(self.s.p(link)), "../lib/screenpad/" + script)
             self.assertEqual(self.s.read("%s/%s" % (lib, script)), repo_file(script))
             self.assertTrue(os.access(self.s.p(lib, script), os.X_OK))
-        for pkg in ("screenpad_display", "screenpad_touchbar"):
+        for pkg in ("screenpad_display", "screenpad_touchbar", "screenpad_agents"):
             modules = sorted(n for n in os.listdir(os.path.join(REPO, pkg)) if n.endswith(".py"))
             self.assertEqual(sorted(os.listdir(self.s.p(lib, pkg))), modules)
             for name in modules:
@@ -139,6 +170,7 @@ class InstallTests(Base):
         for link, prog in (
             ("usr/local/sbin/screenpad", "screenpad"),
             ("usr/local/bin/screenpad-touchbar", "screenpad-touchbar"),
+            ("usr/local/bin/screenpad-agents", "screenpad-agents"),
         ):
             run = subprocess.run(
                 [sys.executable, "-I", self.s.p(link), "--help"], cwd=self.tmp.name, capture_output=True, text=True

@@ -1,0 +1,19 @@
+[Unit]
+Description=ScreenPad agent app (Herdr's agents and firstmate's Captain's Calls on the touch bar)
+Documentation=file:/usr/local/share/doc/screenpad/docs/agents.md
+# A client of the touch bar's socket, in the graphical session. Installed but
+# never enabled by install.sh: it does nothing until you write its config and
+# enable it ('systemctl --user enable --now screenpad-agents').
+PartOf=graphical-session.target
+After=graphical-session.target screenpad-touchbar.service
+ConditionPathExists=%E/screenpad/agents.toml
+
+[Service]
+ExecStart=/usr/local/bin/screenpad-agents run
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=2
+MemoryMax=64M
+
+[Install]
+WantedBy=graphical-session.target
