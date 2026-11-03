@@ -1,11 +1,14 @@
 """Tests for Fn+F6's cycle (screenpad_touchbar/fnkey.py): the state mapping, the
 cycle against a GNOME that flips the setting on each press, a touchpad turned
 off elsewhere, what the scene says of it for the "ScreenPad on" indicator, the
-hotkeys device, the gsettings and screenpad commands through stubs, and the
-daemon grabbing only while the display is on. No root, no hardware, no GNOME.
+hotkeys device, the gsettings and screenpad commands through stubs, the
+daemon grabbing only while the display is on, and the touchpad's tool types
+reset whenever libinput reads it again. No root, no hardware, no GNOME.
 
 Run with: python3 -m unittest discover -s tests"""
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -13,7 +16,7 @@ import time
 import unittest
 from unittest import mock
 
-from touchbar_support import ConfigHome, FakePanel, FakeSetting, config, hotkey
+from touchbar_support import AXES, ConfigHome, FakePanel, FakeSetting, config, hotkey
 
 from screenpad_touchbar import fnkey
 from screenpad_touchbar.codes import EV_KEY, EV_SYN, INPUT_EVENT, KEY_TOUCHPAD_TOGGLE
@@ -30,6 +33,8 @@ from screenpad_touchbar.fnkey import (
     parse_value,
     touchpad_on,
 )
+from screenpad_touchbar.keys import KeyEmitter
+from screenpad_touchbar.splitter import Splitter
 
 # The cycle, as (touchpad, display): (1) both off, (2) the touchpad only, (3) both.
 BOTH_OFF, PAD_ONLY, BOTH_ON = (False, False), (True, False), (True, True)
@@ -369,6 +374,82 @@ class DaemonTests(unittest.TestCase):
             Daemon(config(), None, flag=flag).publish()
             with open(state_path()) as f:
                 self.assertIsNone(json.load(f)["fnkey"])
+
+    def test_letting_go_resets_the_tool_types_first(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d):
+            daemon = Daemon(config(), None)
+            calls = []
+
+            class Grabbed:
+                """The grabbed touchpad, as deactivate() uses it."""
+
+                grabbed = True
+
+                def touching(self):
+                    return False
+
+                def reset_tools(self):
+                    calls.append("reset")
+
+                def grab(self, on):
+                    calls.append("grab %s" % on)
+
+                def close(self):
+                    calls.append("close")
+
+            daemon.source = Grabbed()  # type: ignore[assignment]  # stands in for the parts deactivate() uses
+            daemon.splitter = Splitter(AXES, 5, daemon._zone)
+            daemon.bar = daemon.new_bar(KeyEmitter(lambda ev: None))
+            with contextlib.redirect_stderr(io.StringIO()):
+                daemon.deactivate("the display off")
+            # While the grab still keeps it from libinput.
+            self.assertEqual(calls, ["reset", "grab False", "close"])
+
+    def test_the_touchpad_turned_on_with_no_grab_resets_the_tool_types(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d):
+            flag = os.path.join(d, "active")
+            open(flag, "w").close()
+            setting = FakeSetting("disabled")  # (1): both off
+            self.addCleanup(setting.stop)
+            toggle = Toggle(setting, FakePanel(lit=False), find=lambda: None, flag=flag)
+            daemon = Daemon(config(), None, device="/dev/input/event5", flag=flag, toggle=toggle)
+            rounds = []
+
+            def select(r, _w, _x, _timeout):
+                rounds.append(len(resets))
+                if len(rounds) == 2:
+                    setting.flip()  # Fn+F6: GNOME turns the touchpad on, (2)
+                daemon.stop = len(rounds) == 4
+                return [setting.fd()] if len(rounds) == 2 else [], [], []
+
+            def activate():
+                raise AssertionError("no grab while the display is off")
+
+            resets = []
+            with (
+                mock.patch("screenpad_touchbar.daemon.select.select", select),
+                mock.patch("screenpad_touchbar.daemon.reset_tools", resets.append),
+                mock.patch.object(daemon, "activate", activate),
+            ):
+                daemon.loop()
+            # Not at the start; once, as GNOME's flip is read; not again.
+            self.assertEqual(rounds, [0, 0, 1, 1])
+            self.assertEqual(resets, ["/dev/input/event5"])
+
+    def test_turned_on_is_off_to_on_once(self):
+        setting = FakeSetting(None)  # not read yet
+        self.addCleanup(setting.stop)
+        toggle = Toggle(setting, FakePanel(), find=lambda: None, flag="/nonexistent")
+        seen = []
+        for value in (None, "enabled", "disabled", "disabled", "enabled", "enabled", "disabled-on-external-mouse"):
+            setting.value = value
+            seen.append(toggle.turned_on())
+        self.assertEqual(seen, [False, False, False, False, True, False, False])
+        # From off to on with no call between still counts.
+        setting.value = "disabled"
+        toggle.turned_on()
+        setting.value = "disabled-on-external-mouse"
+        self.assertTrue(toggle.turned_on())
 
     def test_the_hotkey_device_is_retried_quietly(self):
         clock = Clock()

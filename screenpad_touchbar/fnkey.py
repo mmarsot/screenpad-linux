@@ -297,6 +297,9 @@ class Toggle:
         # Presses that lit the display since the daemon started: the
         # extension shows "ScreenPad on" each time this goes up.
         self.lit = 0
+        # The touchpad setting at the last turned_on(): on, off, or None
+        # while not known.
+        self.was_on: bool | None = None
 
     def screenpad_on(self):
         return os.path.exists(self.flag)
@@ -304,6 +307,13 @@ class Toggle:
     def display_on(self):
         """Whether the bar should be up: the display lit, or about to be."""
         return self.panel.wanted()
+
+    def turned_on(self):
+        """Whether GNOME's touchpad setting went from off to on since the
+        last call: (1) to (2), when libinput reads the touchpad again."""
+        on = None if self.setting.value is None else touchpad_on(self.setting.value)
+        turned, self.was_on = on is True and self.was_on is False, on
+        return turned
 
     def lights_next(self):
         """Whether the next press lights the display: state (2), with the

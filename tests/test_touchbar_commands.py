@@ -1,4 +1,4 @@
-"""Tests for the commands (shortcut, status), finding the touchpad, and the monitor identity.
+"""Tests for the commands (shortcut, status), finding the touchpad, resetting its tool types, and the monitor identity.
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests"""
 
@@ -14,13 +14,24 @@ from touchbar_support import ConfigHome
 
 from screenpad_touchbar import cli
 from screenpad_touchbar.cli import main
+from screenpad_touchbar.codes import (
+    ABS_MT_SLOT,
+    ABS_MT_TOOL_TYPE,
+    ABS_MT_TRACKING_ID,
+    EV_ABS,
+    EV_SYN,
+    MT_TOOL_FINGER,
+    MT_TOOL_PALM,
+    MT_TOOL_PEN,
+    SYN_REPORT,
+)
 from screenpad_touchbar.common import (
     MONITOR_ID,
     edid_identity,
     monitor_identity,
 )
 from screenpad_touchbar.config import load_config
-from screenpad_touchbar.devices import find_source
+from screenpad_touchbar.devices import find_source, tool_reset
 
 
 class ShortcutCommandTests(unittest.TestCase):
@@ -113,6 +124,103 @@ class SourceDiscoveryTests(unittest.TestCase):
         self.assertIsNone(find_source(self.sys))
         self.add(12, "GDX1505:00 27C6:01F1 Touchpad", "27c6", "01f1")
         self.assertEqual(find_source(self.sys), "/dev/input/event12")
+
+
+# ABS_MT_TOOL_TYPE as the GDX1505 has it: finger to palm.
+TOOL = (0, MT_TOOL_FINGER, MT_TOOL_PALM, 0, 0, 0)
+
+
+class Kernel:
+    """The input core for one multitouch device: it keeps each slot's
+    values and passes an event on only when it changes the value (sending
+    ABS_MT_SLOT just before the first such event of another slot), and
+    only to the reader holding the grab."""
+
+    def __init__(self, nslots=5):
+        self.slots = [{ABS_MT_TRACKING_ID: -1, ABS_MT_TOOL_TYPE: MT_TOOL_FINGER} for _ in range(nslots)]
+        self.staged = self.sent_slot = 0
+        self.grab = None
+        self.read = {"libinput": [], "daemon": []}
+
+    def emit(self, events):
+        passed = []
+        for type, code, value in events:
+            if (type, code) == (EV_ABS, ABS_MT_SLOT):
+                self.staged = value
+                continue
+            if type == EV_ABS:
+                if self.slots[self.staged][code] == value:
+                    continue
+                self.slots[self.staged][code] = value
+                if self.staged != self.sent_slot:
+                    self.sent_slot = self.staged
+                    passed.append((EV_ABS, ABS_MT_SLOT, self.staged))
+            passed.append((type, code, value))
+        for reader in [self.grab] if self.grab else list(self.read):
+            self.read[reader] += passed
+
+    def touch(self, slot, id, tool):
+        """A contact down and up again, as hid-multitouch reports it."""
+        self.emit([(EV_ABS, ABS_MT_SLOT, slot), (EV_ABS, ABS_MT_TRACKING_ID, id), (EV_ABS, ABS_MT_TOOL_TYPE, tool)])
+        self.emit([(EV_ABS, ABS_MT_SLOT, slot), (EV_ABS, ABS_MT_TRACKING_ID, -1)])
+
+    def palm(self, reader):
+        """Whether the reader takes slot 0 for a palm: libinput keeps the
+        last tool type it read for a slot."""
+        slot, palm = 0, False
+        for type, code, value in self.read[reader]:
+            if (type, code) == (EV_ABS, ABS_MT_SLOT):
+                slot = value
+            elif (type, code) == (EV_ABS, ABS_MT_TOOL_TYPE) and slot == 0:
+                palm = value == MT_TOOL_PALM
+        return palm
+
+
+class ToolResetTests(unittest.TestCase):
+    def test_idle_slots_are_left_at_the_pen_in_order(self):
+        self.assertEqual(
+            tool_reset(TOOL, [7, -1, -1, 9, -1]),
+            [
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN),
+                (EV_ABS, ABS_MT_SLOT, 2),
+                (EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN),
+                (EV_ABS, ABS_MT_SLOT, 4),
+                (EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN),
+                (EV_SYN, SYN_REPORT, 0),
+            ],
+        )
+        self.assertEqual(tool_reset(TOOL, [7, 8]), [])  # every slot has a contact
+        self.assertEqual(tool_reset(None, [-1, -1]), [])  # no tool type at all
+        self.assertEqual(tool_reset((0, 0, 0, 0, 0, 0), [-1]), [])  # fingers only: never a palm
+
+    def scenario(self, reset):
+        """Fn+F6's cycle from (2): a palm in slot 0 while libinput reads the
+        touchpad, a finger there while the daemon holds the grab, then a
+        finger after it lets go."""
+        k = Kernel()
+        k.touch(0, 1, MT_TOOL_PALM)  # (2): a palm on the touchpad while typing
+        self.assertTrue(k.palm("libinput"))
+        k.grab = "daemon"  # (3)
+        k.touch(0, 2, MT_TOOL_FINGER)
+        if reset:
+            k.emit(tool_reset(TOOL, [s[ABS_MT_TRACKING_ID] for s in k.slots]))
+        k.grab = None  # (1), then (2)
+        k.touch(0, 3, MT_TOOL_FINGER)
+        return k
+
+    def test_without_the_reset_one_finger_is_a_palm_to_libinput(self):
+        self.assertTrue(self.scenario(reset=False).palm("libinput"))
+
+    def test_with_the_reset_the_next_finger_sends_its_tool(self):
+        k = self.scenario(reset=True)
+        self.assertFalse(k.palm("libinput"))
+        # The reset itself went to the grabbing reader only.
+        self.assertNotIn((EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN), k.read["libinput"])
+        self.assertIn((EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN), k.read["daemon"])
+        # A palm after it still reads as a palm.
+        k.touch(0, 4, MT_TOOL_PALM)
+        self.assertTrue(k.palm("libinput"))
 
 
 class MonitorIdentityTests(unittest.TestCase):
