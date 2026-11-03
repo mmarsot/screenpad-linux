@@ -54,7 +54,7 @@ class TouchbarGone(TouchbarError):
 
 
 class HelloRefused(TouchbarError):
-    """The daemon refused the app's hello: message says why."""
+    """The daemon refused the app's hello: str(e) says why."""
 
 
 class ProtocolMismatch(HelloRefused):
