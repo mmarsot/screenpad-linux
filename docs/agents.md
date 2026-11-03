@@ -155,7 +155,7 @@ A dialog that matches none of this, or one that must never be answered with a ke
 | **No agents** | Herdr reports none in that session; `herdr agent list --session <session>` |
 | An agent shows without its task | firstmate has no Herdr endpoint for that pane in that session; `screenpad-agents show` lists the join |
 | Tapping Captain's Call says **No decisions board open** | firstmate has no Lavish board open: ask it for `/bearings lavish`, then tap again to open it |
-| It says **Decisions board not opened** | the card says which command failed: `lavish-axi` not found by the unit (set `[firstmate] lavish`, above), the desktop's URL handler (`gio open`), or a firstmate checkout without `bin/fm-bearings-board.sh` |
+| It says **Decisions board not opened** | the card says which command failed: `lavish-axi` not found by the unit (set `[firstmate] lavish`, above), the desktop's URL handler (`gio open`, whose own message is in the journal, `journalctl --user -u screenpad-agents`; the card gives its exit code), or a firstmate checkout without `bin/fm-bearings-board.sh` |
 | Captain's Call says **firstmate unreadable** or **(stale)** | the reader failed; the app logs why once (`journalctl --user -u screenpad-agents`) |
 | A blocked agent's card has no answer buttons | Its harness has no keymap, or its screen is not a permission dialog the keymap knows (the card says "answer it in its pane" for a harness with no keymap or an unreadable screen, "no dialog this card knows" for a screen its keymap does not recognise); answer it there, through **Focus** |
 | An answer says **nothing sent** | The dialog or the agent's state changed between the card being drawn and your tap; read the new card and tap again |
