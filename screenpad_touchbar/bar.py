@@ -57,9 +57,13 @@ class Bar:
     A touch keeps what it started on: a button held when a question appears
     stays held, and a touch on a question that goes away does nothing.
     launch(app), remove(index) and resize(height) do the saving and
-    launching; remove and resize return whether they did. tiles has
-    online(name) and event(name, kind, inside); asks has shown(), the shown
-    question's shown_at, choose(ask, option) and dismiss(ask).
+    launching; remove and resize return whether they did. click() is
+    called once for each press the bar accepts, when its action happens: a
+    hold button's touch, and the lift on (or near) a tap button, an app's
+    tile, a shortcut, the dots or an answer; never a slide away, a cancel
+    or the grip. tiles has online(name) and event(name, kind, inside); asks
+    has shown(), the shown question's shown_at, choose(ask, option) and
+    dismiss(ask).
     """
 
     def __init__(
@@ -74,6 +78,7 @@ class Bar:
         tiles=None,
         asks=None,
         pager=None,
+        click=None,
     ):
         self.config = config
         self.keys = keys  # KeyEmitter
@@ -85,6 +90,7 @@ class Bar:
         self.tiles = tiles
         self.asks = asks
         self.pager = pager
+        self.click = click or (lambda: None)
         self.touch = {}  # slot -> Touch
         self.ask_touch = {}  # slot -> AskTouch
         self.preview = None  # the height while the grip moves
@@ -122,6 +128,8 @@ class Bar:
             del self.touch[slot]
             changed = True
             lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py, self.touch_height())
+            if lifted and s.kind != GRIP and not (s.kind == BUTTON and s.item.mode == "hold"):
+                self.click()
             if s.kind == GRIP:
                 if not (kind == "end" and self.preview != self.config.height and self.resize(self.preview)):
                     self.preview = None
@@ -185,6 +193,7 @@ class Bar:
         self.touch[slot] = Touch(i, self.clock())
         if s.kind == BUTTON and s.item.mode == "hold":
             self._fire(s.item, press=True)
+            self.click()
         return True
 
     def _ask_event(self, kind, slot, px, py):
@@ -201,6 +210,7 @@ class Bar:
             return False
         del self.ask_touch[slot]
         if kind == "end" and t.armed and here and self.asks.shown() is t.ask:
+            self.click()
             if t.option == DISMISS:
                 self.asks.dismiss(t.ask)
             else:

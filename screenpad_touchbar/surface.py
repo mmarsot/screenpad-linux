@@ -91,11 +91,13 @@ class Surface:
     own height (where the surface starts), cover() the height the bar
     covers now (taller while a card shows); can_draw() whether the renderer
     draws widgets (WIDGETS_PROTOCOL): without it the page shows only its
-    text, and touches on it do nothing.
+    text, and touches on it do nothing. click() is called for each tap or
+    long press, as the finger lifts on the widget; never for a cancel.
     """
 
-    def __init__(self, apps, pager, top, cover, can_draw, clock=time.monotonic):
+    def __init__(self, apps, pager, top, cover, can_draw, clock=time.monotonic, click=None):
         self.apps, self.pager, self.clock = apps, pager, clock
+        self.click = click or (lambda: None)
         self.top, self.cover, self.can_draw = top, cover, can_draw
         self.open = None  # the app page shown, or None for the home page
         self.presses = {}  # slot -> Press
@@ -225,6 +227,7 @@ class Surface:
 
     def _lifted(self, p):
         spot = p.spot
+        self.click()
         if spot.page is not None:
             self._send(spot, "long" if p.held else "tap")
         elif spot.wid == HOME_WIDGET:
