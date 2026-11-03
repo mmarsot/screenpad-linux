@@ -62,8 +62,9 @@ export function barGeometry(state, monitor) {
     const own = Math.min(Math.round((strutRows * monitor.height) / panelHeight), height);
     const narrowest = Math.min(...state.tiles.map(t => t.width)) * sx;
     const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
-    // The narrow tiles (a glyph: the grip, the page button) do not limit
-    // the icons; the page button's own icon is fitted to it (iconSizeFor).
+    // The narrow tiles (a glyph: the grip, the page button, a card's
+    // Dismiss) do not limit the icons; their own icons are fitted to them
+    // (iconSizeFor).
     const iconWidth = Math.min(...state.tiles.filter(t => !t.glyph).map(t => t.width)) * sx;
     const iconSize = Math.max(
         Math.min(Math.round(own * ICON), Math.round((iconWidth - 2 * inset) * MAX_ICON)),
@@ -120,7 +121,7 @@ export function tileClasses(tile) {
 
 // What a tile shows, in this order of preference: the grip (drawn by its
 // own code), an icon, an app's icon, or text. Any other glyph (the page
-// button) is drawn from its icon.
+// button, a card's Dismiss) is drawn from its icon.
 export function tileContent(tile) {
     if (tile.glyph === 'grip') return 'grip';
     if (tile.icon) return 'icon';

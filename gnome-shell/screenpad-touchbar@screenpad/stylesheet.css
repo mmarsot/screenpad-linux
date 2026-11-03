@@ -115,9 +115,8 @@
     color: #2a2000;
 }
 
-/* A question: its text over the first two spots, its answers sharing the
-   last three, each lighter while a finger is on it. Both keep their
-   wrapped lines off the edges. */
+/* A question: its text, a narrow Dismiss, then its answers, each lighter
+   while a finger is on it. Both keep their wrapped lines off the edges. */
 .screenpad-touchbar-ask-text {
     background-color: #2a2a2e;
     padding: 0 16px;

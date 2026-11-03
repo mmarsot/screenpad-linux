@@ -14,11 +14,11 @@ from touchbar_support import CONFIG, FakeClient, config, js
 
 from screenpad_touchbar.apps import Apps
 from screenpad_touchbar.bar import Bar
-from screenpad_touchbar.common import ASK_ARM, MAX_OPTIONS, SHORTCUTS_X, SPOT_W, TILE_NAME, URGENCIES
+from screenpad_touchbar.common import ASK_ARM, MAX_OPTIONS, TILE_NAME, URGENCIES
 from screenpad_touchbar.config import NotifyPolicy
 from screenpad_touchbar.keys import KeyEmitter
 from screenpad_touchbar.notify import mirror_refusal, parse_notify
-from screenpad_touchbar.scene import DISMISS_X
+from screenpad_touchbar.scene import DISMISS, ask_option_box
 
 # What GNOME says of a calendar notification, as notifications.js passes it.
 CALENDAR = {
@@ -123,7 +123,11 @@ class AnswerTests(unittest.TestCase):
         self.apps.handle(self.ext, notify)
         self.now += ASK_ARM
 
-    def tap(self, x):
+    def tap(self, option):
+        """The answer the extension gets for a tap at the middle of an
+        option's tile (an index, or DISMISS) on the shown card."""
+        x, width = ask_option_box(self.apps.asks.shown(), option)
+        x += width // 2
         self.bar.handle([("begin", 0, x, 300), ("end", 0, x, 300)])
         [answer] = [m for m in self.ext.sent if m["op"] == "answer"]
         return answer
@@ -147,17 +151,17 @@ class AnswerTests(unittest.TestCase):
         for k in range(MAX_OPTIONS):
             with self.subTest(k=k):
                 self.setUp()
-                answer = self.tap(SHORTCUTS_X + k * SPOT_W + SPOT_W // 2)
+                answer = self.tap(k)
                 self.assertEqual(answer["option"], "action-%d" % k)
                 self.assertEqual(self.press(answer), k)
 
     def test_a_replaced_button_is_never_pressed(self):
-        answer = self.tap(SHORTCUTS_X + SPOT_W // 2)
+        answer = self.tap(0)
         self.assertEqual(self.press(answer, keep=False), None)
         self.assertEqual(self.press(dict(answer, option="action-1"), keep=False), 1)
 
     def test_dismiss_and_timeout_press_nothing(self):
-        dismissed = self.tap(DISMISS_X + SPOT_W // 2)
+        dismissed = self.tap(DISMISS)
         self.assertEqual((dismissed["option"], dismissed["reason"]), (None, "dismissed"))
         self.assertIsNone(self.press(dismissed))
         for reason in ("timeout", "cancelled", "unavailable"):

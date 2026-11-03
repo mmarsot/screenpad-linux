@@ -2,6 +2,7 @@
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests"""
 
+import itertools
 import unittest
 
 from touchbar_support import BAR_CONFIG, SYN, TILE_CONFIG, FakeClient, config
@@ -14,6 +15,8 @@ from screenpad_touchbar.codes import (
 from screenpad_touchbar.common import (
     APPS,
     ASK_ARM,
+    CARD_HEIGHT,
+    GROUP_GAP,
     HOME,
     PAGE_X,
     TONES,
@@ -178,21 +181,22 @@ class SceneTests(unittest.TestCase):
             {
                 "id": "ask-text",
                 "x": 0,
-                "width": 544,
+                "width": 584,
                 "style": "ask-text",
                 "title": "Run npm test?",
                 "text": "in api",
                 "badge": "+2",
             },
         )
-        # Every card can be dismissed, from the third button spot.
+        # Every card can be dismissed, from a narrow tile after its text.
         self.assertEqual(
             tiles[1],
             {
                 "id": "ask-dismiss",
-                "x": 544,
-                "width": 272,
+                "x": 584,
+                "width": 136,
                 "style": "option",
+                "glyph": "dismiss",
                 "classes": ["tone-neutral"],
                 "icon": "window-close-symbolic",
                 "icon_scale": 0.6,
@@ -203,8 +207,8 @@ class SceneTests(unittest.TestCase):
             tiles[2],
             {
                 "id": "ask-option-0",
-                "x": 856,
-                "width": 408,
+                "x": 760,
+                "width": 456,
                 "style": "option",
                 "classes": ["tone-reject"],
                 "label": "Deny",
@@ -213,28 +217,39 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(tiles[3]["pressed"], True)
         self.assertTrue(ask_tiles(ask, pressed=[DISMISS])[1]["pressed"])
         self.assertEqual(
-            [ask_option_at(ask, x) for x in (0, 543, 600, 830, 856, 1200, 1263, 1264, 1671, 1672)],
-            [None, None, DISMISS, None, 0, 0, 0, 1, 1, None],
+            [ask_option_at(ask, x) for x in (0, 583, 584, 719, 720, 759, 760, 1215, 1216, 1671, 1672)],
+            [None, None, DISMISS, DISMISS, None, None, 0, 0, 1, 1, None],
         )
 
-    def test_answers_share_the_last_three_spots(self):
-        # One, two or three answers fill the spots right of Dismiss, so an
-        # answer's box is as wide as the card lets it be; the text and
-        # Dismiss stay where they are, and a touch hits what is drawn.
-        for n, width in ((1, 816), (2, 408), (3, 272)):
+    def test_answers_are_at_least_as_wide_as_the_card_is_tall(self):
+        # One or two answers get boxes as wide as the card is tall (456 px),
+        # three share what the text's one and a half spots (408 px) leave;
+        # a narrow Dismiss (half a spot) sits after the text, a group gap
+        # before the answers, which end at the page button. A touch hits
+        # what is drawn.
+        layouts = {
+            1: [(0, 1040), (1040, 136), (1216, 456)],
+            2: [(0, 584), (584, 136), (760, 456), (1216, 456)],
+            3: [(0, 410), (410, 136), (586, 362), (948, 362), (1310, 362)],
+        }
+        for n, layout in layouts.items():
             options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
             ask = parse_ask(None, {"id": "q", "title": "T", "options": options}, 0)
             tiles = ask_tiles(ask)
-            self.assertEqual(
-                [(t["x"], t["width"]) for t in tiles],
-                [(0, 544), (544, 272)] + [(856 + k * width, width) for k in range(n)],
-            )
+            self.assertEqual([(t["x"], t["width"]) for t in tiles], layout)
+            self.assertGreaterEqual(tiles[0]["width"], 408)
+            if n <= 2:
+                self.assertTrue(all(t["width"] >= CARD_HEIGHT for t in tiles[2:]), n)
+            self.assertEqual(tiles[1]["x"], tiles[0]["width"])
+            self.assertEqual(tiles[2]["x"], tiles[1]["x"] + tiles[1]["width"] + GROUP_GAP)
+            for a, b in itertools.pairwise(tiles[2:]):
+                self.assertEqual(b["x"], a["x"] + a["width"])
             self.assertEqual(tiles[-1]["x"] + tiles[-1]["width"], PAGE_X)
-            for k, tile in enumerate(tiles[2:]):
+            for k, tile in zip((DISMISS, *range(n)), tiles[1:], strict=True):
                 for x in (tile["x"], tile["x"] + tile["width"] // 2, tile["x"] + tile["width"] - 1):
                     self.assertEqual(ask_option_at(ask, x), k, (n, x))
-            self.assertIsNone(ask_option_at(ask, 855))
-            self.assertIsNone(ask_option_at(ask, PAGE_X))
+            for x in (tiles[0]["width"] - 1, tiles[2]["x"] - 1, tiles[2]["x"] - GROUP_GAP, PAGE_X):
+                self.assertIsNone(ask_option_at(ask, x), (n, x))
 
 
 class AskBarTests(unittest.TestCase):
@@ -272,10 +287,10 @@ class AskBarTests(unittest.TestCase):
         self.assertEqual((self.frames, self.launched), ([], []))
 
     def test_a_wide_answer_takes_a_touch_anywhere_on_it(self):
-        # One answer spans the three spots: a tap at either end chooses
+        # One answer's box (1216 to 1672): a touch near either end chooses
         # it, and sliding within it keeps it armed.
         self.ask(n=1)
-        self.assertTrue(self.bar.handle([("begin", 0, 870, 50)]))
+        self.assertTrue(self.bar.handle([("begin", 0, 1230, 50)]))
         self.bar.handle([("move", 0, 1650, 300)])
         self.bar.handle([("end", 0, 1650, 300)])
         self.assertEqual(self.app.last("answer"), {"op": "answer", "id": "q", "option": "o0", "reason": "chosen"})
@@ -283,9 +298,9 @@ class AskBarTests(unittest.TestCase):
     def test_too_soon_does_nothing(self):
         self.asks.add(parse_ask(self.app, {"id": "q", "title": "T", "options": [{"id": "a", "label": "A"}]}, self.now))
         self.now += ASK_ARM / 2
-        self.assertFalse(self.bar.handle([("begin", 0, 1000, 50)]))
+        self.assertFalse(self.bar.handle([("begin", 0, 1300, 50)]))
         self.now += 1
-        self.bar.handle([("end", 0, 1000, 50)])
+        self.bar.handle([("end", 0, 1300, 50)])
         self.assertIsNone(self.app.last("answer"))
         self.assertIsNotNone(self.asks.shown())
 
