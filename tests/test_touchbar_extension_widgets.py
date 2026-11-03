@@ -115,5 +115,6 @@ def css_rules(path):
         for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
     ]
 
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,17 @@ import struct
 import time
 
 from .asks import Asks
-from .common import HOME_COLUMNS, HOME_ROWS, MAX_APPS, MAX_LINE, MAX_NOTIFY_WAITING, MAX_OUT, MAX_PAGES, TILE_NAME, TouchbarError
+from .common import (
+    HOME_COLUMNS,
+    HOME_ROWS,
+    MAX_APPS,
+    MAX_LINE,
+    MAX_NOTIFY_WAITING,
+    MAX_OUT,
+    MAX_PAGES,
+    TILE_NAME,
+    TouchbarError,
+)
 from .config import NotifyPolicy
 from .notify import mirror_refusal, notification_ask, parse_notify
 from .protocol import ProtocolError, known_fields, parse_ask
