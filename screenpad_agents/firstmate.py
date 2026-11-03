@@ -74,7 +74,7 @@ class Bearings:
 
 
 class Firstmate:
-    def __init__(self, home, bearings, control=None, run=subprocess.run, timeout=FIRSTMATE_TIMEOUT):
+    def __init__(self, home, bearings, control, run=subprocess.run, timeout=FIRSTMATE_TIMEOUT):
         self.home, self.bearings, self.control, self._run, self.timeout = home, bearings, control, run, timeout
 
     def read(self):
@@ -89,8 +89,6 @@ class Firstmate:
     def interrupt(self, task_id):
         """Interrupt task_id's agent through fm-control.sh; what it reported,
         or FirstmateError when it refused or failed."""
-        if self.control is None:
-            raise FirstmateError("no firstmate control plane configured")
         if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
             raise FirstmateError("not a firstmate task id: %r" % (task_id,))
         done = self._call([self.control, task_id, "interrupt"], "fm-control.sh interrupt", CONTROL_TIMEOUT)

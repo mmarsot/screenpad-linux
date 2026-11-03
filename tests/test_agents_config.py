@@ -5,8 +5,9 @@ import subprocess
 import tempfile
 import unittest
 
-from agents_support import REPO, fake_bearings, fake_herdr, write_json
+from agents_support import REPO, fake_bearings, fake_herdr, read_calls, write_json
 
+from screenpad_agents.cli import clients
 from screenpad_agents.common import ConfigError
 from screenpad_agents.config import load, parse
 
@@ -48,6 +49,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.bearings, os.path.join(self.code, "bin", "fm-bearings-snapshot.sh"))
         self.assertEqual(c.control, os.path.join(self.code, "bin", "fm-control.sh"))
         self.assertEqual(c.firstmate_poll, 120.0)
+
+    def test_the_clients_interrupt_through_the_configured_control_plane(self):
+        c = load(
+            self.write('[herdr]\nsession = "lab"\n[firstmate]\nhome = "%s"\ncode = "%s"\n' % (self.home, self.code))
+        )
+        _, firstmate = clients(c)
+        self.assertEqual(firstmate.interrupt("fix-api"), "delivered verified=agent-alive cancel=unconfirmed")
+        calls = read_calls(os.path.join(self.code, "bin", "control.jsonl"))
+        self.assertEqual(calls, [{"FM_HOME": self.home, "fm": ["FM_HOME"], "args": ["fix-api", "interrupt"]}])
+        self.assertIsNone(clients(load(self.write('[herdr]\nsession = "lab"\n')))[1])
 
     def test_a_missing_config_is_no_opt_in(self):
         with self.assertRaisesRegex(ConfigError, "runs only once you write it"):

@@ -114,7 +114,8 @@ class FirstmateTests(unittest.TestCase):
         self.code = os.path.join(self.dir, "fm")
         self.script = fake_bearings(self.code)
         self.home = os.path.join(self.dir, "home")
-        self.reader = Firstmate(self.home, self.script)
+        self.control = os.path.join(self.code, "bin", "fm-control.sh")
+        self.reader = Firstmate(self.home, self.script, self.control)
 
     def model(self, value):
         write_json(os.path.join(self.code, "bin", "model.json"), value)
@@ -155,8 +156,7 @@ class FirstmateTests(unittest.TestCase):
         self.assertEqual(parse(model).tasks, {})
 
     def test_interrupt_runs_the_control_plane_on_the_configured_home_only(self):
-        control = os.path.join(self.code, "bin", "fm-control.sh")
-        fm = Firstmate(self.home, self.script, control)
+        fm = self.reader
         with mock.patch.dict(os.environ, {"FM_HOME": "/home/me/firstmate", "FM_BACKEND": "herdr"}):
             self.assertEqual(fm.interrupt("fix-api"), "delivered verified=agent-alive cancel=unconfirmed")
         calls = read_calls(os.path.join(self.code, "bin", "control.jsonl"))
@@ -167,8 +167,6 @@ class FirstmateTests(unittest.TestCase):
         for bad in ("-h", "lab:w1:p1", "", None, "a b"):
             with self.subTest(bad=bad), self.assertRaisesRegex(FirstmateError, "not a firstmate task id"):
                 fm.interrupt(bad)
-        with self.assertRaisesRegex(FirstmateError, "no firstmate control plane"):
-            Firstmate(self.home, self.script).interrupt("fix-api")
         self.assertEqual(len(read_calls(os.path.join(self.code, "bin", "control.jsonl"))), 2)
 
     def test_errors(self):
@@ -180,16 +178,16 @@ class FirstmateTests(unittest.TestCase):
             with self.subTest(model=model), self.assertRaisesRegex(FirstmateError, error):
                 self.reader.read()
         with self.assertRaisesRegex(FirstmateError, "No such file"):
-            Firstmate(self.home, os.path.join(self.dir, "missing.sh")).read()
+            Firstmate(self.home, os.path.join(self.dir, "missing.sh"), self.control).read()
 
         def hang(*args, **kwargs):
             raise subprocess.TimeoutExpired(args[0], 30)
 
         with self.assertRaisesRegex(FirstmateError, "no answer in 30 s"):
-            Firstmate(self.home, self.script, run=hang).read()
+            Firstmate(self.home, self.script, self.control, run=hang).read()
         garbage = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "TOON", ""))
         with self.assertRaisesRegex(FirstmateError, "no JSON"):
-            Firstmate(self.home, self.script, run=garbage).read()
+            Firstmate(self.home, self.script, self.control, run=garbage).read()
 
 
 if __name__ == "__main__":
