@@ -205,6 +205,14 @@
     background-color: #1c1c21;
 }
 
+/* A free cell of the apps page's home list: a faint +, as on an empty
+   spot of the bar. After the tones, so it wins over tone-neutral. */
+.screenpad-touchbar-widget.empty {
+    background-color: transparent;
+    border: 2px solid #3a3a40;
+    color: #5a5a62;
+}
+
 .screenpad-touchbar-widget.long {
     border: 2px solid #9a9aa2;
 }
