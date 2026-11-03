@@ -18,6 +18,10 @@ class ConfigTests(unittest.TestCase):
         self.dir = tmp.name
         self.code = os.path.join(self.dir, "fm")
         fake_bearings(self.code)
+        # A checkout with the reader and without the control plane.
+        self.nocontrol = os.path.join(self.dir, "old")
+        fake_bearings(self.nocontrol)
+        os.remove(os.path.join(self.nocontrol, "bin", "fm-control.sh"))
         self.home = os.path.join(self.dir, "home")
         os.mkdir(self.home)
 
@@ -42,6 +46,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual((c.herdr, c.session, c.herdr_poll), (["wrap", "herdr"], "lab-1", 5.0))
         self.assertEqual(c.home, self.home)
         self.assertEqual(c.bearings, os.path.join(self.code, "bin", "fm-bearings-snapshot.sh"))
+        self.assertEqual(c.control, os.path.join(self.code, "bin", "fm-control.sh"))
         self.assertEqual(c.firstmate_poll, 120.0)
 
     def test_a_missing_config_is_no_opt_in(self):
@@ -76,6 +81,7 @@ class ConfigTests(unittest.TestCase):
                 "no executable",
             ),
             ('[herdr]\nsession = "x"\n' + fm + "extra = 1\n", "unknown key in \\[firstmate\\] 'extra'"),
+            ('[herdr]\nsession = "x"\n' + fm.replace(self.code, self.nocontrol), "no executable bin/fm-control.sh"),
             ("[herdr\n", "agents.toml"),
         ]
         for text, error in cases:
@@ -85,7 +91,7 @@ class ConfigTests(unittest.TestCase):
     def test_no_default_points_at_a_firstmate_home(self):
         # Without [firstmate] nothing of firstmate is read; its paths have no default.
         c = parse("x", {"herdr": {"session": "default"}})
-        self.assertEqual((c.home, c.bearings), (None, None))
+        self.assertEqual((c.home, c.bearings, c.control), (None, None, None))
 
 
 class CommandTests(unittest.TestCase):

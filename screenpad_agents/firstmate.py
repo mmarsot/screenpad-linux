@@ -10,13 +10,25 @@ task's recorded endpoint, for Herdr "<session>:<pane id>", which joins a task
 to the agent Herdr reports in that pane. "in_flight" gives the task's name
 and what it is doing. The reader takes about 3 s; app.py runs it off the
 loop, at most once a minute plus on demand.
+
+Interrupting a task's agent goes through firstmate's control plane, which
+knows the task's harness and checks what it did:
+
+  FM_HOME=<home> <code>/bin/fm-control.sh <task id> interrupt
+
+It is the only firstmate command that acts; nothing writes into firstmate.
 """
 
 import json
 import os
+import re
 import subprocess
 
-from .common import BEARINGS_SCHEMA, FIRSTMATE_TIMEOUT
+from .common import BEARINGS_SCHEMA, CONTROL_TIMEOUT, FIRSTMATE_TIMEOUT
+
+# A task id as fm-control.sh takes it: a bare id, never an option or an
+# endpoint.
+TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
 class FirstmateError(Exception):
@@ -62,30 +74,44 @@ class Bearings:
 
 
 class Firstmate:
-    def __init__(self, home, bearings, run=subprocess.run, timeout=FIRSTMATE_TIMEOUT):
-        self.home, self.bearings, self._run, self.timeout = home, bearings, run, timeout
+    def __init__(self, home, bearings, control=None, run=subprocess.run, timeout=FIRSTMATE_TIMEOUT):
+        self.home, self.bearings, self.control, self._run, self.timeout = home, bearings, control, run, timeout
 
     def read(self):
         """The Bearings now; FirstmateError when the reader fails."""
-        env = {k: v for k, v in os.environ.items() if not k.startswith("FM_")}
-        env["FM_HOME"] = self.home
-        argv = [self.bearings, "--json", "--fields", "endpoints"]
-        try:
-            done = self._run(
-                argv, capture_output=True, text=True, timeout=self.timeout, env=env, stdin=subprocess.DEVNULL
-            )
-        except OSError as e:
-            raise FirstmateError("%s: %s" % (self.bearings, e.strerror))
-        except subprocess.TimeoutExpired:
-            raise FirstmateError("firstmate's reader gave no answer in %g s" % self.timeout)
-        if done.returncode != 0:
-            why = (done.stderr or "").strip().splitlines()
-            raise FirstmateError("firstmate's reader failed: %s" % (why[-1] if why else "exit %d" % done.returncode))
+        done = self._call([self.bearings, "--json", "--fields", "endpoints"], "firstmate's reader", self.timeout)
         try:
             model = json.loads(done.stdout)
         except ValueError:
             raise FirstmateError("firstmate's reader printed no JSON")
         return parse(model)
+
+    def interrupt(self, task_id):
+        """Interrupt task_id's agent through fm-control.sh; what it reported,
+        or FirstmateError when it refused or failed."""
+        if self.control is None:
+            raise FirstmateError("no firstmate control plane configured")
+        if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
+            raise FirstmateError("not a firstmate task id: %r" % (task_id,))
+        done = self._call([self.control, task_id, "interrupt"], "fm-control.sh interrupt", CONTROL_TIMEOUT)
+        out = (done.stdout or "").strip().splitlines()
+        return out[-1] if out else "interrupted"
+
+    def _call(self, argv, what, timeout):
+        """Run one of firstmate's commands with FM_HOME, and none of the other
+        FM_* variables of this environment."""
+        env = {k: v for k, v in os.environ.items() if not k.startswith("FM_")}
+        env["FM_HOME"] = self.home
+        try:
+            done = self._run(argv, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+        except OSError as e:
+            raise FirstmateError("%s: %s" % (argv[0], e.strerror))
+        except subprocess.TimeoutExpired:
+            raise FirstmateError("%s gave no answer in %g s" % (what, timeout))
+        if done.returncode != 0:
+            why = (done.stderr or "").strip().splitlines()
+            raise FirstmateError("%s failed: %s" % (what, why[-1] if why else "exit %d" % done.returncode))
+        return done
 
 
 def parse(model):

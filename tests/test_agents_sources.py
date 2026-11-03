@@ -37,12 +37,37 @@ class HerdrTests(unittest.TestCase):
         self.agents([agent_item("w1:p1", "blocked"), agent_item("w2:p3", "working", "codex", "/w/web")])
         self.assertEqual(
             self.herdr.agents(),
-            [Agent("w1:p1", "claude", "blocked", "/work/api"), Agent("w2:p3", "codex", "working", "/w/web")],
+            [Agent("w1:p1", "claude", "blocked", "/work/api", 2), Agent("w2:p3", "codex", "working", "/w/web", 2)],
         )
         self.herdr.focus("w1:p1")
         self.assertEqual(
             self.calls(), [["agent", "list", "--session", "lab"], ["agent", "focus", "w1:p1", "--session", "lab"]]
         )
+
+    def test_reading_a_pane_and_sending_keys_name_the_session(self):
+        self.agents([agent_item("w1:p1", "blocked", seq=7)])
+        with open(os.path.join(self.dir, "screen-w1_p1.txt"), "w") as f:
+            f.write("Do you want to proceed?\n\u276f 1. Yes\n")
+        self.assertEqual(self.herdr.agent("w1:p1"), Agent("w1:p1", "claude", "blocked", "/work/api", 7))
+        self.assertEqual(self.herdr.read("w1:p1"), "Do you want to proceed?\n\u276f 1. Yes\n")
+        self.herdr.send_keys("w1:p1", ("1",))
+        self.assertEqual(
+            self.calls(),
+            [
+                ["agent", "get", "w1:p1", "--session", "lab"],
+                ["pane", "read", "w1:p1", "--source", "visible", "--format", "text", "--session", "lab"],
+                ["agent", "send-keys", "w1:p1", "1", "--session", "lab"],
+            ],
+        )
+        with self.assertRaisesRegex(HerdrError, "herdr agent get: agent target w9:p9 not found"):
+            self.herdr.agent("w9:p9")
+        with self.assertRaisesRegex(HerdrError, "herdr pane read: pane w9:p9 not found"):
+            self.herdr.read("w9:p9")
+        other = mock.Mock(
+            return_value=subprocess.CompletedProcess([], 0, '{"result": {"agent": {"pane_id": "w2"}}}', "")
+        )
+        with self.assertRaisesRegex(HerdrError, "no agent in pane w1:p1"):
+            Herdr(["herdr"], "lab", run=other).agent("w1:p1")
 
     def test_a_wrapper_command_goes_first(self):
         herdr = Herdr(["/usr/bin/env", os.path.join(self.dir, "herdr")], "lab")
@@ -128,6 +153,23 @@ class FirstmateTests(unittest.TestCase):
             "junk",
         ]
         self.assertEqual(parse(model).tasks, {})
+
+    def test_interrupt_runs_the_control_plane_on_the_configured_home_only(self):
+        control = os.path.join(self.code, "bin", "fm-control.sh")
+        fm = Firstmate(self.home, self.script, control)
+        with mock.patch.dict(os.environ, {"FM_HOME": "/home/me/firstmate", "FM_BACKEND": "herdr"}):
+            self.assertEqual(fm.interrupt("fix-api"), "delivered verified=agent-alive cancel=unconfirmed")
+        calls = read_calls(os.path.join(self.code, "bin", "control.jsonl"))
+        self.assertEqual(calls, [{"FM_HOME": self.home, "fm": ["FM_HOME"], "args": ["fix-api", "interrupt"]}])
+        open(os.path.join(self.code, "bin", "control.fail"), "w").close()
+        with self.assertRaisesRegex(FirstmateError, "fm-control.sh interrupt failed: error: task fix-api has no"):
+            fm.interrupt("fix-api")
+        for bad in ("-h", "lab:w1:p1", "", None, "a b"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(FirstmateError, "not a firstmate task id"):
+                fm.interrupt(bad)
+        with self.assertRaisesRegex(FirstmateError, "no firstmate control plane"):
+            Firstmate(self.home, self.script).interrupt("fix-api")
+        self.assertEqual(len(read_calls(os.path.join(self.code, "bin", "control.jsonl"))), 2)
 
     def test_errors(self):
         for model, error in (

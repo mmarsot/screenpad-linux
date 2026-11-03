@@ -13,6 +13,7 @@ ConfigError naming it.
   [firstmate]                  # optional: tasks and Captain's Calls
   home = "/path/to/firstmate"  # FM_HOME
   code = "/path/to/firstmate"  # the checkout with bin/fm-bearings-snapshot.sh
+                               # and bin/fm-control.sh
   poll = 60                    # seconds, at least 60
 """
 
@@ -24,17 +25,20 @@ from .common import FIRSTMATE_POLL, FIRSTMATE_POLL_RANGE, HERDR_POLL, HERDR_POLL
 
 SESSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 BEARINGS = os.path.join("bin", "fm-bearings-snapshot.sh")
+CONTROL = os.path.join("bin", "fm-control.sh")
 
 
 class Config:
     """The settings: Herdr's command and session, and firstmate's paths
     (home None when the config has no [firstmate])."""
 
-    __slots__ = ("bearings", "firstmate_poll", "herdr", "herdr_poll", "home", "path", "session")
+    __slots__ = ("bearings", "control", "firstmate_poll", "herdr", "herdr_poll", "home", "path", "session")
 
-    def __init__(self, path, herdr, session, herdr_poll, home=None, bearings=None, firstmate_poll=FIRSTMATE_POLL):
+    def __init__(
+        self, path, herdr, session, herdr_poll, home=None, bearings=None, firstmate_poll=FIRSTMATE_POLL, control=None
+    ):
         self.path, self.herdr, self.session, self.herdr_poll = path, herdr, session, herdr_poll
-        self.home, self.bearings, self.firstmate_poll = home, bearings, firstmate_poll
+        self.home, self.bearings, self.firstmate_poll, self.control = home, bearings, firstmate_poll, control
 
 
 def load(path):
@@ -67,9 +71,11 @@ def parse(path, data):
     if fm is not None:
         _known(path, fm, {"home", "code", "poll"}, "key in [firstmate]")
         config.home = _directory(path, fm, "home")
-        config.bearings = os.path.join(_directory(path, fm, "code"), BEARINGS)
-        if not os.access(config.bearings, os.X_OK):
-            raise ConfigError("%s: [firstmate] code has no executable %s" % (path, BEARINGS))
+        code = _directory(path, fm, "code")
+        config.bearings, config.control = os.path.join(code, BEARINGS), os.path.join(code, CONTROL)
+        for script in (BEARINGS, CONTROL):
+            if not os.access(os.path.join(code, script), os.X_OK):
+                raise ConfigError("%s: [firstmate] code has no executable %s" % (path, script))
         config.firstmate_poll = _seconds(path, fm, "firstmate", FIRSTMATE_POLL, FIRSTMATE_POLL_RANGE)
     return config
 
