@@ -35,7 +35,6 @@ import json
 import os
 import re
 import subprocess
-import tempfile
 
 from .common import BEARINGS_SCHEMA, BOARD_TIMEOUT, CONTROL_TIMEOUT, FIRSTMATE_TIMEOUT, LAVISH_TIMEOUT, OPEN_TIMEOUT
 
@@ -141,22 +140,22 @@ class Firstmate:
         board is open (then nothing is opened); FirstmateError on a failure."""
         url = self.board_url()
         if url is not None:
-            with tempfile.TemporaryFile("w+") as err:
-                self._call(self.opener + [url], "opening the board", OPEN_TIMEOUT, home=False, err=err)
+            self._call(self.opener + [url], "opening the board", OPEN_TIMEOUT, home=False, detach=True)
         return url
 
-    def _call(self, argv, what, timeout, home=True, err=None):
+    def _call(self, argv, what, timeout, home=True, detach=False):
         """Run one of firstmate's commands with FM_HOME (or, home False,
         another program without it), and none of the other FM_* variables of
-        this environment. With err, a file, the program gets no pipe: its
-        output goes nowhere, its errors to err, in a session of its own."""
+        this environment. Detached, the program gets no pipe, so a child it
+        leaves running holds none: its output goes nowhere, its errors to the
+        app's own (the journal), in a session of its own."""
         env = {k: v for k, v in os.environ.items() if not k.startswith("FM_")}
         if home:
             env["FM_HOME"] = self.home
-        if err is None:
-            streams = {"capture_output": True}
+        if detach:
+            streams = {"stdout": subprocess.DEVNULL, "start_new_session": True}
         else:
-            streams = {"stdout": subprocess.DEVNULL, "stderr": err, "start_new_session": True}
+            streams = {"capture_output": True}
         try:
             done = self._run(argv, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL, **streams)
         except OSError as e:
@@ -164,9 +163,7 @@ class Firstmate:
         except subprocess.TimeoutExpired:
             raise FirstmateError("%s gave no answer in %g s" % (what, timeout))
         if done.returncode != 0:
-            if err is not None:
-                err.seek(0)
-            why = ((done.stderr if err is None else err.read()) or "").strip().splitlines()
+            why = (done.stderr or "").strip().splitlines()
             raise FirstmateError("%s failed: %s" % (what, why[-1] if why else "exit %d" % done.returncode))
         return done
 

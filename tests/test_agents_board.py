@@ -117,7 +117,7 @@ class BoardTests(unittest.TestCase):
             self.fm.open_board()
         self.listing((self.board, "open", URL))
         open(os.path.join(self.dir, "opener.fail"), "w").close()
-        with self.assertRaisesRegex(FirstmateError, "opening the board failed: gio: no handler"):
+        with self.assertRaisesRegex(FirstmateError, "opening the board failed: exit 2"):
             self.fm.open_board()
         os.remove(os.path.join(self.code, "bin", "fm-bearings-board.sh"))
         with self.assertRaisesRegex(FirstmateError, "firstmate has no bin/fm-bearings-board.sh"):
