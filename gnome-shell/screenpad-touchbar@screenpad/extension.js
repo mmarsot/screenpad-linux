@@ -11,7 +11,12 @@
 //   whether the bar is on screen now; the daemon shows questions only
 //   while it is, so a touch never answers a question nobody can see;
 // - takes the bar off the ScreenPad monitor's work area (a strut), so
-//   windows there open and maximize below it;
+//   windows there open and maximize below it. The strut is the bar's own
+//   height: while an attention card grows the bar ("height" above
+//   "strut"), the card covers windows for a moment instead of resizing
+//   them, and its growth is animated;
+// - mirrors GNOME's notifications to the daemon (notifications.js), which
+//   shows those with buttons as cards;
 // - takes apps dropped on the bar (from the dock or the app grid) and has
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
@@ -20,6 +25,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -27,11 +33,17 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {NotificationMirror} from './notifications.js';
+
 const STATE_NAME = 'touchbar.json';
 // The handshake: the daemon reads it (touchbar.py RENDERER_NAME and
 // RENDERER_PROTOCOL must match).
 const RENDERER_NAME = 'renderer.json';
 const RENDERER_PROTOCOL = 2;
+const SOCKET_NAME = 'touchbar.sock';
+// How long the bar takes to grow into a card, in ms. Less than the daemon's
+// ASK_ARM (0.3 s), so a card is fully drawn before it takes a tap.
+const GROW_MS = 150;
 const CLI = 'screenpad-touchbar';
 const CLI_FALLBACK = '/usr/local/bin/screenpad-touchbar';
 // Visual gap around each tile, as a fraction of the bar height. The touch
@@ -72,6 +84,8 @@ export default class ScreenpadTouchbar extends Extension {
         }
         this._state = null;
         this._bar = null;
+        this._strut = null;
+        this._drawn = null;
         this._tiles = [];
         this._layout = null;
         this._drop = -1;
@@ -121,6 +135,13 @@ export default class ScreenpadTouchbar extends Extension {
             logError(e, 'screenpad-touchbar: D-Bus');
             this._dbus = null;
         }
+        // A failure here must not fail the bar: no notifications, then.
+        try {
+            this._mirror = new NotificationMirror(this._dir.get_child(SOCKET_NAME));
+        } catch (e) {
+            logError(e, 'screenpad-touchbar: notifications');
+            this._mirror = null;
+        }
         this._load();
     }
 
@@ -134,6 +155,8 @@ export default class ScreenpadTouchbar extends Extension {
             // Already gone.
         }
         this._renderer = null;
+        this._mirror?.destroy();
+        this._mirror = null;
         this._dbus?.unexport();
         this._dbus = null;
         Main.overview.disconnectObject(this);
@@ -173,6 +196,9 @@ export default class ScreenpadTouchbar extends Extension {
         // bar is not drawn until it is restarted.
         this._state = Array.isArray(state?.tiles) ? state : null;
         this._sync();
+        // A daemon (re)started: connect to its socket.
+        if (this._state)
+            this._mirror?.wake();
     }
 
     // The ScreenPad's monitor, by the EDID identity the daemon read from the
@@ -202,11 +228,12 @@ export default class ScreenpadTouchbar extends Extension {
         // A finger going down or up only restyles a tile; anything else
         // rebuilds the bar.
         const shape = state.tiles.map(({pressed, ...rest}) => rest);
-        const layout = JSON.stringify([state.panel, state.height, shape, state.divider,
+        const layout = JSON.stringify([state.panel, state.height, state.strut, shape, state.divider,
             monitor.x, monitor.y, monitor.width, monitor.height]);
         if (layout !== this._layout) {
+            const previous = this._drawn;
             this._destroyBar();
-            this._build(state, monitor);
+            this._build(state, monitor, previous);
             this._layout = layout;
         }
         this._tiles.forEach((actor, i) => {
@@ -235,17 +262,21 @@ export default class ScreenpadTouchbar extends Extension {
         }
     }
 
-    _build(state, monitor) {
+    _build(state, monitor, previous) {
         // Panel pixels to logical pixels; the ScreenPad's monitor is rotated
         // so that it reads upright, which makes its top the bar's edge.
         const [panelWidth, panelHeight] = state.panel;
         this._sx = monitor.width / panelWidth;
         const height = Math.round(state.height * monitor.height / panelHeight);
+        // The bar's own height: the strut, and what insets, icons and text
+        // are sized by, so a card's extra height is room, not bigger type.
+        const strutRows = Number.isFinite(state.strut) ? state.strut : state.height;
+        const own = Math.min(Math.round(strutRows * monitor.height / panelHeight), height);
         const narrowest = Math.min(...state.tiles.map(t => t.width)) * this._sx;
-        const inset = Math.min(Math.round(height * INSET), Math.round(narrowest * MAX_INSET));
+        const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
         const iconWidth = Math.min(...state.tiles.filter(t => t.glyph !== 'grip')
             .map(t => t.width)) * this._sx;
-        const iconSize = Math.max(Math.min(Math.round(height * ICON),
+        const iconSize = Math.max(Math.min(Math.round(own * ICON),
             Math.round((iconWidth - 2 * inset) * MAX_ICON)), 8);
         const bar = new St.Widget({
             style_class: 'screenpad-touchbar',
@@ -278,7 +309,7 @@ export default class ScreenpadTouchbar extends Extension {
             const x = Math.round(tile.x * this._sx) + inset;
             actor.set_position(x, inset);
             actor.set_size(width, innerHeight);
-            actor.style = `border-radius: ${Math.round(Math.min(height * 0.16, width * 0.25))}px;`;
+            actor.style = `border-radius: ${Math.round(Math.min(own * 0.16, width * 0.25))}px;`;
             bar.add_child(actor);
             this._tiles.push(actor);
             if (typeof tile.badge === 'string' && tile.badge) {
@@ -291,28 +322,42 @@ export default class ScreenpadTouchbar extends Extension {
                 badge.set_position(x + width - Math.round(iconSize * 0.75), inset);
             }
         });
-        // affectsStruts: the bar spans the top of the ScreenPad's monitor,
-        // so GNOME takes it off that monitor's work area and places and
-        // maximizes windows there below it. It is rebuilt at each new
-        // height, which keeps the work area in step. The strut lies within
-        // the ScreenPad's monitor (there are monitors above it, so mutter
-        // does not stretch it to the top of the screen), so no other
-        // monitor's work area changes.
+        // The strut: an empty actor as tall as the bar's own height, along
+        // the top of the ScreenPad's monitor, with affectsStruts, so GNOME
+        // takes it off that monitor's work area and places and maximizes
+        // windows there below it. It is rebuilt at each new height, which
+        // keeps the work area in step; a card's extra height is not in it.
+        // The strut lies within the ScreenPad's monitor (there are monitors
+        // above it, so mutter does not stretch it to the top of the
+        // screen), so no other monitor's work area changes.
+        const strut = new St.Widget({x: monitor.x, y: monitor.y, width: monitor.width,
+            height: own});
         // GNOME 50's addChrome takes only trackFullscreen and affectsStruts
         // and throws on any other key. It adds the actor before it checks
         // them, so a throw would leave a bar drawn while the shell, seeing
         // the extension fail, unloads stylesheet.css: plain labels, no
         // strip, no pressed state. Hence no bar left behind on a failure.
         try {
-            Main.layoutManager.addChrome(bar, {affectsStruts: true});
+            Main.layoutManager.addChrome(strut, {affectsStruts: true});
+            Main.layoutManager.addChrome(bar);
         } catch (e) {
-            if (bar.get_parent())
-                bar.get_parent().remove_child(bar);
-            bar.destroy();
+            for (const actor of [strut, bar]) {
+                actor.get_parent()?.remove_child(actor);
+                actor.destroy();
+            }
             this._tiles = [];
             throw e;
         }
         this._bar = bar;
+        this._strut = strut;
+        this._drawn = {height, own};
+        // Grown over an unchanged own height (a card appearing): the bar
+        // unrolls downwards from where it was, instead of jumping.
+        if (previous && previous.own === own && previous.height < height) {
+            bar.clip_to_allocation = true;
+            bar.height = previous.height;
+            bar.ease({height, duration: GROW_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
     }
 
     // One tile: the grip, an icon, an app's icon, or text, in that order of
@@ -338,7 +383,7 @@ export default class ScreenpadTouchbar extends Extension {
                 ? app.create_icon_texture(iconSize)
                 : new St.Icon({icon_name: 'image-missing', icon_size: iconSize});
         } else {
-            child = this._text(tile, iconSize);
+            child = this._text(tile, iconSize, height);
         }
         const actor = new St.Bin({style_class: classes.join(' '), child});
         const name = tile.label ?? tile.title;
@@ -349,8 +394,9 @@ export default class ScreenpadTouchbar extends Extension {
         return actor;
     }
 
-    // Text lines: the title or label, and a smaller text under it.
-    _text(tile, iconSize) {
+    // Text lines: the title or label, and a smaller text under it, which
+    // wraps when the tile has room for more lines (a card).
+    _text(tile, iconSize, height) {
         const first = tile.title ?? tile.label;
         if (!first && !tile.text)
             return null;
@@ -366,9 +412,15 @@ export default class ScreenpadTouchbar extends Extension {
                 style: `font-size: ${Math.round(iconSize * 0.5)}px;`}));
         }
         if (tile.text) {
-            box.add_child(new St.Label({text: tile.text, x_align: align,
+            const size = Math.round(iconSize * 0.36);
+            const text = new St.Label({text: tile.text, x_align: align,
                 style_class: 'screenpad-touchbar-text',
-                style: `font-size: ${Math.round(iconSize * 0.36)}px;`}));
+                style: `font-size: ${size}px;`});
+            if (height > 2 * (iconSize * 0.5 + size * 2)) {
+                text.clutter_text.line_wrap = true;
+                text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            }
+            box.add_child(text);
         }
         return box;
     }
@@ -460,11 +512,15 @@ export default class ScreenpadTouchbar extends Extension {
     }
 
     _destroyBar() {
-        if (this._bar) {
-            Main.layoutManager.removeChrome(this._bar);
-            this._bar.destroy();
+        for (const actor of [this._bar, this._strut]) {
+            if (actor) {
+                Main.layoutManager.removeChrome(actor);
+                actor.destroy();
+            }
         }
         this._bar = null;
+        this._strut = null;
+        this._drawn = null;
         this._tiles = [];
         this._layout = null;
     }

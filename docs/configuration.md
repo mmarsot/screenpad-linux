@@ -33,6 +33,8 @@ key = "printscreen"
 # app = "org.gnome.Nautilus.desktop"
 ```
 
+The file then documents the `[notifications]` table, commented out (see [Notifications](#notifications)).
+
 ## Settings
 
 | Setting | Meaning |
@@ -46,6 +48,7 @@ key = "printscreen"
 | `command` | instead of `key`: a command, as a string for `sh -c` or a list of arguments. In `"hold"` mode it runs when the touch starts, and `release_command` (optional) runs when it ends |
 | `tile` | instead of `key` or `command`: the name of a tile an app draws and handles in this spot (lower case letters, digits, `.`, `_`, `-`). While no app provides it, the spot shows its `icon` or `label` dimmed and ignores touches. `mode` does not apply. See the [app API](app-api.md) |
 | `[[shortcut]]` `app` | up to three, filling the shortcut spots: an app's desktop file id, such as `"org.gnome.Nautilus.desktop"` (`.desktop` optional). Normally added by drag and drop |
+| `[notifications]` | which GNOME notifications the bar shows as cards; see [Notifications](#notifications) |
 
 The bar sends keys through its own virtual keyboard, so a key goes to whatever window has the keyboard focus, exactly as if it were typed. Key names are evdev key positions, so on a non-QWERTY layout a letter key gives whatever your layout puts at that position.
 
@@ -90,6 +93,28 @@ mode = "hold"
 command = "pactl set-source-mute @DEFAULT_SOURCE@ 0"
 release_command = "pactl set-source-mute @DEFAULT_SOURCE@ 1"
 ```
+
+## Notifications
+
+GNOME notifications that have buttons (a calendar's Join and Snooze, a chat's Reply), and urgent ones, show in the bar: it grows into a card with the notification's title, text and first three buttons, and shrinks back when you tap one, dismiss the card, or after 20 s. Tapping a button presses the notification's own button. Dismissing, or letting the card time out, only closes the card: the notification stays in GNOME's list. A touch in the card's first 0.3 s does nothing, and the bar grows only when no touchpad finger is where the card will be (see the [app API](app-api.md#how-a-question-shows-and-is-answered)).
+
+Nothing shows while **Do Not Disturb** is on, except critical notifications (a battery about to run out), which GNOME itself shows then too. Notifications GNOME would not show a banner for (low urgency, or banners turned off for that app in Settings) never show in the bar either.
+
+To change it, add a `[notifications]` table (after the `[[button]]` and `[[shortcut]]` blocks):
+
+```toml
+[notifications]
+mirror = false
+```
+
+| Setting | Meaning |
+|---|---|
+| `mirror` | `false`: no notification shows in the bar. Default `true` |
+| `deny` | a list of desktop file ids whose notifications never show, such as `["org.gnome.Evolution.desktop"]` |
+| `allow` | a list of desktop file ids: only their notifications show. Notifications that no app claims (from `notify-send`, for example) then never show |
+| `timeout` | how long a card shows, in seconds, 1 to 3600. Default 20 |
+
+`screenpad-touchbar check` prints what applies. Questions from apps (`screenpad-touchbar ask`) are not notifications; these settings do not change them.
 
 ## Push to talk
 

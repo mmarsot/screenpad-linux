@@ -805,11 +805,11 @@ class ExtensionTests(unittest.TestCase):
             keys = set(re.findall(r"(\w+)\s*:", args))
             self.assertLessEqual(keys, self.CHROME_OPTIONS, args)
 
-    def test_bar_is_a_strut(self):
-        # Windows on the ScreenPad must open and maximize below the bar.
+    def test_card_growth_is_animated_within_the_arming_delay(self):
         import re
-        calls = re.findall(r"addChrome\(bar(?:, (\{[^}]*\}))?\)", self.source())
-        self.assertEqual(calls, ["{affectsStruts: true}"])
+        grow = int(re.search(r"const GROW_MS = (\d+);", self.source()).group(1))
+        # Fully drawn before a tap on it counts.
+        self.assertLess(grow, t.ASK_ARM * 1000)
 
     def test_grip_drawn_at_every_height(self):
         # The grip is narrow (104 px); insets and icons scaled by the
@@ -955,13 +955,18 @@ class SceneTests(unittest.TestCase):
                                  "options": [{"id": "no", "label": "Deny", "tone": "reject"},
                                              {"id": "yes", "label": "Allow", "tone": "accept"}]}, 0)
         tiles = t.ask_tiles(ask, pressed=[1], queued=2)
-        self.assertEqual(tiles[0], {"id": "ask-text", "x": 0, "width": 888, "style": "ask-text",
+        self.assertEqual(tiles[0], {"id": "ask-text", "x": 0, "width": 592, "style": "ask-text",
                                     "title": "Run npm test?", "text": "in api", "badge": "+2"})
-        self.assertEqual(tiles[1], {"id": "ask-option-0", "x": 928, "width": 296, "style": "option",
+        # Every card can be dismissed, from the third button spot.
+        self.assertEqual(tiles[1], {"id": "ask-dismiss", "x": 592, "width": 296, "style": "option",
+                                    "classes": ["tone-neutral"], "icon": "window-close-symbolic",
+                                    "icon_scale": 0.6, "label": "Dismiss"})
+        self.assertEqual(tiles[2], {"id": "ask-option-0", "x": 928, "width": 296, "style": "option",
                                     "classes": ["tone-reject"], "label": "Deny"})
-        self.assertEqual(tiles[2]["pressed"], True)
-        self.assertEqual([t.ask_option_at(ask, x) for x in (0, 900, 928, 1300, 1600)],
-                         [None, None, 0, 1, None])
+        self.assertEqual(tiles[3]["pressed"], True)
+        self.assertTrue(t.ask_tiles(ask, pressed=[t.DISMISS])[1]["pressed"])
+        self.assertEqual([t.ask_option_at(ask, x) for x in (0, 591, 700, 900, 928, 1300, 1600)],
+                         [None, None, t.DISMISS, None, 0, 1, None])
 
 
 class AskBarTests(unittest.TestCase):
@@ -1400,7 +1405,7 @@ class DaemonSceneTests(unittest.TestCase):
             with open(t.state_path()) as f:
                 state = json.load(f)
             self.assertEqual([x["id"] for x in state["tiles"]],
-                             ["ask-text", "ask-option-0", "grip"])
+                             ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
             self.assertEqual(state["apps"], ["fleet"])
 
 
@@ -1492,7 +1497,7 @@ class DaemonLoopTests(unittest.TestCase):
                         break
                     threading.Event().wait(0.05)
                 self.assertEqual([x["id"] for x in state["tiles"]],
-                                 ["ask-text", "ask-option-0", "grip"])
+                                 ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
                 self.assertEqual(state["apps"], ["fleet"])
                 # The bar leaves the screen: the waiting question is answered.
                 os.unlink(t.runtime_file(t.RENDERER_NAME))

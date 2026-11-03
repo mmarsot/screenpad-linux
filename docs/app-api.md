@@ -8,9 +8,9 @@ $XDG_RUNTIME_DIR/screenpad/touchbar.sock
 
 The directory is your user's own and the socket is mode `0600`; the daemon also checks that the connecting process runs as the same user. There is no other authentication: any program you run can use the bar.
 
-![A question in the touch bar: its text over the button spots, Cancel and Deploy in the shortcut spots, the grip at the right end](images/touchbar-ask.png)
+![A question in the touch bar, grown into a card: its text over the first two button spots, a Dismiss cross in the third, Cancel and Deploy in the shortcut spots, the grip at the right end](images/touchbar-ask.png)
 
-*A question, as `screenpad-touchbar ask` below shows it. Rendered by the extension in a headless GNOME Shell 50.1.*
+*A question, as `screenpad-touchbar ask` below shows it: the bar grows into a card for it. Rendered by the extension in a headless GNOME Shell 50.1.*
 
 ## Asking from a shell
 
@@ -19,7 +19,7 @@ screenpad-touchbar ask "Deploy to staging?" --text "branch agent-bar, 3 new comm
     --option no=Cancel --option yes=Deploy --tone no=reject --tone yes=accept --timeout 30
 ```
 
-It shows the question in the bar until you tap an answer or the timeout passes, then prints the chosen answer's id (`yes` here) and exits 0. Without an answer it prints why on stderr and exits 1: `timeout`, `unavailable` (the bar cannot show questions right now, see [When questions show](#when-questions-show)) or the daemon not running. A malformed question exits 2.
+It shows the question in the bar until you tap an answer, dismiss it or the timeout passes, then prints the chosen answer's id (`yes` here) and exits 0. Without an answer it prints why on stderr and exits 1: `dismissed`, `timeout`, `unavailable` (the bar cannot show questions right now, see [When questions show](#when-questions-show)) or the daemon not running. A malformed question exits 2.
 
 | Option | Meaning |
 |---|---|
@@ -31,11 +31,13 @@ It shows the question in the bar until you tap an answer or the timeout passes, 
 
 ## How a question shows and is answered
 
-- The question covers the bar's button and shortcut spots: its title and text over the three button spots, its answers in the three shortcut spots, left to right. The grip stays and still resizes the bar. The bar does not grow for it.
-- Tap an answer and lift on it (or within 60 px of it, as for tap buttons) to choose it. Sliding away before lifting cancels the tap. A touch on the text does nothing.
-- A touch that starts within 0.3 s of a question appearing does nothing, so a tap already on its way to a button cannot land on an answer.
+- **The bar grows into a card** for it: 456 px tall (about 29 mm, which leaves about 39 mm of touchpad below), or the bar's own height if that is taller. The growth is animated. It shrinks back once the question is answered, dismissed or timed out, or goes on to the next question.
+- **It grows only when no touchpad finger is in the band it is about to cover**, so it never draws a card under a finger moving the pointer. If one is there, it waits for it to leave, at most 0.3 s, then grows anyway. Either way the touchpad finger stays a touchpad finger to the end of its stroke; only new touches in that band are the card's.
+- The card covers the bar's button and shortcut spots: the title and text over the first two button spots, a **Dismiss** cross in the third, and the answers in the three shortcut spots, left to right. The grip stays and still resizes the bar (its own height, which shows again when the card goes).
+- Tap an answer and lift on it (or within 60 px of it, as for tap buttons) to choose it. Sliding away before lifting cancels the tap. A touch on the text does nothing. Dismiss closes the card with no answer (`dismissed`).
+- **A touch that starts within 0.3 s of the card appearing does nothing**, counted from when the bar grew, so a tap already on its way to a button, or to where the touchpad was, cannot land on an answer.
 - A touch keeps what it started on: a push-to-talk button held when a question appears stays held until you lift, and a finger on an answer when its question goes away (answered elsewhere, timed out) chooses nothing.
-- Questions queue: the first shows, the others wait (the text tile shows `+N`). Each one's timeout counts from when it was asked, not from when it shows.
+- Questions queue, from every app and the [notifications](#notifications) alike: the first shows, the others wait (the text tile shows `+N`). The next one shows in the bar already grown, again ignoring touches for its first 0.3 s. Each one's timeout counts from when it was asked, not from when it shows.
 
 ### When questions show
 
@@ -64,10 +66,25 @@ Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB
 | `{"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": [], "taken": []}` | The answer to `hello`: your tiles that have a spot in the config (`placed`), those that do not (`unplaced`: nothing shows them until the config gives them one), and those another app already provides (`taken`) |
 | `{"op": "event", "tile": "agents", "type": "down"}` | A finger went down on your tile |
 | `{"op": "event", "tile": "agents", "type": "up", "inside": true}` | It lifted: `inside` is true when it lifted on the tile (or within 60 px of it), which is a tap; false when it slid away, or the touch was cancelled. Hold-style behavior is yours to build from `down` and `up` |
-| `{"op": "answer", "id": "q1", "option": "yes", "reason": "chosen"}` | The answer to a question. `option` is `null` when there is none, with `reason` `timeout`, `unavailable` or `cancelled` |
+| `{"op": "answer", "id": "q1", "option": "yes", "reason": "chosen"}` | The answer to a question. `option` is `null` when there is none, with `reason` `dismissed` (the user closed the card), `timeout`, `unavailable` or `cancelled` |
 | `{"op": "error", "request": "set", "message": "..."}` | A message was refused; `id` is added when the message had one. The connection stays open |
 
 When an app disconnects, its tiles go back to the config's dimmed look and its waiting questions are dropped unanswered.
+
+## Notifications
+
+The GNOME Shell extension mirrors GNOME's notifications through the same socket, as the app `gnome-notifications`, so a notification is one more source of the card: an app's question and a notification queue together.
+
+![A calendar reminder as a card: Standup in 5 minutes, its text, Dismiss, then the notification's own Join and Snooze buttons](images/touchbar-notification.png)
+
+*A notification with two buttons, mirrored. Rendered by the extension in a headless GNOME Shell 50.1.*
+
+- For each notification GNOME's message tray asks a banner for, the extension sends `{"op": "notify", "id": "n1", "app": "org.gnome.Calendar.desktop", "source": "Calendar", "title": "...", "text": "...", "urgency": "normal", "actions": ["Join", "Snooze"], "banners": true, "dnd": false, "acknowledged": false}`. `app` is `null` for a notification no app claims, `urgency` one of `low`, `normal`, `high`, `critical`, `banners` whether GNOME shows banners for that app, and `dnd` whether Do Not Disturb is on.
+- **The daemon decides** what shows, so the rules are tested with the daemon: a notification GNOME would show a banner for (not low urgency, not already seen, banners on for its app and Do Not Disturb off, except critical ones, which GNOME shows even then), that **has buttons or is urgent** (high or critical), and that the [config](configuration.md#notifications) does not turn off. Anything else is answered at once with `{"op": "answer", "id": "n1", "option": null, "reason": "ignored", "why": "no buttons and not urgent"}`.
+- The card's title is the notification's (or its app's name), its text the app's name and the body, and its answers the notification's first three buttons, with ids `action-0` to `action-2`. A card shows for 20 s by default.
+- **Tapping one presses the notification's own button.** The extension presses it only if the notification and that very button still exist: if the app replaced its buttons since, nothing is pressed. Dismiss, a timeout and a card that cannot show leave the notification alone, in GNOME's list. Nothing activates a notification by itself.
+- An app that updates its notification updates the card (it is armed again, and a finger on the old version chooses nothing). An app or the user that closes the notification takes the card away (`cancel`).
+- With no daemon running, the extension mirrors nothing and keeps nothing; it connects whenever the daemon (re)starts.
 
 ## Giving an app a spot
 
@@ -108,4 +125,4 @@ for line in f:
 
 ## What the extension draws
 
-The daemon publishes the bar as a scene of tiles in `touchbar.json` (`"version": 2`). The extension draws each tile without knowing what it is, so new kinds of tiles and new apps need no extension update (GNOME loads extension code only at login). The tile fields are documented at the top of the scene section in `touchbar.py`. The version 1 fields (`spots`, `pressed`, `removing`) are still published, so an extension loaded before this version keeps drawing the ordinary bar until the next login. It shows no app tiles and no questions.
+The daemon publishes the bar as a scene of tiles in `touchbar.json` (`"version": 2`), with `height`, the height drawn (the card's while one shows), and `strut`, the bar's own height, which is the work area windows on the ScreenPad keep clear of: a card covers them for a moment rather than resizing them. The extension animates a growth of `height` over an unchanged `strut`. It draws each tile without knowing what it is, so new kinds of tiles and new apps need no extension update (GNOME loads extension code only at login). The tile fields are documented at the top of the scene section in `touchbar.py`. The version 1 fields (`spots`, `pressed`, `removing`) are still published, so an extension loaded before this version keeps drawing the ordinary bar until the next login. It shows no app tiles and no questions.
