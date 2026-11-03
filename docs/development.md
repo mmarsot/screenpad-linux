@@ -14,7 +14,7 @@
 | `initramfs/` | the initramfs hook, used only when nvidia-drm is in the initramfs |
 | `install.sh` | installs, uninstalls and purges (run as root) |
 | `tests/` | unit tests; `touchbar-v1-default.toml` to `touchbar-v5-default.toml` are configs earlier versions wrote, for the migration tests |
-| `docs/` | this documentation; `docs/images/` holds the screenshots |
+| `docs/` | this documentation; `docs/images/` holds the screenshots, `docs/assets/` the README's banner (see [its README](assets/README.md)) |
 | `AGENTS.md`, `.agents/skills/` | the guide for contributors and coding agents: an index and one skill per area (`.claude/skills` links to it; `CLAUDE.md` imports `AGENTS.md`) |
 | `Makefile`, `pyproject.toml`, `uv.lock`, `package.json`, `package-lock.json`, `eslint.config.js`, `.prettierrc.json` | the development checks and their pinned tools; nothing here is installed. `pyproject.toml` also makes the repository, built as a package, the client library `screenpad_app` alone (pip only; uv never builds it) |
 | `.github/workflows/ci.yml` | CI: the same checks on every pull request |
