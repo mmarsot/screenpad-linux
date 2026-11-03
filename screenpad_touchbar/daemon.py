@@ -177,6 +177,8 @@ class Daemon:
             # Presses accepted so far (Bar and Surface click()): the
             # extension plays its click when this goes up.
             "clicks": self.clicks,
+            # Fn+F6 (Toggle.shown()): the extension shows "ScreenPad on".
+            "fnkey": self.toggle.shown() if self.toggle else None,
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension
             # code only then). It shows no app tiles and no questions.
@@ -398,6 +400,10 @@ class Daemon:
             timeout = POLL
             if self.toggle:
                 self.toggle.tick()
+                # A press read last round, or one settled: Fn+F6's part of the
+                # scene. Held means lit, so it changes only while not held.
+                if self.source is None and self.toggle.shown() != (self.published or {}).get("fnkey"):
+                    self.publish()
             if self.source is None and self.want_active() and time.monotonic() >= retry_at:
                 try:
                     taken = self.activate()

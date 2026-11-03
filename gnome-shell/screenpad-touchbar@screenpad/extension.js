@@ -28,6 +28,9 @@
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
 //   app if it is already open, as the dock does;
 // - plays a soft click each time the daemon accepts a press (feedback.js);
+// - shows "ScreenPad on" in GNOME's on-screen indicator when Fn+F6 lights
+//   the ScreenPad, in place of GNOME's touchpad-off one (osd.js, when in
+//   fnkey.js);
 // - keeps the pointer, windows and the overview off the ScreenPad's
 //   monitor (keepout.js, what goes where in fence.js).
 //
@@ -63,6 +66,7 @@ import {
 import {CLICK_NAME, Clicker} from './feedback.js';
 import {KeepOut} from './keepout.js';
 import {NotificationMirror} from './notifications.js';
+import {FnKeyOsd} from './osd.js';
 import {Pages} from './pages.js';
 import {RepaintSafeguard} from './safeguard.js';
 import {
@@ -111,6 +115,7 @@ export default class ScreenpadTouchbar extends Extension {
         }
         this._safeguard = new RepaintSafeguard();
         this._keepOut = new KeepOut();
+        this._osd = new FnKeyOsd();
 
         this._fileMonitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
         this._fileMonitor.connect('changed', (_monitor, file, other) => {
@@ -194,6 +199,8 @@ export default class ScreenpadTouchbar extends Extension {
         this._safeguard = null;
         this._keepOut.destroy();
         this._keepOut = null;
+        this._osd.destroy();
+        this._osd = null;
         this._pages.release();
         this._pages = null;
         this._clicker = null;
@@ -228,6 +235,11 @@ export default class ScreenpadTouchbar extends Extension {
             this._clicker?.update(this._state);
         } catch (e) {
             logError(e, 'screenpad-touchbar: sound');
+        }
+        try {
+            this._osd.update(this._state);
+        } catch (e) {
+            logError(e, 'screenpad-touchbar: indicator');
         }
         // A daemon (re)started: connect to its socket.
         if (this._state) this._mirror?.wake();

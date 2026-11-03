@@ -1,20 +1,23 @@
 """Tests for Fn+F6's cycle (screenpad_touchbar/fnkey.py): the state mapping, the
 cycle against a GNOME that flips the setting on each press, a touchpad turned
-off elsewhere, the hotkeys device, the gsettings and screenpad commands through
-stubs, and the daemon grabbing only while the display is on. No root, no
-hardware, no GNOME.
+off elsewhere, what the scene says of it for the "ScreenPad on" indicator, the
+hotkeys device, the gsettings and screenpad commands through stubs, and the
+daemon grabbing only while the display is on. No root, no hardware, no GNOME.
 
 Run with: python3 -m unittest discover -s tests"""
 
+import json
 import os
 import tempfile
 import time
 import unittest
+from unittest import mock
 
-from touchbar_support import ConfigHome, config
+from touchbar_support import ConfigHome, FakePanel, FakeSetting, config, hotkey
 
 from screenpad_touchbar import fnkey
 from screenpad_touchbar.codes import EV_KEY, EV_SYN, INPUT_EVENT, KEY_TOUCHPAD_TOGGLE
+from screenpad_touchbar.common import state_path
 from screenpad_touchbar.daemon import Daemon
 from screenpad_touchbar.fnkey import (
     FLIP_WAIT,
@@ -30,65 +33,6 @@ from screenpad_touchbar.fnkey import (
 
 # The cycle, as (touchpad, display): (1) both off, (2) the touchpad only, (3) both.
 BOTH_OFF, PAD_ONLY, BOTH_ON = (False, False), (True, False), (True, True)
-
-
-class FakeSetting:
-    """send-events as GNOME keeps it. flip() is what gsd-media-keys does on a
-    press: the change shows only when the monitor's line is read."""
-
-    def __init__(self, value="enabled"):
-        self.value = value
-        self.written = []
-        self.r, self.w = os.pipe()
-        self.lines = []
-
-    def start(self, now):
-        pass
-
-    def fd(self):
-        return self.r
-
-    def flip(self):
-        current = self.lines[-1] if self.lines else self.value
-        self.change("disabled" if current == "enabled" else "enabled")
-
-    def change(self, value):
-        self.lines.append(value)
-        os.write(self.w, b".")
-
-    def readable(self):
-        os.read(self.r, 64)
-        changes = 0
-        for value in self.lines:
-            if value != self.value:
-                self.value = value
-                changes += 1
-        self.lines = []
-        return changes
-
-    def set(self, value):
-        self.written.append(value)
-        self.value = value
-
-    def stop(self):
-        os.close(self.r)
-        os.close(self.w)
-
-
-class FakePanel(Panel):
-    """The panel, with 'screenpad light' and 'dark' done at once."""
-
-    def __init__(self, lit=True):
-        super().__init__(power="/nonexistent", command=["false"])
-        self.is_lit = lit
-        self.ran = []
-
-    def lit(self):
-        return self.is_lit
-
-    def spawn(self, on):
-        self.ran.append("light" if on else "dark")
-        self.is_lit = on
 
 
 class Clock:
@@ -207,6 +151,37 @@ class CycleTests(unittest.TestCase):
         self.toggle.press()
         self.assertIsNone(self.toggle.pending)
         self.assertEqual(self.panel.ran, [])
+
+    def test_lit_counts_the_presses_that_light_the_display(self):
+        hotkey(self, self.toggle)
+        lit = []
+        for _ in range(2):
+            for _ in range(3):  # to (1), (2), (3)
+                lit.append(self.toggle.shown())
+                self.press()
+        self.assertEqual(
+            [(s["lit"], s["lights_next"]) for s in lit],
+            [(0, False), (0, False), (0, True), (1, False), (1, False), (1, True)],
+        )
+        self.assertEqual(self.toggle.shown(), {"lit": 2, "lights_next": False})
+
+    def test_lights_next_only_while_a_press_would(self):
+        self.make(lit=False)
+        self.assertFalse(self.toggle.lights_next())  # no hotkeys device: GNOME's indicator is right
+        hotkey(self, self.toggle)
+        self.assertTrue(self.toggle.lights_next())
+        self.toggle.press()  # until GNOME's flip, the press is still settling
+        self.assertFalse(self.toggle.lights_next())
+        self.assertEqual(self.toggle.lit, 1)
+        self.make(value="disabled", lit=False)  # a touchpad turned off elsewhere
+        hotkey(self, self.toggle)
+        self.assertFalse(self.toggle.lights_next())
+        self.make(lit=False)
+        hotkey(self, self.toggle)
+        os.unlink(self.flag)  # screenpad off: presses only toggle the touchpad
+        self.assertFalse(self.toggle.lights_next())
+        self.press()
+        self.assertEqual(self.toggle.lit, 0)
 
     def test_disabled_on_external_mouse_counts_as_on(self):
         self.make(value="disabled-on-external-mouse")
@@ -357,6 +332,43 @@ class DaemonTests(unittest.TestCase):
             self.assertFalse(daemon.want_active())
             self.assertFalse(Daemon(config(), None, flag=os.path.join(d, "none")).want_active())
             self.assertTrue(Daemon(config(), None, flag=flag).want_active())
+
+    def test_the_scene_says_a_press_lit_the_display_at_once(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d):
+            flag = os.path.join(d, "active")
+            open(flag, "w").close()
+            setting = FakeSetting()
+            self.addCleanup(setting.stop)
+            toggle = Toggle(setting, FakePanel(lit=False), find=lambda: None, flag=flag)
+            w = hotkey(self, toggle)
+            daemon = Daemon(config(), None, flag=flag, toggle=toggle)
+            # Two rounds of the loop from state (2): Fn+F6 comes in during
+            # the first, GNOME's flip not yet; the scene says the press lit
+            # the display at the start of the next, before the daemon grabs.
+            os.write(w, events((EV_KEY, KEY_TOUCHPAD_TOGGLE, 1), (EV_SYN, 0, 0)))
+            rounds = []
+
+            def scene():
+                with open(state_path()) as f:
+                    return json.load(f)["fnkey"]
+
+            def select(r, _w, _x, _timeout):
+                rounds.append(scene())
+                daemon.stop = len(rounds) == 2
+                return [toggle.hotkey.fd] if len(rounds) == 1 else [], [], []
+
+            grabbing = []
+            with (
+                mock.patch("screenpad_touchbar.daemon.select.select", select),
+                mock.patch.object(daemon, "activate", lambda: grabbing.append(scene())),
+            ):
+                daemon.loop()
+            self.assertEqual(rounds, [{"lit": 0, "lights_next": True}, {"lit": 1, "lights_next": False}])
+            self.assertEqual(grabbing, [{"lit": 1, "lights_next": False}])
+            # A daemon without the cycle (Fn+F6 not followed) says nothing.
+            Daemon(config(), None, flag=flag).publish()
+            with open(state_path()) as f:
+                self.assertIsNone(json.load(f)["fnkey"])
 
     def test_the_hotkey_device_is_retried_quietly(self):
         clock = Clock()
