@@ -4,7 +4,7 @@ The touch bar reads `~/.config/screenpad/touchbar.toml`. `screenpad-touchbar on`
 
 - **Applying changes:** save the file. The daemon reloads it within a second (or on `systemctl --user reload screenpad-touchbar`). No restart or re-login is needed.
 - **Errors:** if the new file has an error, the daemon keeps the current bar and logs why (`journalctl --user -u screenpad-touchbar`). `screenpad-touchbar check` shows the error too, and lists every spot when the file is valid.
-- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. Every other line and comment is kept, and the bar never adds, moves or removes any other item.
+- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
 
 ## The default
 

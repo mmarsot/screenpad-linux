@@ -26,7 +26,9 @@ TILE_STYLES = ("button", "shortcut", "grip", "page", "ask-text", "option")
 # Every CSS class a tile can carry besides its style. The stylesheet has a
 # rule for each but "tap", which is the plain button
 # (tests/test_touchbar_scene.py checks it).
-TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple("tone-" + tone for tone in TONES)
+TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline", "moving", "target") + tuple(
+    "tone-" + tone for tone in TONES
+)
 # A question (an attention card): its title and text over the first two
 # spots, Dismiss in the third, its answers in the last three. The grip
 # stays.
@@ -50,7 +52,7 @@ def page_look(page):
     return {"label": page.title(), **{k: v for k, v in page.look.items() if k != "title"}}
 
 
-def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pages=None):
+def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pages=None, marks=None):
     """The tiles of the config's spots: its items, the grip and the page
     button.
 
@@ -59,6 +61,8 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
     (page_look()). page_to is the page a tap on the page button turns to
     (the pager's target()) while the pages turn; without it, no page button.
     An app dropped on an empty spot or on an app's spot goes there.
+    marks maps spot indexes to a class a drag gives them (Mover.marks()):
+    "moving" on the item it moves, "target" where it would land.
     """
     provided = provided or {}
     pages = pages or {}
@@ -89,6 +93,8 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
             tile.update(classes=classes, **shown)
         else:
             tile.update(classes=[item.mode], **item.looks())
+        if marks and s.kind not in (GRIP, PAGE) and i in marks:
+            tile["classes"] = tile.get("classes", []) + [marks[i]]
         tiles.append(tile)
     return tiles
 

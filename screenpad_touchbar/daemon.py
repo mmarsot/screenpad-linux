@@ -41,6 +41,7 @@ from .config_edit import edit_config, remove_app
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
+from .moves import BAR_LIST, Mover
 from .pager import Pager
 from .scene import ask_tiles, page_look, spot_tiles
 from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
@@ -99,6 +100,9 @@ class Daemon:
             items=lambda: self.config.apps,
             act=self.item_act,
         )
+        # Items dragged between the bar and the apps page's home list.
+        self.mover = Mover(lambda: self.config, self.surface.drop_cell, self.apps.asks, self.edit, self._click)
+        self.surface.mover = self.mover
         self.page_button_shown = False
         # Presses the bar and the surface accepted since the daemon started:
         # the extension plays a click each time this goes up.
@@ -144,12 +148,12 @@ class Daemon:
 
     def scene(self):
         """The tiles to draw: a question over the spots while one shows."""
-        pressed = self.bar.pressed() if self.bar else []
-        removing = self.bar.removing() if self.bar else []
+        pressed, removing = (self.bar.pressed(), self.bar.removing()) if self.bar else ([], [])
         page_to = self.pager.target() if self.pager.available() else None
         # Page items open their page only while the apps page can show.
         pages = {n: page_look(p) for n, p in self.apps.pages.items()} if page_to is not None else {}
-        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to, pages)
+        marks = self.mover.marks(BAR_LIST)  # an item dragged from or to the bar
+        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to, pages, marks)
         ask = self.apps.asks.shown()
         if ask is not None:
             tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
@@ -250,6 +254,7 @@ class Daemon:
             pager=self.pager,
             click=self._click,
             open_page=self.surface.open_page,
+            mover=self.mover,
         )
 
     def reap(self):
