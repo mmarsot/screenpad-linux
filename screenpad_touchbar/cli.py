@@ -35,11 +35,12 @@ from .common import (
     state_path,
 )
 from .config import config_path, load_config
-from .config_edit import add_app, edit_config, remove_app
+from .config_edit import add_app, append_item, edit_config, remove_app
 from .daemon import Daemon
 from .defaults import EXAMPLE_CONFIG
 from .devices import Source, find_source
-from .items import app_id
+from .items import app_id, parse_item
+from .keys import key_spec, parse_key
 from .migrate import migrate_config
 from .splitter import BAR, PAD, Splitter
 
@@ -254,7 +255,8 @@ def poke_daemon():
 
 def cmd_shortcut(args):
     """List, add or remove the apps among the bar's items, or the apps page's
-    with --apps (the extension adds to the bar by drag and drop)."""
+    with --apps (the extension adds to the bar by drag and drop), or add a
+    key or a command at the end (the extension's custom shortcut window)."""
     where = "apps" if args.apps else "bar"
     limit = MAX_APPS_ITEMS if args.apps else BAR_ITEMS
     try:
@@ -271,6 +273,18 @@ def cmd_shortcut(args):
 
             def change(c):
                 return {where: add_app(c.items(where), app, spot, limit)}
+        elif args.action in ("add-key", "add-command"):
+            block = {"label": args.label, "mode": "hold" if args.hold else "tap"}
+            if args.icon:
+                block["icon"] = args.icon
+            if args.action == "add-key":
+                block["key"] = key_spec(parse_key(args.key))
+            else:
+                block["command"] = args.run
+            item = parse_item(block)
+
+            def change(c):
+                return {where: append_item(c.items(where), item, limit)}
         else:
             if not 1 <= args.spot <= limit:
                 raise ConfigError("spot must be 1 to %d" % limit)
@@ -283,6 +297,9 @@ def cmd_shortcut(args):
         log(str(e))
         return 2
     poke_daemon()
+    if args.action in ("add-key", "add-command"):
+        print("added %s to %s" % (item.title(), "the apps page" if args.apps else "the bar"))
+        return 0
     apps = [i.name for i in config.items(where) if i.kind == APP]
     print("%s apps: %s" % ("the apps page's" if args.apps else "the bar's", ", ".join(apps) or "none"))
     return 0
@@ -373,7 +390,9 @@ def parse_args(argv):
     status = sub.add_parser("status", help="show the config, the touchpad and the daemon")
     check = sub.add_parser("check", help="validate the config")
     probe = sub.add_parser("probe", help="print where touches land, without grabbing")
-    shortcut = sub.add_parser("shortcut", help="list, add or remove apps on the bar or the apps page")
+    shortcut = sub.add_parser(
+        "shortcut", help="list, add or remove apps on the bar or the apps page, or add a key or command"
+    )
     actions = shortcut.add_subparsers(dest="action", required=True)
     listing = actions.add_parser("list", help="the spots and their items")
     add = actions.add_parser(
@@ -389,7 +408,16 @@ def parse_args(argv):
     remove.add_argument(
         "spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
     )
-    for a in (listing, add, remove):
+    add_key = actions.add_parser("add-key", help="add a key or combo in the first free spot")
+    add_key.add_argument("label", help="its name, shown when there is no icon")
+    add_key.add_argument("key", help='a key or combo, such as "ctrl+alt+t" (evdev names, or key codes)')
+    add_command = actions.add_parser("add-command", help="add a command in the first free spot")
+    add_command.add_argument("label", help="its name, shown when there is no icon")
+    add_command.add_argument("run", metavar="command", help="the command, run by sh")
+    for a in (add_key, add_command):
+        a.add_argument("--icon", help="an icon name or the path of an image")
+        a.add_argument("--hold", action="store_true", help="down while the finger is (the default: one press on lift)")
+    for a in (listing, add, remove, add_key, add_command):
         a.add_argument("--apps", action="store_true", help="the apps page's items ([[apps]]) instead of the bar's")
     ask = sub.add_parser(
         "ask",

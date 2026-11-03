@@ -104,6 +104,20 @@ def _key_names():
 
 
 KEY_NAMES = _key_names()
+# The name a code is written with (key_spec()): its first name above, the
+# modifiers by their short names.
+CODE_NAMES: dict[int, str] = {}
+for _name, _code in KEY_NAMES.items():
+    CODE_NAMES.setdefault(_code, _name)
+CODE_NAMES.update({1: "esc", 29: "ctrl", 42: "shift", 56: "alt", 99: "printscreen", 100: "altgr", 125: "super"})
+# The modifiers, in the order a combo is written with them: first.
+MODIFIERS = (29, 97, 42, 54, 56, 100, 125, 126)
+
+
+def key_spec(codes):
+    """(56, 29, 20) -> 'ctrl+alt+t': a combo by names, modifiers first, as parse_key() reads it."""
+    mods = sorted((c for c in codes if c in MODIFIERS), key=MODIFIERS.index)
+    return "+".join(CODE_NAMES.get(c, str(c)) for c in mods + [c for c in codes if c not in MODIFIERS])
 
 
 def parse_key(spec):

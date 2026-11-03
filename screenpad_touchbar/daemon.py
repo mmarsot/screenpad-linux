@@ -32,21 +32,22 @@ from .common import (
     runtime_file,
     state_path,
 )
-from .config import config_path, load_config
-from .config_edit import edit_config, remove_app
+from .config import LISTS, config_path, load_config
+from .config_edit import append_item, edit_config, remove_app
 from .decide import Decider
 from .devices import Source, create_keys, create_pad, find_source, reset_tools, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
-from .moves import Mover
+from .moves import BAR_LIST, Mover
 from .pager import Pager
+from .picker import Picker, read_favourites
 from .publish import scene, state
 from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
 from .surface import Surface
 
 
 class Daemon:
-    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG, toggle=None):
+    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG, toggle=None, favourites=None):
         self.config = config
         self.config_file = config_file
         self.config_mtime = self._mtime()
@@ -100,6 +101,10 @@ class Daemon:
         # Items dragged between the bar and the apps page's home list.
         self.mover = Mover(lambda: self.config, self.surface.drop_cell, self.apps.asks, self.edit, self._click)
         self.surface.mover = self.mover
+        # What a + adds; the dock's favourites only from main() (tests
+        # never run gsettings) unless a test passes its own.
+        self.picker = Picker(lambda: self.config, self.add_item, favourites=favourites)
+        self.surface.picker = self.picker
         # Which apps page touches move the pointer and which press: on the
         # surface's clock.
         self.decider = Decider(
@@ -198,6 +203,11 @@ class Daemon:
     def resize(self, height):
         return self.edit(lambda c: {"height": height}, "resize the bar")
 
+    def add_item(self, place, item):
+        """The picker's choice: item at the end of place's items."""
+
+        return self.edit(lambda c: {place: append_item(c.items(place), item, LISTS[place])}, "add the item")
+
     def item_act(self, item, kind):
         """A touch on an item of the apps page (Bar.act())."""
         if self.bar is not None:
@@ -217,6 +227,7 @@ class Daemon:
             click=self._click,
             open_page=self.surface.open_page,
             mover=self.mover,
+            add_spot=lambda: self.surface.open_picker(BAR_LIST),
         )
 
     def reap(self):
@@ -466,6 +477,7 @@ class Daemon:
             log("apps cannot use the bar: %s" % e)
         if self.toggle is None:
             self.toggle = Toggle(TouchpadSetting(), Panel(), flag=self.flag)
+        self.picker.read_favourites = read_favourites
         try:
             self.loop()
         finally:

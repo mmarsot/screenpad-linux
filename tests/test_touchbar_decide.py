@@ -32,7 +32,8 @@ from screenpad_touchbar.splitter import Splitter
 
 # The bar holds PTT, then five empty spots; the apps page's home list Mute
 # (cell 0, x 0..480) and then the agents page (cell 1, x 480..960), in the
-# row from GRID_Y; the cells after them are free.
+# row from GRID_Y; the cells after them have a + each. Above them, the
+# header's title takes no touch.
 CONFIG = """
 [[bar]]
 label = "PTT"
@@ -45,6 +46,7 @@ key = "micmute"
 ROW = GRID_Y + GRID_H // 4  # the home list's first row, in panel pixels
 MUTE = (200, ROW)
 FREE = (1700, ROW)
+TITLE = (1000, GRID_Y - 60)
 # On the agents page (3 by 2): Allow (long press) and Deny in the lower row.
 LOWER = GRID_Y + GRID_H * 3 // 4
 ALLOW, DENY = (300, LOWER), (1700, LOWER)
@@ -175,17 +177,17 @@ class DecideTests(unittest.TestCase):
     def test_a_late_lift_and_a_still_touch_on_nothing(self):
         # Still past the tap time on nothing that takes a press: no timer,
         # the lift does nothing, and a move is still the pointer's.
-        self.down(FREE)
+        self.down(TITLE)
         self.assertEqual(self.daemon.decider.deadline(), self.clock.now + TAP_TIME)
         self.assertFalse(self.wait(TAP_TIME + 0.5))
         self.assertIsNone(self.daemon.decider.deadline())
         self.assertEqual(self.frame(lift(0)), [])
-        self.down(FREE)
+        self.down(TITLE)
         self.wait(2)
-        self.assertEqual(codes(self.move((FREE[0] + 60, FREE[1])), EV_ABS, ABS_MT_TRACKING_ID), [2])
+        self.assertEqual(codes(self.move((TITLE[0] + 60, TITLE[1])), EV_ABS, ABS_MT_TRACKING_ID), [2])
         self.frame(lift(0))
-        # A tap on free space does nothing either: no click.
-        self.down(FREE)
+        # A tap on it does nothing either: no click.
+        self.down(TITLE)
         self.assertEqual(self.frame(lift(0)), [])
         self.assertEqual(self.daemon.clicks, 0)
 

@@ -20,7 +20,7 @@ Left to right, each spot 272 px (17 mm) wide:
 | an app | Tap it to open the app, or to raise it if it is already open, as the dock does. Hold it for about a second: it turns red with a delete icon, and lifting the finger then removes it. Slide away before lifting to cancel either |
 | an app's tile | The app draws it and gets its touches (`tile` in the config; see the [app API](app-api.md)). Dimmed, and touches do nothing, while no app provides it |
 | an app's page | Tap it to open that page on the apps page (`page` in the config; see [The two pages](#the-two-pages)). Dimmed while no app gives that page, or while the pages do not turn |
-| an empty spot | A faint `+`: a place for an app dropped on the bar, or an item dragged up from the apps page |
+| an empty spot | A faint `+`: tap it to add an item there ([adding items](#adding-items-with-a-)); a place for an app dropped on the bar, or an item dragged up from the apps page |
 | **page button** | Shows only where a tap goes: an app grid icon on the touchpad page (go to apps), a touchpad icon on the apps page (go to the touchpad). A tap, lifted on it, turns the page; sliding away cancels. See [The two pages](#the-two-pages). 144 px (9 mm) wide, framed apart from the items. Not drawn while the extension loaded is older than the pages |
 | **grip** (right end) | The tile with an up arrow, a bar and a down arrow. Drag it down or up to make the bar taller or shorter, in 8 px steps between 64 and 540 px. The bar follows the finger, and the new height is saved when you lift. It is drawn at every height |
 
@@ -77,7 +77,16 @@ On the apps page's home list, any item, of any kind, moves from the bar to the l
 - **The drag is a touch like any other.** It keeps the kind it started with, and its item does nothing, as when sliding away: an app does not open, a tap key does not fire, and a hold key is down from the touch to the lift, as in a swipe. A tile no app provides and a page that cannot open, which do nothing to a touch, move too. Holding an app on the bar still removes it when you lift on it.
 - **Nothing moves** when the finger lifts back in its own place, on the list's header, on an app's page (only the home list takes items), on the bar while a card covers it, or on an item that appeared or changed less than 0.3 s before; nor when the move would put an app or a page twice in one place, which the config does not allow (then nothing is marked either). A swipe along the bar stays a swipe.
 
-**Writing the file.** Resizing, adding or removing apps and moving items write to `~/.config/screenpad/touchbar.toml`. The daemon edits only the `height` line and the blocks of the items that change: it writes a block for an app it adds (before the item it goes in front of, with that item's comments still above it, or after the last item), takes away the block of an app it removes, and moves an item's block as it is (its settings and the comments among them) from one list to the other, under the other list's header, before the next item kept there or after the last one. The comments above a block it takes away stay where they were. It keeps every other line and comment, never otherwise adds, moves or removes an item, and replaces the file only if the result parses to the same config apart from that change. If it cannot, or the items changed since the drag (the file edited meanwhile), it logs why and leaves the file alone.
+### Adding items with a +
+
+Every free place shows a faint `+`: each empty spot of the bar, and on the apps page's home list each free cell while it holds fewer than eight `[[apps]]` items. Tap one (on the home list, a quick tap or a still press, [as any touch there](#touches-on-the-apps-page)) and the apps page opens the picker for that place, "Add to the bar" or "Add to the apps page":
+
+- **Presets**: Screenshot (Print Screen), Mute, Mute microphone, Play or pause, Next and Previous track, Volume up and down, Lock screen (Super+L), Copy (Ctrl+C), Paste (Ctrl+V), Show desktop (Super+D) and Next and Previous workspace (Super+Page Down and Up), each a tap key.
+- **The dock's favourite apps** that place does not have yet, as GNOME keeps them (`org.gnome.shell favorite-apps`, read once as the picker opens).
+
+Tap one to add it at the end of that place's items, its first free spot on the bar; **Back** in the header closes the picker with nothing added, and so does the page going back to the touchpad. What it adds is written to the file like every edit (below), as a block of its own, and can be moved, or edited in the file, like any item.
+
+**Writing the file.** Resizing, adding or removing apps, adding items and moving items write to `~/.config/screenpad/touchbar.toml`. The daemon edits only the `height` line and the blocks of the items that change: it writes a block for an app or an item it adds (before the item it goes in front of, with that item's comments still above it, or after the last item), takes away the block of an app it removes, and moves an item's block as it is (its settings and the comments among them) from one list to the other, under the other list's header, before the next item kept there or after the last one. The comments above a block it takes away stay where they were. It keeps every other line and comment, never otherwise adds, moves or removes an item, and replaces the file only if the result parses to the same config apart from that change. If it cannot, or the items changed since the drag (the file edited meanwhile), it logs why and leaves the file alone.
 
 ## Fn+F6: touchpad and display
 
@@ -118,6 +127,7 @@ It writes the default config to `~/.config/screenpad/touchbar.toml` if there is 
 | `screenpad-touchbar status` | config, touchpad node, ScreenPad on/off, `/dev/uinput` access, unit and daemon state, the page shown |
 | `screenpad-touchbar check` | validates the config and lists every spot |
 | `screenpad-touchbar shortcut list\|add APP [--spot N]\|remove N [--apps]` | the apps on the bar, or with `--apps` on the apps page, from a terminal |
+| `screenpad-touchbar shortcut add-key LABEL KEY\|add-command LABEL COMMAND [--icon NAME] [--hold] [--apps]` | adds a key or combo (`ctrl+alt+t`, or key codes such as `29+56+20`, written by name) or a command, in the first free spot of the bar, or with `--apps` of the apps page |
 | `screenpad-touchbar probe` | prints where touches land (panel pixels, bar or pad, which spot) without grabbing; stop the daemon first (`screenpad-touchbar off`), whose grab keeps every other reader from seeing touches |
 | `screenpad-touchbar ask TITLE --option ID=LABEL ...` | asks a question in the bar and prints the chosen answer's id; see the [app API](app-api.md#asking-from-a-shell) |
 | `screenpad-touchbar run` | the daemon itself, in the foreground (what the unit runs) |

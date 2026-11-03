@@ -4,7 +4,7 @@ The touch bar reads `~/.config/screenpad/touchbar.toml`. `screenpad-touchbar on`
 
 - **Applying changes:** save the file. The daemon reloads it within a second (or on `systemctl --user reload screenpad-touchbar`). No restart or re-login is needed.
 - **Errors:** if the new file has an error, the daemon keeps the current bar and logs why (`journalctl --user -u screenpad-touchbar`). `screenpad-touchbar check` shows the error too, and lists every spot when the file is valid.
-- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
+- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. An item added with a `+` ([adding items](touchbar.md#adding-items-with-a-)), or with `screenpad-touchbar shortcut add-key` or `add-command`, gets a block of its own after that list's last one. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
 
 ## The default
 
@@ -134,7 +134,7 @@ label = "Screenshot"
 key = "printscreen"
 ```
 
-From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar.
+From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar. `screenpad-touchbar shortcut add-key Terminal ctrl+alt+t` adds a key (by name, or by key codes such as `29+56+20`, which it writes by name), and `shortcut add-command Hello "notify-send hello"` a command, in the first free spot (`--apps` on the apps page, `--icon NAME`, `--hold` for mode `"hold"`).
 
 ## Notifications
 

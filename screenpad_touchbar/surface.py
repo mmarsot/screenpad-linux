@@ -51,13 +51,19 @@ from .scene import page_look
 HOME_WIDGET = "home"
 OPEN = "open:"
 ITEM = "item:"
+# The picker's (picker.py): a + on a free cell of the home list, Back, and
+# a choice.
+ADD = "add:"
+BACK = "back"
+PICK = "pick:"
+PICK_COLUMNS = 6
 # How to go back, under the apps page's title.
 BACK_HINT = (
     "Tap the touchpad button, swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
 )
 # Every CSS class a widget can carry; the stylesheet has a rule for each
 # (tests/test_touchbar_surface.py checks it).
-WIDGET_CLASSES = ("inert", "long", "held", "moving", "target") + tuple("tone-" + tone for tone in TONES)
+WIDGET_CLASSES = ("inert", "long", "held", "moving", "target", "empty") + tuple("tone-" + tone for tone in TONES)
 
 
 class Spot:
@@ -135,6 +141,7 @@ class Surface:
         self.since = {}  # Spot.key() -> when it appeared as it is
         self.covered = None  # cover() when the widgets were last drawn
         self.mover = None  # moves.Mover: drags between the home list and the bar
+        self.picker = None  # picker.Picker: what a + adds, while it shows
 
     def shown(self):
         return self.pager.page == APPS and bool(self.can_draw())
@@ -152,6 +159,8 @@ class Surface:
             return []
         top = self.top()
         y0, height = top + HEADER_H, PANEL_H - top - HEADER_H
+        if self.picker is not None and self.picker.place is not None:
+            return self._picker_spots(top, y0, height)
         page = self.page()
         if page is not None:
             client = getattr(page.client, "name", None)
@@ -186,7 +195,8 @@ class Surface:
             )
         ]
         cells = self.home_cells()
-        if not cells:
+        adding = self.picker is not None and self.picker.room(APPS_LIST)
+        if not cells and not adding:
             look = {
                 "label": "No apps here yet",
                 "text": "Items from touchbar.toml's [[apps]] blocks show here, then the pages programs give.",
@@ -197,7 +207,32 @@ class Surface:
             x, y, wd, h = grid(0, y0, PANEL_W, height, HOME_COLUMNS, rows, i % HOME_COLUMNS, i // HOME_COLUMNS, 1, 1)
             entry = i if i < len(self.items()) else None
             spots.append(Spot(None, wid, x, y, wd, h, look, touch, item=item, entry=entry))
+        # A + on each free cell while the [[apps]] items have room.
+        for i in range(len(cells), rows * HOME_COLUMNS if adding else 0):
+            x, y, wd, h = grid(0, y0, PANEL_W, height, HOME_COLUMNS, rows, i % HOME_COLUMNS, i // HOME_COLUMNS, 1, 1)
+            spots.append(Spot(None, ADD + str(i), x, y, wd, h, {"icon": "list-add-symbolic"}, "tap"))
         return spots
+
+    def _picker_spots(self, top, y0, height):
+        """The picker: Back and its title, then what it offers."""
+        assert self.picker is not None
+        spots = [
+            Spot(None, BACK, 0, top, HOME_W, HEADER_H, {"icon": "go-previous-symbolic", "label": "Back"}, "tap"),
+            Spot(None, "title", HOME_W, top, PANEL_W - HOME_W, HEADER_H, {"title": self.picker.title()}, "none"),
+        ]
+        choices = self.picker.choices()
+        rows = max(2, -(-len(choices) // PICK_COLUMNS))
+        for i, (look, _item) in enumerate(choices):
+            x, y, wd, h = grid(0, y0, PANEL_W, height, PICK_COLUMNS, rows, i % PICK_COLUMNS, i // PICK_COLUMNS, 1, 1)
+            spots.append(Spot(None, PICK + str(i), x, y, wd, h, look, "tap"))
+        return spots
+
+    def open_picker(self, place):
+        """A + tapped: the picker, adding to place ("bar" or "apps"), on the apps page."""
+        if self.picker is not None and self.pager.available():
+            self.open = None
+            self.picker.open(place)
+            self.pager.turn(APPS)
 
     def home_cells(self):
         """The home page's list: (widget id, look, touch, item) for each
@@ -359,6 +394,12 @@ class Surface:
             self._send(spot, "tap")
         elif spot.wid == HOME_WIDGET:
             self.open = None
+        elif spot.wid.startswith(ADD):
+            self.open_picker(APPS_LIST)
+        elif self.picker is not None and spot.wid == BACK:
+            self.picker.close()
+        elif self.picker is not None and spot.wid.startswith(PICK):
+            self.picker.choose(int(spot.wid[len(PICK) :]))
         elif spot.wid.startswith(OPEN):
             self.open = spot.wid[len(OPEN) :]
 
@@ -393,6 +434,8 @@ class Surface:
         None on the touchpad page: title, page and widgets for an extension
         that draws widgets, else only the title, text and hint it draws."""
         if self.pager.page != APPS:
+            if self.picker is not None:
+                self.picker.close()  # it does not wait for the next visit
             return None
         if not self.can_draw():
             return {
@@ -408,7 +451,9 @@ class Surface:
             tile = {"id": "%s/%s" % (s.page or "surface", s.wid), "x": s.x, "y": s.y, "width": s.w, "height": s.h}
             tile.update((k, v) for k, v in s.look.items() if k != "tone")
             classes = ["tone-" + s.look.get("tone", "neutral")]
-            if s.touch == "none":
+            if s.wid.startswith(ADD):
+                classes.append("empty")
+            elif s.touch == "none":
                 classes.append("inert")
             elif s.touch == "long":
                 classes.append("long")
@@ -424,4 +469,6 @@ class Surface:
             tile["classes"] = classes
             widgets.append(tile)
         page = self.page()
+        if self.picker is not None and self.picker.place is not None:
+            return {"title": self.picker.title(), "page": None, "widgets": widgets}
         return {"title": page.title() if page else "Apps", "page": page.name if page else None, "widgets": widgets}

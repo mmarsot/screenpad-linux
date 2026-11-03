@@ -152,7 +152,13 @@ class ItemsTests(unittest.TestCase):
         self.assertEqual((cells[0]["width"], cells[0]["height"]), (PANEL_W // HOME_COLUMNS, GRID_H // 2))
         self.daemon.apps.handle(self.client, page_msg(page="third"))
         cells = [x for x in self.published()["surface"]["widgets"] if x["id"] != "surface/title"]
-        self.assertEqual((len(cells), cells[8]["x"], cells[8]["y"]), (9, 0, GRID_Y + round(2 * GRID_H / 3)))
+        self.assertEqual((len(cells), cells[8]["x"], cells[8]["y"]), (12, 0, GRID_Y + round(2 * GRID_H / 3)))
+        # The free cells of that row have a + (the picker's), as the
+        # [[apps]] items have room for one more.
+        self.assertEqual(
+            [(x["id"], x["icon"], x["classes"]) for x in cells[9:]],
+            [("surface/add:%d" % i, "list-add-symbolic", ["tone-neutral", "empty"]) for i in (9, 10, 11)],
+        )
         self.assertAlmostEqual(cells[0]["height"], GRID_H / 3, delta=1)
 
     def test_touches_do_what_the_items_do(self):

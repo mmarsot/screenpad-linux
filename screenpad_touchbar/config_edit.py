@@ -1,18 +1,19 @@
-"""Editing touchbar.toml in place: the height, the apps among the items, items moved between the two lists."""
+"""Editing touchbar.toml in place: the height, the items added and removed, items moved between the two lists."""
 
 import fcntl
 import json
 import os
 import re
 
-from .common import APP, BAR_ITEMS, ConfigError, state_path
+from .common import APP, BAR_ITEMS, COMMAND, KEY, ConfigError, state_path
 from .config import Config, config_path, parse_config
 from .defaults import EXAMPLE_CONFIG
 from .items import Item
 
-# The bar changes three things in the user's file: the height line, the
-# apps among the items (it adds, moves and removes app items, never any
-# other), and items of any kind moved from the bar to the apps page or
+# The bar changes four things in the user's file: the height line, the
+# apps among the items (it adds, moves and removes app items), keys and
+# commands it adds (the picker's, picker.py; it never moves or removes
+# them), and items of any kind moved from the bar to the apps page or
 # back (their block goes from one list to the other as it is). It edits
 # those lines and leaves every other line, comments included, as it was,
 # then checks that the result parses to the old config with only that
@@ -68,8 +69,21 @@ def _toml(value):
 
 
 def app_block(name, item):
-    """The lines the bar writes for an app item."""
-    lines = ["[[%s]]\n" % name, "app = %s\n" % _toml(item.name)]
+    """The lines the bar writes for an item it adds: an app, a key or a command."""
+    lines = ["[[%s]]\n" % name]
+    if item.kind == APP:
+        lines.append("app = %s\n" % _toml(item.name))
+    elif item.kind == KEY:
+        lines.append("key = %s\n" % _toml(item.key))
+    elif item.kind == COMMAND:
+        # A string for sh as it was given, else the list of arguments (a JSON
+        # list of strings is a TOML array).
+        sh = item.command[:2] == ["/bin/sh", "-c"] and len(item.command) == 3
+        lines.append("command = %s\n" % _toml(item.command[2] if sh else item.command))
+    else:
+        raise ConfigError(ONLY)
+    if item.mode and item.mode != "tap":
+        lines.append("mode = %s\n" % _toml(item.mode))
     if item.icon:
         lines.append("icon = %s\n" % _toml(item.icon))
     if item.label:
@@ -84,10 +98,10 @@ def retitled(lines, name):
     return [lines[0][: m.start(1)] + name + lines[0][m.end(1) :]] + lines[1:]
 
 
-ONLY = "the bar only adds and removes apps, and moves items between the bar and the apps page"
+ONLY = "the bar only adds and removes apps, adds keys and commands, and moves items between the bar and the apps page"
 
 
-def with_items(text, name, old, new, carried=None):
+def with_items(text, name, old, new, carried=None, added=()):
     """text with its [[name]] items changed from old to new (lists of
     items.Item, old those text has).
 
@@ -95,8 +109,9 @@ def with_items(text, name, old, new, carried=None):
     lines of their block where they come from (its header to its last
     setting, as blocks() finds it). The items new keeps from old (the same
     objects) keep their blocks as they are, and stay in the same order;
-    the others in new must be apps or carried, and get a block (an app's
-    written anew, a carried one's lines under a [[name]] header), before
+    the others in new must be apps, carried, or keys and commands whose
+    id() is in added (new items, in neither list before), and get a block
+    (one written anew, a carried one's lines under a [[name]] header), before
     the next item kept or after the last block; the ones new drops must
     be apps or carried too, and lose their block (the comments above it
     stay). Raises ConfigError for any other change."""
@@ -118,7 +133,7 @@ def with_items(text, name, old, new, carried=None):
     def block(item):
         if id(item) in carried:
             return retitled(carried[id(item)], name)
-        if item.kind != APP:
+        if item.kind != APP and id(item) not in added:
             raise ConfigError(ONLY)
         return app_block(name, item)
 
@@ -204,9 +219,11 @@ def edit_config(change, path=None):
             if len(placed) != len(set(placed)):
                 raise ConfigError("an item cannot be in two places")
             carried = _carried(text, old, lists)
+            before = {id(i) for i in old.bar + old.apps}
+            added = set(placed) - before  # in neither list before: new items
             for name, items in lists.items():
                 if [id(i) for i in items] != [id(i) for i in old.items(name)]:
-                    new_text = with_items(new_text, name, old.items(name), items, carried)
+                    new_text = with_items(new_text, name, old.items(name), items, carried, added)
             new = parse_config(new_text)
         except ConfigError as e:
             raise ConfigError("%s: could not edit it safely (%s); change it by hand" % (path, e))
@@ -260,6 +277,16 @@ def add_app(items, app, spot=None, limit=BAR_ITEMS):
         out = rest[:spot] + [item] + rest[spot:]
     # Put back where it was: nothing to write.
     return items if [i.spec() for i in out] == [i.spec() for i in items] else out
+
+
+def append_item(items, item, limit):
+    """items with item added at the end: the picker's choice, or a key or
+    command added from the command line."""
+    if len(items) >= limit:
+        raise ConfigError("there is no free spot; remove an item first")
+    if item.kind == APP and any(i.kind == APP and i.name == item.name for i in items):
+        raise ConfigError("%s is already there" % item.name)
+    return items + [item]
 
 
 def remove_app(items, index):
