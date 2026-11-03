@@ -4,9 +4,11 @@ the opener (a stand-in here, so nothing opens on the screen), and the tap in
 the loop: the board opened, or the card saying none is open."""
 
 import os
+import signal
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -66,6 +68,19 @@ class BoardTests(unittest.TestCase):
         board = read_calls(os.path.join(self.code, "bin", "board.jsonl"))
         self.assertEqual(board, [{"FM_HOME": self.home, "fm": ["FM_HOME"], "args": ["path"]}])
         self.assertEqual(read_calls(os.path.join(self.dir, "lavish.jsonl")), [{"fm": [], "args": []}])
+
+    def test_a_browser_the_opener_starts_does_not_hold_the_open(self):
+        # gio open returns at once, but a browser it starts lives on with its
+        # output: the open must not wait for that browser (OPEN_TIMEOUT 15 s).
+        self.listing((self.board, "open", URL))
+        open(os.path.join(self.dir, "opener.linger"), "w").close()
+        start = time.monotonic()
+        self.assertEqual(self.fm.open_board(), URL)
+        with open(os.path.join(self.dir, "linger.pid")) as f:
+            pid = int(f.read())
+        self.addCleanup(os.kill, pid, signal.SIGKILL)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertEqual(self.opened(), [["open", URL]])
 
     def test_the_board_is_found_by_its_real_path(self):
         os.makedirs(os.path.join(self.dir, "real"))

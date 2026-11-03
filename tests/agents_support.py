@@ -229,14 +229,20 @@ def fake_lavish(directory):
 
 def fake_opener(directory):
     """A stand-in for gio open, so nothing opens on the screen: records its
-    arguments in opened.jsonl, and fails when opener.fail exists."""
+    arguments in opened.jsonl, fails when opener.fail exists, and when
+    opener.linger exists leaves a child holding its output open, as a browser
+    gio starts does (its pid in linger.pid)."""
     return write_script(
         os.path.join(directory, "opener"),
         """
-        import json, os, sys
+        import json, os, subprocess, sys
         here = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(here, "opened.jsonl"), "a") as f:
             f.write(json.dumps(sys.argv[1:]) + "\\n")
+        if os.path.exists(os.path.join(here, "opener.linger")):
+            child = subprocess.Popen(["sleep", "30"])
+            with open(os.path.join(here, "linger.pid"), "w") as f:
+                f.write(str(child.pid))
         if os.path.exists(os.path.join(here, "opener.fail")):
             print("gio: no handler for the URL", file=sys.stderr)
             sys.exit(2)
