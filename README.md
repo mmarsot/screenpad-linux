@@ -1,37 +1,69 @@
-# screenpad
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
+    <img alt="screenpad-linux: first-gen ScreenPad display and touch bar, for the ASUS ZenBook UX480FD on Ubuntu and GNOME" src="docs/assets/banner-light.png" width="100%">
+  </picture>
+</p>
 
-Makes the first-generation ASUS ScreenPad (5.5", 1080x1920) work on Linux on the **ASUS ZenBook UX480FD**, with Ubuntu and GNOME:
+<h3 align="center">
+  Lights the first-generation ASUS ScreenPad on Linux<br>
+  and turns its top strip into a touch bar, with the rest a touchpad.
+</h3>
 
-- **Display:** lights the ScreenPad and makes it a normal extended monitor, at boot and after resume, with Secure Boot on or off. It runs in userspace only: no kernel module, no `acpi_call`.
-- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. Each press plays a soft click, so you know it landed without looking ([the click](docs/touchbar.md#the-bar)). You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back. GNOME joins the ScreenPad to the main screen as one more monitor; the pointer, windows and the overview are kept off it ([keeping the desktop off](docs/touchbar.md#keeping-the-desktop-off-the-screenpad)). Below the bar the panel is black, with a faint clock and battery level; a tap on the bar's page button (an app grid icon) or a swipe along the bar turns to an apps page, where touches below the bar never move the pointer, and it comes back to the touchpad by itself after 8 s without a touch ([the two pages](docs/touchbar.md#the-two-pages)), where apps give it pages of large widgets. **Fn+F6** cycles the touchpad and the ScreenPad's display: both off, then the touchpad alone (the display dark, the whole panel a plain touchpad), then both on. "Display off" is the ScreenPad's backlight off: the monitor stays connected and driven by the GPU, and GNOME keeps it as a monitor; `sudo screenpad off` disconnects it ([Fn+F6](docs/touchbar.md#fnf6-touchpad-and-display)).
-- **Apps:** the agent app, which puts your [Herdr](https://herdr.dev) coding agents and firstmate's Captain's Calls on the touch bar, has its own repository and installer: [screenpad-agents](https://github.com/mmarsot/screenpad-agents).
+<p align="center">
+  <a href="#supported-hardware-and-what-was-tested"><img alt="Laptop: ASUS ZenBook UX480FD" src="https://img.shields.io/badge/laptop-ZenBook%20UX480FD-0E1726"></a>
+  <a href="#supported-hardware-and-what-was-tested"><img alt="Ubuntu 26.04 LTS, GNOME Shell 50 on Wayland" src="https://img.shields.io/badge/Ubuntu%2026.04-GNOME%2050%20%C2%B7%20Wayland-0E1726"></a>
+  <a href="#known-limitations"><img alt="Secure Boot on or off" src="https://img.shields.io/badge/Secure%20Boot-on%20or%20off-0F766E"></a>
+  <a href="#features"><img alt="Userspace only: no kernel module" src="https://img.shields.io/badge/userspace%20only-no%20kernel%20module-0F766E"></a>
+  <a href="docs/development.md"><img alt="Python 3.11 or later, standard library only" src="https://img.shields.io/badge/Python-3.11%2B%20%C2%B7%20stdlib%20only-B45309"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-B45309"></a>
+</p>
 
-![The touch bar: push to talk, mute microphone and screenshot keys, then the Files and Settings apps, an empty spot, the page button showing an app grid, and the resize grip](docs/images/touchbar.png)
+<p align="center">
+  <a href="#features"><b>Features</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#supported-hardware-and-what-was-tested"><b>Hardware</b></a> ·
+  <a href="#troubleshooting"><b>Troubleshooting</b></a> ·
+  <a href="#documentation"><b>Documentation</b></a> ·
+  <a href="#development"><b>Development</b></a> ·
+  <a href="https://github.com/mmarsot/screenpad-agents"><b>screenpad-agents</b></a>
+</p>
 
-*The touch bar with its three default items (push to talk, mute microphone, screenshot), two apps added, an empty spot, the page button (an app grid: a tap goes to the apps page) and the resize grip. Rendered by the GNOME Shell extension in a headless GNOME Shell 50.1.*
+screenpad-linux makes the first-generation ASUS ScreenPad (5.5", 1080x1920) work on Linux on the **ASUS ZenBook UX480FD**, with Ubuntu and GNOME. It lights the ScreenPad as a normal extended monitor, at boot and after resume, and turns its top strip into a row of touch buttons and app shortcuts while the rest of the panel stays a touchpad.
 
-## Supported hardware and what was tested
+<p align="center">
+  <img alt="The apps page: the touch bar on top with push to talk, mute microphone and screenshot keys, three empty spots, the touchpad button and the grip; under it a header saying how to go back to the touchpad, then the Bitwarden and Settings apps and the Agents and Media pages two apps give" src="docs/images/touchbar-apps-page.png" width="720">
+  <br>
+  <sub>The apps page: the touch bar on top, then apps from the config and pages that apps give. Rendered by the GNOME Shell extension in a headless GNOME Shell 50.1.</sub>
+</p>
 
-Tested on one machine:
+## Features
 
-| | Tested |
-|---|---|
-| Laptop | ASUS ZenBook UX480FD (DMI product `ZenBook UX450FDX_UX480FD`), GeForce GTX 1050 Max-Q |
-| OS | Ubuntu 26.04 LTS, kernel 7.0, Secure Boot on (kernel lockdown `integrity`) |
-| Driver | NVIDIA proprietary driver 580.178.04 |
-| Desktop | GNOME Shell 50.1 on Wayland |
+- **The display, lit.** The ScreenPad becomes a normal extended monitor, at boot and after resume, with Secure Boot on or off. It runs in userspace only: no kernel module, no `acpi_call`. See [Display](docs/display.md).
+- **A touch bar on the top strip.** Buttons send keys or run commands; shortcuts open apps. Each press plays a soft click, so you know it landed without looking ([the bar](docs/touchbar.md#the-bar)). You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip.
+- **A touchpad below it.** Bar touches never move the pointer, and the rest of the panel stays a touchpad. Below the bar the panel is black, with a faint clock and battery level.
+- **Two pages.** A tap on the bar's page button (an app grid icon) or a swipe along the bar turns to an apps page, where touches below the bar never move the pointer and apps give it pages of large widgets. It comes back to the touchpad by itself after 8 s without a touch. Items move between the bar and the apps page with one finger, asking before one replaces another ([the two pages](docs/touchbar.md#the-two-pages)).
+- **Questions and notification cards.** Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back.
+- **The desktop kept off it.** GNOME joins the ScreenPad to the main screen as one more monitor; the pointer, windows and the overview are kept off it ([keeping the desktop off](docs/touchbar.md#keeping-the-desktop-off-the-screenpad)).
+- **Fn+F6 cycles the touchpad and the display:** both off, then the touchpad alone (the display dark, the whole panel a plain touchpad), then both on. "Display off" is the ScreenPad's backlight off: the monitor stays connected and driven by the GPU, and GNOME keeps it as a monitor; `sudo screenpad off` disconnects it ([Fn+F6](docs/touchbar.md#fnf6-touchpad-and-display)).
+- **Apps of their own.** The agent app, [screenpad-agents](https://github.com/mmarsot/screenpad-agents), is built on the app API: it puts your [Herdr](https://herdr.dev) coding agents and firstmate's Captain's Calls on the touch bar, and has its own repository and installer.
 
-**Other laptops are refused.** Both `screenpad` and `install.sh` check the DMI product name, because the connector, the EDID and the WMI power calls were worked out for this one model. Other first-generation ScreenPad laptops, such as the UX580, are similar but untested; supporting one means adding its DMI id and checking those three things on the hardware. The second-generation ScreenPad 2.0 (UX434, UX534 and others) is not covered.
+<p align="center">
+  <img alt="The touch bar: push to talk, mute microphone and screenshot keys, then the Files and Settings apps, an empty spot, the page button showing an app grid, and the resize grip" src="docs/images/touchbar.png">
+  <br>
+  <sub>The bar with its three default items (push to talk, mute microphone, screenshot), two apps added, an empty spot, the page button (an app grid: a tap goes to the apps page) and the resize grip.</sub>
+</p>
 
-What was checked on the hardware:
-
-- **Display:** the panel lit with `screenpad on`, turned off with `screenpad off`, and lit at boot from the systemd unit. The EDID came from the GlassPad UX580 dump, through `drm.edid_firmware`, with Secure Boot on.
-- **Touch bar:** bar touches never move the pointer, and the touchpad works below the bar. A held button sends its key. Drag-and-drop shortcuts, resizing and drawing on the ScreenPad only (with an external monitor also connected) work. Typing and plain-touchpad fallback work after `screenpad-touchbar off` and after a daemon crash.
-
-What was not checked on the hardware:
-
-- **Display:** relighting after suspend and resume; reading the EDID over DDC (it failed with `Input/output error` on the tested unit); the debugfs path used on kernels without lockdown (covered by unit tests only); X11 sessions.
-- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel. The same goes for the scene of tiles: in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked. The elastic bar and notification cards were checked there too, with real notifications (buttons pressed, Do Not Disturb, dismiss, timeouts), not yet on the panel. The two pages (the black screensaver behind windows, the clock, the page button and the apps page over windows) were drawn there by the extension from the daemon's own scenes, and the battery level from a stand-in UPower (discharging, charging, full, no battery), not yet from the laptop's own; the swipe along the bar and the apps page's touch routing are tested without hardware, not yet on the panel, whose sample rate decides how reliable a 25 mm swipe on a 10 mm bar is. Apps' pages on the apps page (the home list, widgets pressed and held), and the config's items there (apps with their own icon and name) and on the bar, were drawn there the same way; taps, long presses and the 0.3 s arming on them are tested without hardware only. The press click was checked there too: the extension calls GNOME's sound player with `click.wav` each time the daemon's count of presses goes up, and not otherwise; it has not yet been heard on the panel's speakers. Keeping the desktop off the ScreenPad was checked there with two virtual monitors in all four placements (the pointer stopped at the shared edge and let off the ScreenPad, windows sent back after a keyboard move, a mouse drag and maximized, the overview's ScreenPad view hidden, all undone when the extension is disabled), not yet on the panel. Fn+F6's cycle is tested without hardware, against a GNOME that flips the touchpad setting on each press as gsd-media-keys does, and its setting reader against a real `gsettings` in an isolated session; not yet with the key on the laptop, nor `screenpad light` and `dark` through the udev rule. Its ScreenPad on indicator was checked in a headless GNOME Shell 50.1 with GNOME's own `ShowOSD` calls and the daemon's scenes, in both orders (GNOME's touchpad-off indicator replaced, every other indicator unchanged, GNOME's restored when the extension is disabled); not yet with a real Fn+F6 press. The reset of the touchpad's tool types, which keeps one finger moving the pointer in the touchpad-alone state, was checked against the kernel on a headless uinput device (a palm in a slot, a finger there while another reader held the grab, then a finger after it: no tool type reached the first reader for that finger without the reset, and the finger's with it, the reset itself reaching only the grabbing reader); not yet on the panel with libinput.
+<table>
+  <tr>
+    <td width="50%" valign="top"><img alt="The touchpad page: the bar over a black screensaver with a faint battery level and clock" src="docs/images/touchbar-touchpad-page.png"><br><sub>The touchpad page: black below the bar, with a faint clock and battery level.</sub></td>
+    <td width="50%" valign="top"><img alt="Files dragged from the bar over the Mute item of the apps page: Files is faded on the bar, Mute is blue, and the header says lifting replaces Mute with Files after asking" src="docs/images/touchbar-move.png"><br><sub>Files dragged from the bar onto Mute on the apps page: lifting asks before replacing it.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img alt="A question in the touch bar, grown into a card: Deploy to staging?, Dismiss, Cancel and Deploy" src="docs/images/touchbar-ask.png"><br><sub>A question from <code>screenpad-touchbar ask</code>, grown into a card.</sub></td>
+    <td width="50%" valign="top"><img alt="A calendar reminder as a card: Standup in 5 minutes, its text, Dismiss, then the notification's own Join and Snooze buttons" src="docs/images/touchbar-notification.png"><br><sub>A GNOME notification with its own buttons, mirrored as a card.</sub></td>
+  </tr>
+</table>
 
 ## Quick start
 
@@ -55,7 +87,40 @@ sudo reboot
 screenpad-touchbar on
 ```
 
-Then log out and in once.
+Then log out and in once. To set the bar's items, see [Touch bar configuration](docs/configuration.md).
+
+## Supported hardware and what was tested
+
+Tested on one machine:
+
+| | Tested |
+|---|---|
+| Laptop | ASUS ZenBook UX480FD (DMI product `ZenBook UX450FDX_UX480FD`), GeForce GTX 1050 Max-Q |
+| OS | Ubuntu 26.04 LTS, kernel 7.0, Secure Boot on (kernel lockdown `integrity`) |
+| Driver | NVIDIA proprietary driver 580.178.04 |
+| Desktop | GNOME Shell 50.1 on Wayland |
+
+> [!IMPORTANT]
+> **Other laptops are refused.** Both `screenpad` and `install.sh` check the DMI product name, because the connector, the EDID and the WMI power calls were worked out for this one model. Other first-generation ScreenPad laptops, such as the UX580, are similar but untested; supporting one means adding its DMI id and checking those three things on the hardware. The second-generation ScreenPad 2.0 (UX434, UX534 and others) is not covered.
+
+What was checked on the hardware:
+
+- **Display:** the panel lit with `screenpad on`, turned off with `screenpad off`, and lit at boot from the systemd unit. The EDID came from the GlassPad UX580 dump, through `drm.edid_firmware`, with Secure Boot on.
+- **Touch bar:** bar touches never move the pointer, and the touchpad works below the bar. A held button sends its key. Drag-and-drop shortcuts, resizing and drawing on the ScreenPad only (with an external monitor also connected) work. Typing and plain-touchpad fallback work after `screenpad-touchbar off` and after a daemon crash.
+
+<details>
+<summary><b>What was not checked on the hardware</b>: suspend and resume, DDC, X11, and the touch bar changes checked only in a headless GNOME Shell</summary>
+
+- **Display:** relighting after suspend and resume; reading the EDID over DDC (it failed with `Input/output error` on the tested unit); the debugfs path used on kernels without lockdown (covered by unit tests only); X11 sessions.
+- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel.
+- **The scene of tiles:** in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked. The elastic bar and notification cards were checked there too, with real notifications (buttons pressed, Do Not Disturb, dismiss, timeouts), not yet on the panel.
+- **The two pages:** the black screensaver behind windows, the clock, the page button and the apps page over windows were drawn there by the extension from the daemon's own scenes, and the battery level from a stand-in UPower (discharging, charging, full, no battery), not yet from the laptop's own. The swipe along the bar and the apps page's touch routing are tested without hardware, not yet on the panel, whose sample rate decides how reliable a 25 mm swipe on a 10 mm bar is. Apps' pages on the apps page (the home list, widgets pressed and held), and the config's items there (apps with their own icon and name) and on the bar, were drawn there the same way; taps, long presses and the 0.3 s arming on them are tested without hardware only.
+- **The press click** was checked there too: the extension calls GNOME's sound player with `click.wav` each time the daemon's count of presses goes up, and not otherwise; it has not yet been heard on the panel's speakers.
+- **Keeping the desktop off the ScreenPad** was checked there with two virtual monitors in all four placements (the pointer stopped at the shared edge and let off the ScreenPad, windows sent back after a keyboard move, a mouse drag and maximized, the overview's ScreenPad view hidden, all undone when the extension is disabled), not yet on the panel.
+- **Fn+F6's cycle** is tested without hardware, against a GNOME that flips the touchpad setting on each press as gsd-media-keys does, and its setting reader against a real `gsettings` in an isolated session; not yet with the key on the laptop, nor `screenpad light` and `dark` through the udev rule. Its ScreenPad on indicator was checked in a headless GNOME Shell 50.1 with GNOME's own `ShowOSD` calls and the daemon's scenes, in both orders (GNOME's touchpad-off indicator replaced, every other indicator unchanged, GNOME's restored when the extension is disabled); not yet with a real Fn+F6 press.
+- **The reset of the touchpad's tool types,** which keeps one finger moving the pointer in the touchpad-alone state, was checked against the kernel on a headless uinput device (a palm in a slot, a finger there while another reader held the grab, then a finger after it: no tool type reached the first reader for that finger without the reset, and the finger's with it, the reset itself reaching only the grabbing reader); not yet on the panel with libinput.
+
+</details>
 
 ## Known limitations
 
@@ -104,6 +169,15 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 | [Development](docs/development.md) | code layout, the checks and the test suite |
 | [screenpad-agents](https://github.com/mmarsot/screenpad-agents) | the agent app, an app of the touch bar in its own repository: Herdr's agents and firstmate's Captain's Calls |
 
+## Development
+
+```sh
+python3 -m unittest discover -s tests   # the tests
+make check                              # everything CI runs: format, lint, typecheck, tests
+```
+
+The tests need no root and no hardware. The programs are standard-library Python 3.11+; the format, lint and type checks run through uv and npm, as [Development](docs/development.md) explains. Contributors and coding agents start from [AGENTS.md](AGENTS.md).
+
 ## Follow-ups
 
 - **Full-panel touchscreen mode:** taps land on the panel's pixels everywhere. This needs the daemon to re-emit contacts as a direct touchscreen mapped to the ScreenPad output, and a way to switch to it (Fn+F6 already cycles the touchpad and the display).
@@ -111,14 +185,6 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 - **`screenpad brightness N`:** if a brightness level survives the relight (unverified), this command would set it and relight the panel.
 - A Quick Settings toggle for the ScreenPad's display (the session can already light and darken it without `sudo`, through `screenpad light` and `dark`).
 - Support for other first-generation ScreenPad models, given testers with the hardware.
-
-## Tests
-
-```sh
-python3 -m unittest discover -s tests
-```
-
-They need no root and no hardware. `make check` also runs the format, lint and type checks that CI runs; see [Development](docs/development.md). Contributors and coding agents start from [AGENTS.md](AGENTS.md).
 
 ## Credits and license
 
