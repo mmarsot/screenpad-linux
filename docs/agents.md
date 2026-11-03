@@ -7,6 +7,10 @@
 - **how many Captain's Calls are waiting** in firstmate: decisions and contributions that need you.
 - two **tiles for the bar**, if you give them spots: `agents` (how many agents, how many blocked) and `calls` (the Captain's Call count).
 
+![The Agents page: Captain's Call with 2 waiting, then fix-login-redirect blocked in amber, web-dark-mode and docs-install-guide working in green, and dotfiles idle in grey; the bar above shows the agents tile (4 agents, 1 blocked) and the calls tile (2 waiting)](images/agents-page.png)
+
+*The Agents page with four agents, three of them firstmate tasks, and the `agents` and `calls` tiles in the bar. Rendered by the extension in a headless GNOME Shell 50.1, from the app connected to the daemon's own socket server, fed a stand-in Herdr and firstmate reader.*
+
 Tap an agent's widget to **focus its pane** in Herdr. Tap the `agents` tile to focus the first blocked agent. Tap Captain's Call (the widget or the `calls` tile) to read firstmate again at once.
 
 This version only reads and focuses. It sends no keys to an agent, reads no pane's screen, and writes nothing into firstmate. Answering an agent's permission prompt, interrupting it and answering a Captain's Call from the panel are not there yet.

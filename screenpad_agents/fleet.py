@@ -118,7 +118,8 @@ class Fleet:
         if self.agents is not None:
             msg["label"] = clip("%d agent%s" % (len(self.agents), "" if len(self.agents) == 1 else "s"), MAX_LABEL)
         counts = self.counts()
-        text = " · ".join("%d %s" % (counts[s], s) for s in ("blocked", "working", "idle") if counts.get(s))
+        # A tile is narrow: only the most urgent state, the page has the rest.
+        text = next(("%d %s" % (counts[s], s) for s in ("blocked", "working", "idle") if counts.get(s)), "")
         if self.herdr_error:
             text = "Herdr unavailable"
         if text:

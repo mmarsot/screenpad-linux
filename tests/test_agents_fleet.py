@@ -67,7 +67,7 @@ class FleetTests(unittest.TestCase):
         self.assertEqual([w.id for w in apps.pages["agents"].widgets], [w["id"] for w in page["widgets"]])
         self.assertEqual(
             apps.provided()["agents"],
-            {"label": "3 agents", "text": "1 blocked · 1 working · 1 idle", "badge": "1", "tone": "warning"},
+            {"label": "3 agents", "text": "1 blocked", "badge": "1", "tone": "warning"},
         )
         self.assertEqual(apps.provided()["calls"]["badge"], "2")
 
@@ -103,6 +103,11 @@ class FleetTests(unittest.TestCase):
         f.page()
         self.assertIsNone(f.pane_of("agent.w14.p1"))
         self.assertEqual(f.pane_of("agent.w13.p1"), "w13:p1")
+
+    def test_the_tile_says_the_most_urgent_state(self):
+        for states, text in ((("working", "idle"), "1 working"), (("idle", "idle"), "2 idle"), (("done",), None)):
+            f = fleet([("w%d:p1" % i, "claude", s) for i, s in enumerate(states)])
+            self.assertEqual(f.fleet_tile().get("text"), text)
 
     def test_without_firstmate(self):
         f = fleet([("w1:p1", "claude", "working")], firstmate=False)
