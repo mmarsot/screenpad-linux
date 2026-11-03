@@ -13,6 +13,9 @@ set -eu
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 R=${DESTDIR:-}
 BIN=/usr/local/sbin/screenpad
+# The programs: screenpad.py and touchbar.py with their packages. BIN and
+# TOUCHBAR are relative symlinks to the two scripts here.
+LIB=/usr/local/lib/screenpad
 UNIT=/etc/systemd/system/screenpad.service
 HOOK=/usr/lib/systemd/system-sleep/screenpad
 DOC=/usr/local/share/doc/screenpad
@@ -47,17 +50,33 @@ locked_down() {
     esac
 }
 
+# A package directory is replaced whole, so a module an earlier version had
+# does not linger.
+install_programs() {
+    for prog in screenpad touchbar; do
+        install -D -m 0755 "$here/$prog.py" "$R$LIB/$prog.py"
+    done
+    for pkg in screenpad_display screenpad_touchbar; do
+        rm -rf "$R$LIB/$pkg"
+        for f in "$here/$pkg"/*.py; do
+            install -D -m 0644 "$f" "$R$LIB/$pkg/$(basename "$f")"
+        done
+    done
+    install -d -m 0755 "$R$(dirname "$BIN")" "$R$(dirname "$TOUCHBAR")"
+    ln -sfn ../lib/screenpad/screenpad.py "$R$BIN"
+    ln -sfn ../lib/screenpad/touchbar.py "$R$TOUCHBAR"
+}
+
 install_all() {
     product=$(cat "$R/sys/class/dmi/id/product_name" 2>/dev/null || true)
     [ "$product" = "$PRODUCT" ] || die "unsupported machine '$product' (want '$PRODUCT')"
-    install -D -m 0755 "$here/screenpad.py" "$R$BIN"
+    install_programs
     install -D -m 0644 "$here/systemd/screenpad.service" "$R$UNIT"
     install -D -m 0755 "$here/systemd/screenpad-sleep" "$R$HOOK"
     install -D -m 0644 "$here/README.md" "$R$DOC/README.md"
     for f in "$here"/docs/*.md; do
         install -D -m 0644 "$f" "$R$DOC/docs/$(basename "$f")"
     done
-    install -D -m 0755 "$here/touchbar.py" "$R$TOUCHBAR"
     install -D -m 0644 "$here/systemd/screenpad-touchbar.service" "$R$TOUCHBAR_UNIT"
     for f in "$here"/gnome-shell/screenpad-touchbar@screenpad/*; do
         install -D -m 0644 "$f" "$R$EXTENSION/$(basename "$f")"
@@ -96,7 +115,7 @@ uninstall_all() {
         systemctl disable --now screenpad.service || true
     fi
     rm -f "$R$BIN" "$R$UNIT" "$R$HOOK" "$R$FIRMWARE" "$R$TOUCHBAR" "$R$TOUCHBAR_UNIT" "$R$UDEV_RULE"
-    rm -rf "$R$EXTENSION"
+    rm -rf "$R$EXTENSION" "$R$LIB"
     udevadm control --reload
     rmdir "$R$(dirname "$FIRMWARE")" 2>/dev/null || true
     rm -rf "$R$DOC"

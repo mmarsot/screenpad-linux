@@ -2,13 +2,17 @@
 //
 // For each notification the message tray asks a banner for, this sends the
 // daemon a normalized "notify" message over the bar's socket. The daemon
-// decides what shows (touchbar.py mirror_refusal: buttons or urgent, Do Not
-// Disturb, the config) and grows the bar into a card for it. When a button
-// on the card is tapped, the daemon answers with its index, and this presses
-// that notification's own button, only if the notification and that very
-// button still exist. Dismiss, a timeout, the notification going away or the
-// bar going away only close the card: nothing here activates a notification
-// by itself. With no daemon to talk to, nothing is mirrored or kept.
+// decides what shows (mirror_refusal in screenpad_touchbar/notify.py:
+// buttons or urgent, Do Not Disturb, the config) and grows the bar into a
+// card for it. When a button on the card is tapped, the daemon answers with
+// its index, and this presses that notification's own button, only if the
+// notification and that very button still exist. Dismiss, a timeout, the
+// notification going away or the bar going away only close the card:
+// nothing here activates a notification by itself. With no daemon to talk
+// to, nothing is mirrored or kept.
+//
+// The messages and the answer filter are in cards.js, a plain module the
+// tests run; this file connects them to GNOME Shell and the socket.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -17,13 +21,16 @@ import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
-// The app name this says in hello, and the message tray's urgencies (LOW,
-// NORMAL, HIGH, CRITICAL) as the daemon names them.
-const APP = 'gnome-notifications';
-const URGENCY = ['low', 'normal', 'high', 'critical'];
-const ACTION = /^action-([0-9])$/;
-// Messages waiting to be written; more means the daemon stopped reading.
-const MAX_PENDING = 64;
+import {
+    MAX_PENDING,
+    actionToPress,
+    cancel,
+    encodeLine,
+    hello,
+    notifyMessage,
+    parseAnswer,
+    stripMarkup,
+} from './cards.js';
 
 // A notification's body as plain text (fdo bodies may carry markup).
 function plain(text, markup) {
@@ -31,7 +38,7 @@ function plain(text, markup) {
     try {
         return Pango.parse_markup(text, -1, '')[2];
     } catch {
-        return text.replace(/<[^>]*>/g, '');
+        return stripMarkup(text);
     }
 }
 
@@ -97,7 +104,7 @@ export class NotificationMirror {
                 this._conn = conn;
                 this._in = new Gio.DataInputStream({base_stream: conn.get_input_stream()});
                 this._out = conn.get_output_stream();
-                this._send({op: 'hello', app: APP});
+                this._send(hello());
                 this._read(this._in);
             },
         );
@@ -146,19 +153,19 @@ export class NotificationMirror {
         const appId =
             policy instanceof MessageTray.NotificationApplicationPolicy ? policy.id : null;
         this._cards.set(id, {notification, actions: [...notification.actions]});
-        this._send({
-            op: 'notify',
-            id,
-            app: appId ? `${appId}.desktop` : null,
-            source: source?.title ?? null,
-            title: notification.title ?? null,
-            text: plain(notification.body, notification.useBodyMarkup),
-            urgency: URGENCY[notification.urgency] ?? 'normal',
-            actions: notification.actions.map(action => action.label),
-            banners: policy?.showBanners ?? true,
-            dnd: !this._settings.get_boolean('show-banners'),
-            acknowledged,
-        });
+        this._send(
+            notifyMessage(id, {
+                appId,
+                source: source?.title,
+                title: notification.title,
+                text: plain(notification.body, notification.useBodyMarkup),
+                urgency: notification.urgency,
+                actions: notification.actions.map(action => action.label),
+                banners: policy?.showBanners,
+                dnd: !this._settings.get_boolean('show-banners'),
+                acknowledged,
+            }),
+        );
     }
 
     // An app updated a notification whose card may show: send it again,
@@ -177,7 +184,7 @@ export class NotificationMirror {
         this._ids.delete(notification);
         this._added.delete(notification);
         notification.disconnectObject(this);
-        if (this._forget(id)) this._send({op: 'cancel', id});
+        if (this._forget(id)) this._send(cancel(id));
     }
 
     _forget(id) {
@@ -188,17 +195,13 @@ export class NotificationMirror {
         return true;
     }
 
-    // The daemon closed a card. Only "chosen" presses a button, and only
-    // the very button the card showed, still on the notification: one an
-    // update replaced since is never pressed in its place.
+    // The daemon closed a card: press the button the answer chose, if
+    // actionToPress lets it.
     _answer(msg) {
         const card = this._cards.get(msg.id);
         if (!card) return;
         this._forget(msg.id);
-        if (msg.reason !== 'chosen' || typeof msg.option !== 'string') return;
-        const match = ACTION.exec(msg.option);
-        const action = match ? card.actions[Number(match[1])] : null;
-        if (action && card.notification.actions.includes(action)) action.activate();
+        actionToPress(msg, card.actions, card.notification.actions)?.activate();
     }
 
     _read(input) {
@@ -214,13 +217,8 @@ export class NotificationMirror {
                 this._close();
                 return;
             }
-            let msg = null;
-            try {
-                msg = JSON.parse(line);
-            } catch {
-                // Not for us.
-            }
-            if (msg?.op === 'answer' && typeof msg.id === 'string') this._answer(msg);
+            const msg = parseAnswer(line);
+            if (msg) this._answer(msg);
             this._read(input);
         });
     }
@@ -231,7 +229,7 @@ export class NotificationMirror {
             this._close();
             return;
         }
-        this._pending.push(new TextEncoder().encode(`${JSON.stringify(msg)}\n`));
+        this._pending.push(encodeLine(msg));
         this._flush();
     }
 

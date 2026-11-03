@@ -33,6 +33,14 @@ export default [
             eqeqeq: ['error', 'smart'],
             'prefer-const': 'error',
             'no-var': 'error',
+            // The extension draws tiles without knowing what they are: no
+            // tile kinds, and no version 1 spots. New behavior goes in the
+            // daemon.
+            'no-restricted-properties': [
+                'error',
+                {property: 'kind', message: 'Draw tiles without knowing their kind.'},
+                {property: 'spots', message: 'Draw the tiles, not the version 1 spots.'},
+            ],
         },
     },
     {

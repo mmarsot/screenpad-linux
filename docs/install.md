@@ -96,12 +96,13 @@ sudo systemctl start screenpad
 
 | File | Purpose |
 |---|---|
-| `/usr/local/sbin/screenpad` | the display CLI (`screenpad.py`) |
+| `/usr/local/sbin/screenpad` | the display CLI: a link to `/usr/local/lib/screenpad/screenpad.py` |
 | `/etc/systemd/system/screenpad.service` | runs `screenpad on --wait 30` at boot, after the display manager; `systemctl stop screenpad` runs `screenpad off` |
 | `/usr/lib/systemd/system-sleep/screenpad` | relights the panel after resume (`screenpad replug --if-active`) |
 | `/var/lib/screenpad/`, `/lib/firmware/screenpad/edid.bin` | the saved, fixed EDID and the copy the kernel loads |
 | `/etc/initramfs-tools/hooks/screenpad` | only if nvidia-drm is in your initramfs (it is not on stock Ubuntu); followed by `update-initramfs -u` |
-| `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI (`touchbar.py`) |
+| `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI: a link to `/usr/local/lib/screenpad/touchbar.py` |
+| `/usr/local/lib/screenpad/` | the two programs' code: `screenpad.py` and `touchbar.py`, and their packages `screenpad_display/` and `screenpad_touchbar/` |
 | `/usr/lib/systemd/user/screenpad-touchbar.service` | the touch bar's systemd user unit, installed but not enabled |
 | `/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |
 | `/etc/udev/rules.d/70-screenpad-uinput.rules` | lets the user at the seat use `/dev/uinput` for the touch bar's virtual touchpad and keys |

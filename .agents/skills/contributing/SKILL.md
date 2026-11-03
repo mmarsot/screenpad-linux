@@ -19,17 +19,17 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 - `make check`: everything CI runs, in order: format check, lint, typecheck, tests. **Run it before finishing every change.**
 - `make format-check`: `ruff format --check` on the Python, Prettier `--check` on the extension's JavaScript. `make format` applies both.
 - `make lint`: `ruff check` and ESLint (`eslint.config.js`).
-- `make typecheck`: mypy with `check_untyped_defs` on `screenpad.py`, `touchbar.py` and `tests/`.
-- `make test`: `python3 -m unittest discover -s tests`, stdlib only, so it runs without uv or npm.
+- `make typecheck`: mypy with `check_untyped_defs` on the launchers `screenpad.py` and `touchbar.py`, their packages `screenpad_display/` and `screenpad_touchbar/`, and `tests/`.
+- `make test`: `python3 -m unittest discover -s tests`, stdlib only, so it runs without uv or npm. The extension's tests run its plain modules with node; they are skipped without node, except under CI.
 - The tool versions are pinned: ruff and mypy in `pyproject.toml` (`[dependency-groups] dev`) and `uv.lock`; Prettier and ESLint in `package.json` and `package-lock.json`. Their settings live in `pyproject.toml`, `.prettierrc.json` and `eslint.config.js`.
 - Prettier formats only `gnome-shell/**/*.js` and `eslint.config.js`, and ruff only `*.py`; never run them on `docs/`, `README.md`, JSON or CSS, where they would rewrite hand-kept tables and snippets.
-- CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck in one job and the tests on Python 3.11 and 3.14 in another, on every push and pull request. `.no-mistakes.yaml` gives the no-mistakes pipeline the same commands.
+- CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck in one job and the tests on Python 3.11 and 3.14 (with node, for the extension) in another, on every push and pull request. `.no-mistakes.yaml` gives the no-mistakes pipeline the same commands.
 
 ## Rules
 
 - **The checks pass before a change is done.** Formatting, lint, typecheck and tests are all green under `make check`. Fix the code rather than silencing a check; a `# type: ignore[code]` or `# noqa: CODE` names its code and says why on the same line.
-- **The programs stay standard-library Python 3.11+.** `screenpad.py` and `touchbar.py` run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
-- **Keep files small: about 500 lines per module is the soft limit.** Split a module along its responsibilities instead of growing it past that, and put new code in the module of its area. Over it today: `touchbar.py` (about 3,200 lines), `screenpad.py` (about 1,150), `tests/test_touchbar.py` and `tests/test_screenpad.py`; `gnome-shell/screenpad-touchbar@screenpad/extension.js` and `tests/test_touchbar_cards.py` are at it. Do not grow them; move code out when a change reworks a part of them.
+- **The programs stay standard-library Python 3.11+.** `screenpad.py` and `touchbar.py` and their packages run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
+- **Keep files small: about 500 lines per module is the soft limit.** Split a module along its responsibilities instead of growing it past that, and put new code in the module of its area. Every file is under it today, the extension's and the tests included (tests go one file per area); keep it so.
 - **Document what you write, in the same change.** A behavior, command, setting, file or installed path that changes updates the page that describes it (README and `docs/`, see below), the test list in [docs/development.md](../../../docs/development.md#tests) when tests change, and the matching skill.
 - **Work in steps.** A step is one coherent change with its tests, docs and skill update, `make check` green, and committed. Finish and document a step before moving on to the next; a large change goes in as several such steps (and pull requests), each complete on its own.
 - **Every change goes through no-mistakes review.** Commit on a branch and run it through the no-mistakes gate (the `/no-mistakes` skill, or `git push no-mistakes <branch>`): it reviews, tests, lints, pushes, opens the pull request and watches CI. Never push to `main` directly.
@@ -49,9 +49,9 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 
 ## Tests
 
-- `tests/` holds stdlib `unittest` tests: `test_screenpad.py` (the display CLI and `install.sh`), `test_touchbar.py` (the touch bar), `test_touchbar_cards.py` (attention cards and notifications, plus static checks of the extension), `test_skills.py` (the skills and this index).
-- They import the programs from the checkout (`sys.path` set to the repository root). A new test goes in the file of its area; a new area gets its own file.
-- Some tests are source contract checks: they read the extension's source with regular expressions to compare it with the daemon's constants. They are a known weakness, not a pattern to copy: they show only that text is in the file, and a refactor can break them. Replace them with behavioral tests of the extension's logic when you can, add no new ones, and after reformatting or restructuring the extension run `make test`, not only the JavaScript checks.
+- `tests/` holds stdlib `unittest` tests, one file per area: `test_screenpad*.py` (the display CLI), `test_install.py` (`install.sh`), `test_touchbar_*.py` (the touch bar; the area skills list them), `test_skills.py` (the skills and this index). `screenpad_support.py` and `touchbar_support.py` hold what each program's tests share and put the checkout on `sys.path`; isort keeps them imported before the packages (`[tool.ruff.lint.isort]` in `pyproject.toml`).
+- They import the programs' packages from the checkout (the support modules set `sys.path` to the repository root). A new test goes in the file of its area; a new area gets its own file, added to the test modules listed under `[[tool.mypy.overrides]]` in `pyproject.toml`.
+- The extension is tested through its plain modules (`contract.js`, `scene.js`, `cards.js`), run under node on what the daemon builds. Reading the extension's source with regular expressions shows only that text is in a file: two such checks remain, for names crossing into `extension.js` (the [gnome-extension](../gnome-extension/SKILL.md) skill), and no new one is added. After changing the extension run `make test`, not only the JavaScript checks.
 
 ## Skills are part of the code
 
