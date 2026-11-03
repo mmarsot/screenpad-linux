@@ -2,6 +2,7 @@
 
 from .common import (
     APP,
+    DEFAULT_HEIGHT,
     GRIP,
     GROUP_GAP,
     PAGE,
@@ -29,7 +30,10 @@ from .common import (
 # drawn as that app's icon; the extension opens only apps shown this way),
 # "label", "title" and "text" (text lines), "badge" (a short text in a
 # corner), "drop" (the spot number an app icon dropped there takes) and
-# "empty". "divider" (the x of a line between two groups of spots) is
+# "empty", and "text_rows" (size the tile's text as on a bar this many
+# panel rows tall at most: a card's text and answers keep the default
+# card's type on a taller bar, and wrap; an older extension ignores it).
+# "divider" (the x of a line between two groups of spots) is
 # null: any item goes in any spot.
 # "height" is the bar's height drawn (CARD_HEIGHT while a card shows) and
 # "strut" its own height, which windows keep clear of; the extension
@@ -152,7 +156,14 @@ def ask_option_at(ask, px, height):
 def ask_tiles(ask, height, pressed=(), queued=0):
     """The tiles of a question on a card height tall: its text, Dismiss,
     then one tile per answer."""
-    text = {"id": "ask-text", "x": 0, "width": ask_text_width(ask, height), "style": "ask-text", "title": ask.title}
+    text = {
+        "id": "ask-text",
+        "x": 0,
+        "width": ask_text_width(ask, height),
+        "style": "ask-text",
+        "title": ask.title,
+        "text_rows": DEFAULT_HEIGHT,
+    }
     if ask.text:
         text["text"] = ask.text
     if queued:
@@ -181,6 +192,7 @@ def ask_tiles(ask, height, pressed=(), queued=0):
             "style": "option",
             "classes": ["tone-" + o["tone"]],
             "label": o["label"],
+            "text_rows": DEFAULT_HEIGHT,
         }
         if k in pressed:
             tile["pressed"] = True

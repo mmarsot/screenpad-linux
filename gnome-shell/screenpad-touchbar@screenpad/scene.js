@@ -57,9 +57,11 @@ export function canLaunch(state, id) {
 export function barGeometry(state, monitor) {
     const [panelWidth, panelHeight] = state.panel;
     const sx = monitor.width / panelWidth;
-    const height = Math.round((state.height * monitor.height) / panelHeight);
+    // Logical pixels per panel row, for a tile's text_rows (textLines).
+    const sy = monitor.height / panelHeight;
+    const height = Math.round(state.height * sy);
     const strutRows = Number.isFinite(state.strut) ? state.strut : state.height;
-    const own = Math.min(Math.round((strutRows * monitor.height) / panelHeight), height);
+    const own = Math.min(Math.round(strutRows * sy), height);
     const narrowest = Math.min(...state.tiles.map(t => t.width)) * sx;
     const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
     // The narrow tiles (a glyph: the grip, the page button, a card's
@@ -70,7 +72,7 @@ export function barGeometry(state, monitor) {
         Math.min(Math.round(own * ICON), Math.round((iconWidth - 2 * inset) * MAX_ICON)),
         8,
     );
-    return {sx, height, own, inset, iconSize};
+    return {sx, sy, height, own, inset, iconSize};
 }
 
 // A tile's rectangle within the bar, and its corner radius.
@@ -139,12 +141,20 @@ export function iconSizeFor(tile, iconSize, width) {
 // A text tile's lines: the title or label, and a smaller text under it.
 // Both wrap at word boundaries when the tile has room for more lines (a
 // card), so a long title or answer goes on over the next line instead of
-// being cut; on the bar each stays one line. Null when it has neither.
-export function textLines(tile, iconSize, height) {
+// being cut; on the bar each stays one line. A tile with "text_rows" (a
+// card's) is sized at most as on a bar that many panel rows tall (sy
+// logical pixels each), so a taller bar wraps it instead of growing it.
+// Null when it has neither.
+export function textLines(tile, iconSize, height, sy) {
     const first = tile.title ?? tile.label ?? null;
     if (!first && !tile.text) return null;
-    const titleSize = Math.round(iconSize * 0.5);
-    const textSize = Math.round(iconSize * 0.36);
+    const rows = tile.text_rows;
+    const size =
+        Number.isFinite(rows) && rows > 0 && Number.isFinite(sy)
+            ? Math.min(iconSize, Math.max(Math.round(rows * sy * ICON), 8))
+            : iconSize;
+    const titleSize = Math.round(size * 0.5);
+    const textSize = Math.round(size * 0.36);
     return {
         first,
         text: tile.text || null,
@@ -152,7 +162,7 @@ export function textLines(tile, iconSize, height) {
         start: Boolean(tile.title),
         titleSize,
         textSize,
-        wrap: height > 2 * (iconSize * 0.5 + textSize * 2),
+        wrap: height > 2 * (titleSize + textSize * 2),
     };
 }
 

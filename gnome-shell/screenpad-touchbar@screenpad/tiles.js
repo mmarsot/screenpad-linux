@@ -24,7 +24,7 @@ export function iconFor(name) {
 
 // One tile: the grip, an icon, an app's icon, or text (tileContent).
 // The style and classes come from the daemon.
-export function tileActor(tile, width, height, iconSize) {
+export function tileActor(tile, width, height, iconSize, sy) {
     let child;
     switch (tileContent(tile)) {
         case 'grip':
@@ -44,7 +44,7 @@ export function tileActor(tile, width, height, iconSize) {
             break;
         }
         default:
-            child = textActor(tile, iconSize, height);
+            child = textActor(tile, iconSize, height, sy);
     }
     const actor = new St.Bin({style_class: tileClasses(tile).join(' '), child});
     const name = accessibleName(tile);
@@ -52,8 +52,8 @@ export function tileActor(tile, width, height, iconSize) {
     return actor;
 }
 
-function textActor(tile, iconSize, height) {
-    const lines = textLines(tile, iconSize, height);
+function textActor(tile, iconSize, height, sy) {
+    const lines = textLines(tile, iconSize, height, sy);
     if (!lines) return null;
     const box = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,

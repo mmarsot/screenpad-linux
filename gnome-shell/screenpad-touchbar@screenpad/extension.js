@@ -320,7 +320,7 @@ export default class ScreenpadTouchbar extends Extension {
 
     _build(state, monitor, previous) {
         const geometry = barGeometry(state, monitor);
-        const {sx, height, own, iconSize} = geometry;
+        const {sx, sy, height, own, iconSize} = geometry;
         this._sx = sx;
         const bar = new St.Widget({
             style_class: 'screenpad-touchbar',
@@ -343,7 +343,7 @@ export default class ScreenpadTouchbar extends Extension {
         }
         state.tiles.forEach(tile => {
             const box = tileBox(tile, geometry);
-            const actor = tileActor(tile, box.width, box.height, iconSize);
+            const actor = tileActor(tile, box.width, box.height, iconSize, sy);
             actor.set_position(box.x, box.y);
             actor.set_size(box.width, box.height);
             actor.style = `border-radius: ${box.radius}px;`;

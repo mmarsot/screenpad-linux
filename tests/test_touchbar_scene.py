@@ -16,6 +16,7 @@ from screenpad_touchbar.common import (
     APPS,
     ASK_ARM,
     CARD_HEIGHT,
+    DEFAULT_HEIGHT,
     GROUP_GAP,
     HOME,
     MAX_HEIGHT,
@@ -189,6 +190,8 @@ class SceneTests(unittest.TestCase):
                 "title": "Run npm test?",
                 "text": "in api",
                 "badge": "+2",
+                # Card text keeps the default card's size on a taller bar.
+                "text_rows": DEFAULT_HEIGHT,
             },
         )
         # Every card can be dismissed, from a narrow tile after its text.
@@ -215,6 +218,7 @@ class SceneTests(unittest.TestCase):
                 "style": "option",
                 "classes": ["tone-reject"],
                 "label": "Deny",
+                "text_rows": DEFAULT_HEIGHT,
             },
         )
         self.assertEqual(tiles[3]["pressed"], True)

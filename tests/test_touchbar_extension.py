@@ -279,6 +279,31 @@ class SceneTests(unittest.TestCase):
         self.assertEqual((on_bar["first"], on_bar["start"], on_bar["wrap"]), (item["label"], False, False))
         self.assertIsNone(empty)
 
+    def test_card_text_keeps_the_default_card_size_on_a_taller_bar(self):
+        # The default card (160 px bar on a 1920x1080 monitor at scale 1)
+        # draws a 40 px title and 29 px text (an 80 px icon size: half the
+        # bar). On a taller bar a card keeps those sizes and wraps, instead
+        # of growing them until nothing fits; a bar item's label still grows.
+        lines = (
+            "(() => { const lines = (s, id) => { const g = m.barGeometry(s, v.monitor);"
+            " const t = s.tiles.find(t => t.id === id);"
+            " return m.textLines(t, g.iconSize, m.tileBox(t, g).height, g.sy); };"
+            " return [lines(v.card, 'ask-text'), lines(v.card, 'ask-option-0'), lines(v.bar, v.item),"
+            " m.barGeometry(v.bar, v.monitor).iconSize]; })()"
+        )
+        for height in (160, 300, MAX_HEIGHT):
+            card = published(with_height(TILE_CONFIG, height), ask=QUESTION)
+            bar = published(with_height(TILE_CONFIG, height))
+            [item] = [t["id"] for t in bar["tiles"] if t.get("label") and not t.get("icon")][:1]
+            text, answer, on_bar, icon = js("scene.js", lines, card=card, bar=bar, item=item, monitor=MONITORS[0])
+            for got in (text, answer):
+                self.assertEqual((got["titleSize"], got["textSize"], got["wrap"]), (40, 29, True), height)
+            # Outside a card the label is sized by the bar, as before: half
+            # its icon size, which grows past the card's at a taller bar.
+            self.assertEqual(on_bar["titleSize"], round(icon * 0.5), height)
+            if height > 160:
+                self.assertGreater(on_bar["titleSize"], 40, height)
+
     def test_the_pages(self):
         home, apps = published(), published(page=APPS)
         off = published(TILE_CONFIG + "[screensaver]\nclock = false\n")
