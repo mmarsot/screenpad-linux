@@ -72,6 +72,7 @@ class AppTests(unittest.TestCase):
         rig.until(lambda: self.herdr.focused == ["w1:p1"])
 
     def test_captain_call_taps_read_firstmate_again(self):
+        # And open the decisions board: test_agents_board.py.
         rig = self.rig()
         reads = self.firstmate.reads
         rig.apps.event("calls", "up", inside=True)
@@ -110,12 +111,17 @@ class AppTests(unittest.TestCase):
         rig.apps.event("calls", "up", inside=True)
         rig.until(lambda: rig.widgets() == ["calls", "herdr"])
         rig.until(lambda: rig.apps.provided()["calls"].get("text") == "3 waiting (stale)")
+        # The taps also opened the decisions board (test_agents_board.py).
+        rig.until(lambda: any(line.startswith("opened the decisions board") for line in rig.logged))
+        rig.logged[:] = [line for line in rig.logged if not line.startswith("opened the decisions board")]
         self.assertEqual(sorted(rig.logged), ["KeyError: 'calls'", "RuntimeError: boom"])
         self.herdr.error = self.firstmate.error = None
         rig.apps.event("calls", "up", inside=True)
         rig.until(lambda: rig.widgets() == ["calls", "agent.w1.p1", "agent.w2.p1"])
         rig.until(lambda: rig.apps.provided()["calls"].get("text") == "3 waiting")
-        self.assertEqual(sorted(rig.logged[2:]), ["firstmate answers again", "herdr answers again"])
+        rig.until(lambda: len([line for line in rig.logged if not line.startswith("opened")]) == 4)
+        logged = [line for line in rig.logged if not line.startswith("opened the decisions board")]
+        self.assertEqual(sorted(logged[2:]), ["firstmate answers again", "herdr answers again"])
 
     @mock.patch("screenpad_agents.app.RECONNECT", 0.05)
     def test_the_touch_bar_going_and_coming_back(self):

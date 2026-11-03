@@ -55,6 +55,7 @@ module = [
     "agents_support",
     "screenpad_support",
     "test_agents_app",
+    "test_agents_board",
     "test_agents_config",
     "test_agents_fleet",
     "test_agents_sources",

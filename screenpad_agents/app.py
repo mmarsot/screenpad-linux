@@ -11,14 +11,18 @@ a queue (and a pipe that wakes its select):
   and again on demand when the Captain's Call tile or widget is tapped; taps
   during a read add one read after it, not one each;
 - firstmate's control: interrupts a task's agent through fm-control.sh, which
-  takes seconds, so neither reader waits on it.
+  takes seconds, so neither reader waits on it, and opens the decisions board
+  (firstmate.py) when Captain's Call is tapped.
 
 The loop keeps the connection to the touch bar (retrying every RECONNECT
 seconds while the daemon is not running), sends the page and tiles when what
 they show changed, and turns touches into work for the threads: a tap on an
 agent's widget opens its card (fleet.py, card.py), whose buttons focus,
 interrupt and answer; a tap on the agents tile focuses the first blocked
-agent; a tap on Captain's Call reads firstmate again.
+agent; a tap on Captain's Call reads firstmate again and opens firstmate's
+decisions board in the browser on the main screen, or, when no board is
+open, asks a one-answer question in the bar saying so (the panel answers no
+Captain's Call).
 """
 
 import os
@@ -30,7 +34,7 @@ import time
 
 from . import card as cards
 from .client import Touchbar, TouchbarGone
-from .common import CALLS_TILE, FLEET_TILE, PAGE, RECONNECT
+from .common import BOARD_CARD_TIMEOUT, CALLS_TILE, FLEET_TILE, MAX_TEXT, PAGE, RECONNECT, clip
 from .firstmate import FirstmateError
 from .fleet import CALLS_WIDGET, Fleet
 from .herdr import HerdrError
@@ -56,6 +60,9 @@ class App:
         self._threads = []
         self._told = set()
         self._dirty = False
+        self._opening = False
+        self._asked = None
+        self._asks = 0
 
     # --- the worker threads ------------------------------------------------
 
@@ -140,7 +147,13 @@ class App:
             job = self._control.get()
             if job is None or self.stopping.is_set():
                 return
-            pane, task_id = job
+            if job[0] == "board":
+                try:
+                    self._post("board", self.firstmate.open_board(), None)
+                except Exception as e:
+                    self._post("board", None, _why(e, FirstmateError))
+                continue
+            _, pane, task_id = job
             try:
                 self._post("interrupted", pane, self.firstmate.interrupt(task_id), None)
             except Exception as e:
@@ -191,6 +204,7 @@ class App:
         if self.touchbar is not None:
             self.touchbar.close()
         self.touchbar = None
+        self._asked = None
         self._retry_at = self.clock() + RECONNECT
 
     def _drain(self):
@@ -231,10 +245,41 @@ class App:
             if card is not None and card.pane == pane:
                 card.interrupting = False
                 card.note = "interrupt: %s" % (done or "failed: %s" % error)
+        elif what == "board":
+            self._board(*rest)
+            return False
         elif what == "log":
             self.log(rest[0])
             return False
         return True
+
+    def _board(self, url, error):
+        self._opening = False
+        if url is not None:
+            self.log("opened the decisions board: %s" % url)
+        elif error is not None:
+            self.log("the decisions board did not open: %s" % error)
+            self._ask("Decisions board not opened", error)
+        else:
+            self.log("no decisions board is open")
+            self._ask("No decisions board open", "Ask firstmate for /bearings lavish; it builds the board.")
+
+    def _ask(self, title, text):
+        """Show title and text in the bar as a card with one answer, OK,
+        in place of the last one if it is still up. The answer does nothing."""
+        if self.touchbar is None:
+            return
+        try:
+            if self._asked is not None:
+                self.touchbar.send({"op": "cancel", "id": self._asked})
+            self._asks += 1
+            self._asked = "board.%d" % self._asks
+            msg = {"op": "ask", "id": self._asked, "title": title, "text": clip(text, MAX_TEXT)}
+            msg.update({"options": [{"id": "ok", "label": "OK"}], "timeout": BOARD_CARD_TIMEOUT})
+            self.touchbar.send(msg)
+        except TouchbarGone as e:
+            self.log("lost the touch bar (%s); retrying every %g s" % (e, RECONNECT))
+            self._disconnect()
 
     def _answered(self, pane, answer, why, fresh):
         card = self.fleet.card
@@ -271,13 +316,17 @@ class App:
                 self.log('another app already provides the tile "%s"' % tile)
         elif op == "error":
             self.log("the touch bar refused %s: %s" % (msg.get("request"), msg.get("message")))
+        elif op == "answer" and msg.get("id") == self._asked:
+            self._asked = None
+            if msg.get("reason") == "unavailable":
+                self.log("the touch bar could not show the board's card")
         elif op == "event" and msg.get("page") == PAGE and msg.get("type") in ("tap", "long"):
             self._touch(msg.get("widget"), msg["type"])
         elif op == "event" and msg.get("type") == "up" and msg.get("inside") is True:
             if msg.get("tile") == FLEET_TILE:
                 self._focus_pane(self.fleet.first_blocked())
             elif msg.get("tile") == CALLS_TILE:
-                self.refresh_calls()
+                self.captains_call()
 
     def _touch(self, widget, touch):
         card = self.fleet.shown_card()
@@ -286,7 +335,7 @@ class App:
         elif touch != "tap":
             return
         elif widget == CALLS_WIDGET:
-            self.refresh_calls()
+            self.captains_call()
         else:
             pane = self.fleet.pane_of(widget)
             if pane is not None and self.fleet.open_card(pane) is not None:
@@ -319,7 +368,7 @@ class App:
         card.interrupting, card.note = True, "interrupting…"
         self._dirty = True
         if route == "firstmate":
-            self._control.put((card.pane, value))
+            self._control.put(("interrupt", card.pane, value))
         else:
             self._jobs.put(("keys", card.pane, agent.kind, value))
 
@@ -330,6 +379,16 @@ class App:
     def refresh_calls(self):
         if self.firstmate is not None:
             self._read_firstmate.set()
+
+    def captains_call(self):
+        """A tap on Captain's Call: read firstmate again, and open its
+        decisions board (one at a time: taps while it opens add nothing)."""
+        if self.firstmate is None:
+            return
+        self.refresh_calls()
+        if not self._opening:
+            self._opening = True
+            self._control.put(("board",))
 
     def close(self):
         self.stopping.set()

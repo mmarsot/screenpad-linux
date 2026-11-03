@@ -49,6 +49,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.bearings, os.path.join(self.code, "bin", "fm-bearings-snapshot.sh"))
         self.assertEqual(c.control, os.path.join(self.code, "bin", "fm-control.sh"))
         self.assertEqual(c.firstmate_poll, 120.0)
+        self.assertEqual(c.board, os.path.join(self.code, "bin", "fm-bearings-board.sh"))
+        self.assertEqual(c.lavish, ["lavish-axi"])
+        c = load(
+            self.write(
+                '[herdr]\nsession = "lab"\n[firstmate]\nhome = "%s"\ncode = "%s"\n'
+                'lavish = ["/usr/bin/node", "/opt/lavish-axi"]\n' % (self.home, self.code)
+            )
+        )
+        self.assertEqual(c.lavish, ["/usr/bin/node", "/opt/lavish-axi"])
+        _, firstmate = clients(c)
+        self.assertEqual((firstmate.board, firstmate.lavish, firstmate.opener), (c.board, c.lavish, ["gio", "open"]))
 
     def test_the_clients_interrupt_through_the_configured_control_plane(self):
         c = load(
@@ -92,6 +103,7 @@ class ConfigTests(unittest.TestCase):
                 "no executable",
             ),
             ('[herdr]\nsession = "x"\n' + fm + "extra = 1\n", "unknown key in \\[firstmate\\] 'extra'"),
+            ('[herdr]\nsession = "x"\n' + fm + "lavish = []\n", "\\[firstmate\\] lavish must be a program"),
             ('[herdr]\nsession = "x"\n' + fm.replace(self.code, self.nocontrol), "no executable bin/fm-control.sh"),
             ("[herdr\n", "agents.toml"),
         ]
@@ -102,7 +114,7 @@ class ConfigTests(unittest.TestCase):
     def test_no_default_points_at_a_firstmate_home(self):
         # Without [firstmate] nothing of firstmate is read; its paths have no default.
         c = parse("x", {"herdr": {"session": "default"}})
-        self.assertEqual((c.home, c.bearings, c.control), (None, None, None))
+        self.assertEqual((c.home, c.bearings, c.control, c.board), (None, None, None, None))
 
 
 class CommandTests(unittest.TestCase):

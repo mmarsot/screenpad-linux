@@ -130,8 +130,10 @@ def fake_herdr(directory):
 def fake_bearings(code):
     """A fake firstmate checkout: bin/fm-bearings-snapshot.sh prints the
     model in model.json next to it, and records FM_HOME and its arguments;
-    bin/fm-control.sh is fake_control's."""
+    bin/fm-control.sh is fake_control's, bin/fm-bearings-board.sh
+    fake_board's."""
     fake_control(code)
+    fake_board(code)
     write_json(os.path.join(code, "bin", "model.json"), bearings_model())
     return write_script(
         os.path.join(code, "bin", "fm-bearings-snapshot.sh"),
@@ -168,6 +170,82 @@ def fake_control(code):
             sys.exit(1)
         print("interrupt %s" % sys.argv[1])
         print("delivered verified=agent-alive cancel=unconfirmed")
+        """,
+    )
+
+
+def fake_board(code):
+    """firstmate's bin/fm-bearings-board.sh in a fake checkout: path prints
+    $FM_HOME/.lavish/bearings-board.html and records FM_HOME and its
+    arguments in board.jsonl; anything else (build) fails, since the app
+    must never build or arm a board."""
+    os.makedirs(os.path.join(code, "bin"), exist_ok=True)
+    return write_script(
+        os.path.join(code, "bin", "fm-bearings-board.sh"),
+        """
+        import json, os, sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        fm = sorted(k for k in os.environ if k.startswith("FM_"))
+        with open(os.path.join(here, "board.jsonl"), "a") as f:
+            f.write(json.dumps({"FM_HOME": os.environ.get("FM_HOME"), "fm": fm, "args": sys.argv[1:]}) + "\\n")
+        if sys.argv[1:] != ["path"]:
+            sys.exit(2)
+        print(os.path.join(os.environ["FM_HOME"], ".lavish", "bearings-board.html"))
+        """,
+    )
+
+
+def lavish_listing(*rows):
+    """lavish-axi's output with no argument: rows are (file, status, url)."""
+    lines = ["bin: ~/.local/bin/lavish-axi", 'description: "Lavish Editor"']
+    lines.append("sessions[%d]{file,status,url,pending_prompts,listener}:" % len(rows))
+    lines += ['  %s,%s,"%s",0,none' % row for row in rows]
+    lines.append('help[1]: "Run `lavish-axi <html-file>` to open or resume a session"')
+    return "\n".join(lines) + "\n"
+
+
+def fake_lavish(directory):
+    """A lavish-axi stand-in: prints listing.txt next to it (fails when it
+    says "fail"), and records its arguments and FM_* in lavish.jsonl."""
+    with open(os.path.join(directory, "listing.txt"), "w") as f:
+        f.write(lavish_listing())
+    return write_script(
+        os.path.join(directory, "lavish-axi"),
+        """
+        import json, os, sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        fm = sorted(k for k in os.environ if k.startswith("FM_"))
+        with open(os.path.join(here, "lavish.jsonl"), "a") as f:
+            f.write(json.dumps({"fm": fm, "args": sys.argv[1:]}) + "\\n")
+        with open(os.path.join(here, "listing.txt")) as f:
+            listing = f.read()
+        if listing == "fail":
+            print("lavish-axi: server unreachable", file=sys.stderr)
+            sys.exit(1)
+        sys.stdout.write(listing)
+        """,
+    )
+
+
+def fake_opener(directory):
+    """A stand-in for gio open, so nothing opens on the screen: records its
+    arguments in opened.jsonl, fails when opener.fail exists, and when
+    opener.linger exists leaves a child holding its output open, as a browser
+    gio starts does (its pid in linger.pid)."""
+    return write_script(
+        os.path.join(directory, "opener"),
+        """
+        import json, os, subprocess, sys
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "opened.jsonl"), "a") as f:
+            f.write(json.dumps(sys.argv[1:]) + "\\n")
+        if os.path.exists(os.path.join(here, "opener.linger")):
+            child = subprocess.Popen(["sleep", "30"])
+            with open(os.path.join(here, "linger.pid"), "w") as f:
+                f.write(str(child.pid))
+        if os.path.exists(os.path.join(here, "opener.fail")):
+            print("gio: no handler for the URL", file=sys.stderr)
+            sys.exit(2)
         """,
     )
 
@@ -251,12 +329,33 @@ class FakeHerdr:
 
 
 class FakeFirstmate:
+    """firstmate's client for the loop. board is the URL of the board
+    Lavish has open (None: none open); open_board records each URL it
+    opened, after waiting for release when the test sets it."""
+
+    BOARD = "http://127.0.0.1:4387/session/b0a2d"
+
     def __init__(self, calls=0, tasks=None):
         self.bearings = Bearings(calls, False, tasks or {})
         self.error = None
         self.reads = 0
         self.interrupted = []
         self.interrupt_error = None
+        self.board: str | None = self.BOARD
+        self.board_error = None
+        self.board_calls = 0
+        self.opened = []
+        self.release = None
+
+    def open_board(self):
+        self.board_calls += 1
+        if self.release is not None:
+            self.release.wait(5)
+        if self.board_error:
+            raise self.board_error if isinstance(self.board_error, Exception) else FirstmateError(self.board_error)
+        if self.board is not None:
+            self.opened.append(self.board)
+        return self.board
 
     def interrupt(self, task_id):
         self.interrupted.append(task_id)

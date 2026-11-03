@@ -15,7 +15,9 @@ from .herdr import Herdr, HerdrError
 
 def clients(config):
     herdr = Herdr(config.herdr, config.session)
-    firstmate = Firstmate(config.home, config.bearings, config.control) if config.home else None
+    firstmate = None
+    if config.home:
+        firstmate = Firstmate(config.home, config.bearings, config.control, board=config.board, lavish=config.lavish)
     return herdr, firstmate
 
 
