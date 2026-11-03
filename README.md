@@ -3,7 +3,8 @@
 Makes the first-generation ASUS ScreenPad (5.5", 1080x1920) work on Linux on the **ASUS ZenBook UX480FD**, with Ubuntu and GNOME:
 
 - **Display:** lights the ScreenPad and makes it a normal extended monitor, at boot and after resume, with Secure Boot on or off. It runs in userspace only: no kernel module, no `acpi_call`.
-- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back. Below the bar the panel is black behind its windows, with a faint clock; a swipe along the bar or a tap on its page dots turns to an apps page, where touches below the bar never move the pointer, and it comes back to the touchpad by itself after 8 s without a touch ([the two pages](docs/touchbar.md#the-two-pages); no apps on it yet).
+- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back. Below the bar the panel is black behind its windows, with a faint clock; a swipe along the bar or a tap on its page dots turns to an apps page, where touches below the bar never move the pointer, and it comes back to the touchpad by itself after 8 s without a touch ([the two pages](docs/touchbar.md#the-two-pages)), where apps give it pages of large widgets.
+- **Agent app:** `screenpad-agents`, a separate app of the touch bar, shows every coding agent [Herdr](https://herdr.dev) reports (working, blocked, idle) on the apps page and in the bar, named after its firstmate task when it has one, and how many firstmate Captain's Calls are waiting. A tap focuses an agent's pane. It is installed off and runs only once you write its config ([agent app](docs/agents.md)).
 
 ![The touch bar: push to talk, mute microphone and screenshot buttons, then Files and Settings shortcuts, an empty shortcut spot, the page dots and the resize grip](docs/images/touchbar.png)
 
@@ -31,6 +32,7 @@ What was not checked on the hardware:
 
 - **Display:** relighting after suspend and resume; reading the EDID over DDC (it failed with `Input/output error` on the tested unit); the debugfs path used on kernels without lockdown (covered by unit tests only); X11 sessions.
 - **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel. The same goes for the scene of tiles: in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked. The elastic bar and notification cards were checked there too, with real notifications (buttons pressed, Do Not Disturb, dismiss, timeouts), not yet on the panel. The two pages (the black screensaver behind windows, the clock, the page dots and the apps page over windows) were drawn there by the extension from the daemon's own scenes; the swipe along the bar and the apps page's touch routing are tested without hardware, not yet on the panel, whose sample rate decides how reliable a 25 mm swipe on a 10 mm bar is. Apps' pages on the apps page (the home list, widgets pressed and held) were drawn there the same way; taps, long presses and the 0.3 s arming on them are tested without hardware only.
+- **Agent app:** run against an isolated Herdr session with fake agents (a stand-in for Claude Code printing a permission dialog, which Herdr reported blocked) and firstmate's own reader on a throwaway firstmate home, through the daemon's socket; its page was drawn by the extension in a headless GNOME Shell 50.1. Not yet on the panel.
 
 ## Quick start
 
@@ -76,6 +78,7 @@ Then log out and in once.
 | `has no EDID after forcing it on` | With Secure Boot on, apply the boot parameter (`sudo screenpad grub apply`, reboot); see [If nvidia-drm does not take it](docs/display.md#if-nvidia-drm-does-not-take-it) |
 | The ScreenPad shows sideways or upside down | Rotate it in Settings > Displays; see [GNOME placement](docs/display.md#gnome-placement) |
 | No touch bar, or it misbehaves | `screenpad-touchbar status`, then the [touch bar troubleshooting](docs/touchbar.md#troubleshooting) table |
+| The agent app shows nothing, or Herdr unavailable | `screenpad-agents show`, then the [agent app troubleshooting](docs/agents.md#troubleshooting) table |
 | You want the plain touchpad back now | `screenpad-touchbar off` |
 
 For a bug report, include `screenpad status`, `screenpad-touchbar status`, `journalctl -b -u screenpad` and `journalctl --user -u screenpad-touchbar`.
@@ -100,6 +103,7 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 | [Touch bar](docs/touchbar.md) | using the bar, its commands, troubleshooting, how it works |
 | [Touch bar configuration](docs/configuration.md) | `~/.config/screenpad/touchbar.toml`, every setting, examples, push to talk |
 | [Touch bar app API](docs/app-api.md) | the socket for apps: tiles, questions, `screenpad-touchbar ask` |
+| [Agent app](docs/agents.md) | `screenpad-agents`: Herdr's agents and firstmate's Captain's Calls on the touch bar, its config, turning it on |
 | [Development](docs/development.md) | code layout, the checks and the test suite |
 
 ## Follow-ups

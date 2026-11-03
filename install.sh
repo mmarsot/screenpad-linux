@@ -2,7 +2,8 @@
 # Install or remove the ScreenPad display helper and touch bar. Run as root.
 #   ./install.sh            install and enable the boot unit (does not start it);
 #                           the touch bar is turned on per user with
-#                           'screenpad-touchbar on'
+#                           'screenpad-touchbar on', and the agent app is
+#                           enabled per user once it has its config
 #   ./install.sh uninstall  stop (runs 'screenpad off'), disable and remove
 #   ./install.sh purge      uninstall and also delete the saved EDID
 # It never edits GRUB; 'screenpad grub show|apply|remove' does that.
@@ -13,8 +14,8 @@ set -eu
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 R=${DESTDIR:-}
 BIN=/usr/local/sbin/screenpad
-# The programs: screenpad.py and touchbar.py with their packages. BIN and
-# TOUCHBAR are relative symlinks to the two scripts here.
+# The programs: screenpad.py, touchbar.py and agents.py with their packages.
+# BIN, TOUCHBAR and AGENTS are relative symlinks to the scripts here.
 LIB=/usr/local/lib/screenpad
 UNIT=/etc/systemd/system/screenpad.service
 HOOK=/usr/lib/systemd/system-sleep/screenpad
@@ -25,6 +26,8 @@ INITRAMFS_HOOK=/etc/initramfs-tools/hooks/screenpad
 GRUB=/etc/default/grub
 TOUCHBAR=/usr/local/bin/screenpad-touchbar
 TOUCHBAR_UNIT=/usr/lib/systemd/user/screenpad-touchbar.service
+AGENTS=/usr/local/bin/screenpad-agents
+AGENTS_UNIT=/usr/lib/systemd/user/screenpad-agents.service
 EXTENSION=/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad
 UDEV_RULE=/etc/udev/rules.d/70-screenpad-uinput.rules
 PRODUCT="ZenBook UX450FDX_UX480FD"
@@ -53,10 +56,10 @@ locked_down() {
 # A package directory is replaced whole, so a module an earlier version had
 # does not linger.
 install_programs() {
-    for prog in screenpad touchbar; do
+    for prog in screenpad touchbar agents; do
         install -D -m 0755 "$here/$prog.py" "$R$LIB/$prog.py"
     done
-    for pkg in screenpad_display screenpad_touchbar; do
+    for pkg in screenpad_display screenpad_touchbar screenpad_agents; do
         rm -rf "$R$LIB/$pkg"
         for f in "$here/$pkg"/*.py; do
             install -D -m 0644 "$f" "$R$LIB/$pkg/$(basename "$f")"
@@ -65,6 +68,7 @@ install_programs() {
     install -d -m 0755 "$R$(dirname "$BIN")" "$R$(dirname "$TOUCHBAR")"
     ln -sfn ../lib/screenpad/screenpad.py "$R$BIN"
     ln -sfn ../lib/screenpad/touchbar.py "$R$TOUCHBAR"
+    ln -sfn ../lib/screenpad/agents.py "$R$AGENTS"
 }
 
 install_all() {
@@ -78,6 +82,7 @@ install_all() {
         install -D -m 0644 "$f" "$R$DOC/docs/$(basename "$f")"
     done
     install -D -m 0644 "$here/systemd/screenpad-touchbar.service" "$R$TOUCHBAR_UNIT"
+    install -D -m 0644 "$here/systemd/screenpad-agents.service" "$R$AGENTS_UNIT"
     for f in "$here"/gnome-shell/screenpad-touchbar@screenpad/*; do
         install -D -m 0644 "$f" "$R$EXTENSION/$(basename "$f")"
     done
@@ -101,6 +106,7 @@ install_all() {
     echo "Installed. Capture the EDID with 'screenpad capture-edid' if you have not yet;"
     echo "the panel comes up at next boot, or now with 'systemctl start screenpad'."
     echo "Touch bar: run 'screenpad-touchbar on' as your user (not root), then log out and in once."
+    echo "Agent app: installed but off; docs/agents.md says how to configure and enable it."
     if locked_down; then
         echo "The kernel is in lockdown, so the EDID goes through drm.edid_firmware."
         echo "'screenpad grub show' prints the boot parameter change; 'screenpad grub apply' makes it."
@@ -115,6 +121,7 @@ uninstall_all() {
         systemctl disable --now screenpad.service || true
     fi
     rm -f "$R$BIN" "$R$UNIT" "$R$HOOK" "$R$FIRMWARE" "$R$TOUCHBAR" "$R$TOUCHBAR_UNIT" "$R$UDEV_RULE"
+    rm -f "$R$AGENTS" "$R$AGENTS_UNIT"
     rm -rf "$R$EXTENSION" "$R$LIB"
     udevadm control --reload
     rmdir "$R$(dirname "$FIRMWARE")" 2>/dev/null || true
@@ -125,7 +132,8 @@ uninstall_all() {
     fi
     systemctl daemon-reload
     echo "A touch bar that is on keeps running until you log out; 'screenpad-touchbar off'"
-    echo "(as your user) stops it now, and the plain touchpad comes back."
+    echo "(as your user) stops it now, and the plain touchpad comes back. An agent app you"
+    echo "enabled stops at log out too, or now with 'systemctl --user disable --now screenpad-agents'."
     echo "Removed. The saved EDID in $STATE is kept; './install.sh purge' deletes it."
 }
 

@@ -102,8 +102,10 @@ sudo systemctl start screenpad
 | `/var/lib/screenpad/`, `/lib/firmware/screenpad/edid.bin` | the saved, fixed EDID and the copy the kernel loads |
 | `/etc/initramfs-tools/hooks/screenpad` | only if nvidia-drm is in your initramfs (it is not on stock Ubuntu); followed by `update-initramfs -u` |
 | `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI: a link to `/usr/local/lib/screenpad/touchbar.py` |
-| `/usr/local/lib/screenpad/` | the two programs' code: `screenpad.py` and `touchbar.py`, and their packages `screenpad_display/` and `screenpad_touchbar/` |
+| `/usr/local/bin/screenpad-agents` | the [agent app](agents.md): a link to `/usr/local/lib/screenpad/agents.py` |
+| `/usr/local/lib/screenpad/` | the programs' code: `screenpad.py`, `touchbar.py` and `agents.py`, and their packages `screenpad_display/`, `screenpad_touchbar/` and `screenpad_agents/` |
 | `/usr/lib/systemd/user/screenpad-touchbar.service` | the touch bar's systemd user unit, installed but not enabled |
+| `/usr/lib/systemd/user/screenpad-agents.service` | the agent app's user unit, installed but not enabled; it starts only once `~/.config/screenpad/agents.toml` exists |
 | `/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |
 | `/etc/udev/rules.d/70-screenpad-uinput.rules` | lets the user at the seat use `/dev/uinput` for the touch bar's virtual touchpad and keys |
 | `/usr/local/share/doc/screenpad/` | this documentation |
@@ -171,6 +173,8 @@ To check that touches land where the bar is drawn, `screenpad-touchbar probe` pr
 
 If something is off, see [Troubleshooting](touchbar.md#troubleshooting) for the touch bar or [If the panel stays dark](display.md#if-the-panel-stays-dark) for the display.
 
+The agent app, for Herdr's coding agents, is optional and off until you configure it: see [Turning it on](agents.md#turning-it-on).
+
 ## Configuration
 
 The bar's height, buttons and shortcuts are in `~/.config/screenpad/touchbar.toml`. Changes apply within a second of saving. See [configuration.md](configuration.md), including how to use the Push to talk button with your voice app.
@@ -184,6 +188,8 @@ git pull
 sudo ./install.sh
 systemctl --user restart screenpad-touchbar
 ```
+
+If you enabled the agent app, `systemctl --user restart screenpad-agents` too.
 
 - `install.sh` replaces the installed files; it keeps your saved EDID, your boot parameter and your touch bar config.
 - If the update changed the GNOME Shell extension, log out and in once. This command lists the extension files the update changed; if it prints nothing, no re-login is needed:
@@ -213,10 +219,11 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo screenpad grub remove
    ```
 
-2. Turn off the touch bar, as your user:
+2. Turn off the touch bar, and the agent app if you enabled it, as your user:
 
    ```sh
    screenpad-touchbar off
+   systemctl --user disable --now screenpad-agents
    ```
 
 3. Uninstall, from the checkout:
@@ -239,7 +246,7 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo reboot
    ```
 
-5. Optionally, remove your touch bar config:
+5. Optionally, remove your touch bar and agent app configs:
 
    ```sh
    rm -r ~/.config/screenpad

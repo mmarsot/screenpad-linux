@@ -38,11 +38,11 @@ ignore = [
 section-order = ["future", "standard-library", "third-party", "test-support", "first-party", "local-folder"]
 
 [tool.ruff.lint.isort.sections]
-test-support = ["screenpad_support", "touchbar_support"]
+test-support = ["agents_support", "screenpad_support", "touchbar_support"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["screenpad.py", "touchbar.py", "screenpad_display", "screenpad_touchbar", "tests"]
+files = ["screenpad.py", "touchbar.py", "agents.py", "screenpad_display", "screenpad_touchbar", "screenpad_agents", "tests"]
 mypy_path = ["$MYPY_CONFIG_FILE_DIR", "$MYPY_CONFIG_FILE_DIR/tests"]
 check_untyped_defs = true
 warn_unused_ignores = true
@@ -52,7 +52,12 @@ warn_redundant_casts = true
 # record calls in plain lists; the rest is checked as in the programs.
 [[tool.mypy.overrides]]
 module = [
+    "agents_support",
     "screenpad_support",
+    "test_agents_app",
+    "test_agents_config",
+    "test_agents_fleet",
+    "test_agents_sources",
     "test_install",
     "test_screenpad",
     "test_screenpad_grub",

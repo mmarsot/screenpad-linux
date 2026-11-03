@@ -1,6 +1,6 @@
 # Touch bar app API
 
-Other programs can use the touch bar: an **app** draws and handles button spots the config gives it and [pages of large widgets](#pages-on-the-apps-page) on the apps page, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
+Other programs can use the touch bar (the [agent app](agents.md) is one): an **app** draws and handles button spots the config gives it and [pages of large widgets](#pages-on-the-apps-page) on the apps page, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
 
 ```
 $XDG_RUNTIME_DIR/screenpad/touchbar.sock
