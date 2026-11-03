@@ -153,11 +153,12 @@ def migrate_config(path=None):
         if text.count(old) == 1:
             text = text.replace(old, new)
             changed = True
+            # Updated block by block, an older default can become a later one.
+            if hashlib.sha256(text.encode()).hexdigest() in OLD_DEFAULTS:
+                text = EXAMPLE_CONFIG
+                break
     if not changed:
         return False
-    # Updated block by block, an older default can become a later one.
-    if hashlib.sha256(text.encode()).hexdigest() in OLD_DEFAULTS:
-        text = EXAMPLE_CONFIG
     _write(path, text)
     log("%s had an earlier default button; updated it to the current one" % path)
     return True

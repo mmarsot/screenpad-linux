@@ -110,7 +110,7 @@ class ConfigTests(unittest.TestCase):
     def test_empty_is_a_bar_without_buttons(self):
         c = config()
         self.assertEqual((c.height, c.buttons, c.shortcuts), (DEFAULT_HEIGHT, [], []))
-        self.assertEqual([s.kind for s in c.spots], ["button"] * 3 + ["shortcut"] * 3 + ["grip"])
+        self.assertEqual([s.kind for s in c.spots], ["button"] * 3 + ["shortcut"] * 3 + ["grip", "dots"])
         self.assertTrue(all(s.item is None for s in c.spots))
 
     def test_spots(self):
@@ -119,20 +119,23 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             spots,
             [
-                ("button", 0, 0, 296),
-                ("button", 1, 296, 296),
-                ("button", 2, 592, 296),
-                ("shortcut", 0, 928, 296),
-                ("shortcut", 1, 1224, 296),
-                ("shortcut", 2, 1520, 296),
+                ("button", 0, 0, 272),
+                ("button", 1, 272, 272),
+                ("button", 2, 544, 272),
+                ("shortcut", 0, 856, 272),
+                ("shortcut", 1, 1128, 272),
+                ("shortcut", 2, 1400, 272),
                 ("grip", 0, 1816, 104),
+                ("dots", 0, 1672, 144),
             ],
         )
         self.assertEqual(c.spot_at(0, 0), 0)
-        self.assertEqual(c.spot_at(295, 159), 0)
-        self.assertEqual(c.spot_at(296, 10), 1)
-        self.assertIsNone(c.spot_at(900, 10))  # the gap between the groups
-        self.assertEqual(c.spot_at(928, 10), 3)
+        self.assertEqual(c.spot_at(271, 159), 0)
+        self.assertEqual(c.spot_at(272, 10), 1)
+        self.assertIsNone(c.spot_at(830, 10))  # the gap between the groups
+        self.assertEqual(c.spot_at(856, 10), 3)
+        self.assertEqual(c.spot_at(1672, 10), 7)
+        self.assertEqual(c.spot_at(1815, 10), 7)
         self.assertEqual(c.spot_at(1919, 10), 6)
         self.assertIsNone(c.spot_at(100, 160))  # below the bar
 
@@ -166,15 +169,15 @@ app = "firefox_firefox"
             c.spots[1].public(),
             {
                 "kind": "button",
-                "x": 296,
-                "width": 296,
+                "x": 272,
+                "width": 272,
                 "label": "",
                 "icon": os.path.expanduser("~/icons/ptt.svg"),
                 "mode": "hold",
             },
         )
         self.assertEqual(
-            c.spots[3].public(), {"kind": "shortcut", "x": 928, "width": 296, "app": "org.gnome.Nautilus.desktop"}
+            c.spots[3].public(), {"kind": "shortcut", "x": 856, "width": 272, "app": "org.gnome.Nautilus.desktop"}
         )
 
     def test_first_version_x_and_width_are_ignored(self):
@@ -256,7 +259,7 @@ class TileConfigTests(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(main(["check"]), 0)
-            self.assertIn("button   2  x  296..592  Agents, icon none, tile agents (an app draws it)", out.getvalue())
+            self.assertIn("button   2  x  272..544  Agents, icon none, tile agents (an app draws it)", out.getvalue())
 
     def test_migrate_the_default_before_tiles(self):
         with open(os.path.join(REPO, "tests", "touchbar-v3-default.toml")) as f:

@@ -27,12 +27,12 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(
             [(x["id"], x["x"], x["width"], x["style"]) for x in tiles],
             [
-                ("button-0", 0, 296, "button"),
-                ("button-1", 296, 296, "button"),
-                ("button-2", 592, 296, "button"),
-                ("shortcut-0", 928, 296, "shortcut"),
-                ("shortcut-1", 1224, 296, "shortcut"),
-                ("shortcut-2", 1520, 296, "shortcut"),
+                ("button-0", 0, 272, "button"),
+                ("button-1", 272, 272, "button"),
+                ("button-2", 544, 272, "button"),
+                ("shortcut-0", 856, 272, "shortcut"),
+                ("shortcut-1", 1128, 272, "shortcut"),
+                ("shortcut-2", 1400, 272, "shortcut"),
                 ("grip", 1816, 104, "grip"),
             ],
         )
@@ -41,7 +41,7 @@ class SceneTests(unittest.TestCase):
             {
                 "id": "button-0",
                 "x": 0,
-                "width": 296,
+                "width": 272,
                 "style": "button",
                 "pressed": True,
                 "classes": ["hold"],
@@ -55,13 +55,35 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(tiles[2]["classes"], ["empty"])
         self.assertEqual(
             tiles[3],
-            {"id": "shortcut-0", "x": 928, "width": 296, "style": "shortcut", "drop": 1, "app": "files.desktop"},
+            {"id": "shortcut-0", "x": 856, "width": 272, "style": "shortcut", "drop": 1, "app": "files.desktop"},
         )
         self.assertEqual(tiles[4]["classes"], ["empty"])
         self.assertEqual((tiles[4]["icon"], tiles[4]["icon_scale"], tiles[4]["drop"]), ("list-add-symbolic", 0.6, 2))
         self.assertTrue(tiles[4]["empty"])
         self.assertEqual(tiles[6]["glyph"], "grip")
-        self.assertEqual(DIVIDER_X, 908)
+        self.assertEqual(DIVIDER_X, 836)
+
+    def test_page_dots_tile(self):
+        c = config(TILE_CONFIG)
+        tiles = spot_tiles(c, pressed=[7], dots={"page": 1, "pages": 2})
+        self.assertEqual(
+            tiles[-1],
+            {
+                "id": "dots",
+                "x": 1672,
+                "width": 144,
+                "style": "dots",
+                "pressed": True,
+                "glyph": "dots",
+                "page": 1,
+                "pages": 2,
+                "text": "apps",
+                "label": "Page 2 of 2, apps",
+            },
+        )
+        # Without the pager (turned off, or an extension that cannot draw
+        # the pages), no dots.
+        self.assertNotIn("dots", [t["style"] for t in spot_tiles(c)])
 
     def test_removing_and_app_tiles(self):
         c = config(TILE_CONFIG)
@@ -74,8 +96,8 @@ class SceneTests(unittest.TestCase):
             tiles[1],
             {
                 "id": "button-1",
-                "x": 296,
-                "width": 296,
+                "x": 272,
+                "width": 272,
                 "style": "button",
                 "classes": ["tile", "tone-warning"],
                 "label": "1 blocked",
@@ -93,7 +115,9 @@ class SceneTests(unittest.TestCase):
             {"id": "q", "title": "T", "options": [{"id": "a", "label": "A", "tone": tone} for tone in TONES[:1]]},
             0,
         )
-        tiles = spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}}) + ask_tiles(ask)
+        tiles = spot_tiles(
+            c, removing=[3], provided={"agents": {"tone": "accept"}}, dots={"page": 0, "pages": 2}
+        ) + ask_tiles(ask)
         for tile in tiles:
             self.assertIn(tile["style"], TILE_STYLES)
             for name in tile.get("classes", []):
@@ -119,7 +143,7 @@ class SceneTests(unittest.TestCase):
             {
                 "id": "ask-text",
                 "x": 0,
-                "width": 592,
+                "width": 544,
                 "style": "ask-text",
                 "title": "Run npm test?",
                 "text": "in api",
@@ -131,8 +155,8 @@ class SceneTests(unittest.TestCase):
             tiles[1],
             {
                 "id": "ask-dismiss",
-                "x": 592,
-                "width": 296,
+                "x": 544,
+                "width": 272,
                 "style": "option",
                 "classes": ["tone-neutral"],
                 "icon": "window-close-symbolic",
@@ -144,8 +168,8 @@ class SceneTests(unittest.TestCase):
             tiles[2],
             {
                 "id": "ask-option-0",
-                "x": 928,
-                "width": 296,
+                "x": 856,
+                "width": 272,
                 "style": "option",
                 "classes": ["tone-reject"],
                 "label": "Deny",
@@ -154,7 +178,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(tiles[3]["pressed"], True)
         self.assertTrue(ask_tiles(ask, pressed=[DISMISS])[1]["pressed"])
         self.assertEqual(
-            [ask_option_at(ask, x) for x in (0, 591, 700, 900, 928, 1300, 1600)],
+            [ask_option_at(ask, x) for x in (0, 543, 600, 830, 856, 1200, 1500)],
             [None, None, DISMISS, None, 0, 1, None],
         )
 

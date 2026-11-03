@@ -59,7 +59,13 @@ SCENE_VERSION = 2
 # version 1 spots and could not show them, a bar not drawn (no ScreenPad
 # monitor found) shows nothing, and a touch must never answer a question
 # nobody can see.
-RENDERER_PROTOCOL = 2
+RENDERER_PROTOCOL = 3
+# What each feature needs of the renderer: questions came with protocol 2,
+# the pages (the black screensaver, the page dots and the apps page) with 3.
+# An extension GNOME keeps from before an update until the next login keeps
+# showing questions; the pages wait for the new one.
+ASKS_PROTOCOL = 2
+PAGES_PROTOCOL = 3
 RENDERER_NAME = "renderer.json"
 SOCKET_NAME = "touchbar.sock"
 MAX_APPS = 16
@@ -88,18 +94,37 @@ OPTION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 
 
 # The bar, left to right: three button spots, a gap, three shortcut spots,
-# and the resize grip at the right end, all as tall as the bar.
+# the page dots and the resize grip at the right end, all as tall as the
+# bar. A spot is 17 mm wide and the dots 9 mm, a fingertip.
 MAX_BUTTONS = 3
 MAX_SHORTCUTS = 3
-SPOT_W = 296
+SPOT_W = 272
 GROUP_GAP = 40
 SHORTCUTS_X = MAX_BUTTONS * SPOT_W + GROUP_GAP
-GRIP_X = SHORTCUTS_X + MAX_SHORTCUTS * SPOT_W
+DOTS_X = SHORTCUTS_X + MAX_SHORTCUTS * SPOT_W
+DOTS_W = 144
+GRIP_X = DOTS_X + DOTS_W
 MIN_HEIGHT = 64
 MAX_HEIGHT = PANEL_H // 2
 # The grip changes the height in steps of this many pixels (half a mm).
 HEIGHT_STEP = 8
-BUTTON, SHORTCUT, GRIP = "button", "shortcut", "grip"
+BUTTON, SHORTCUT, GRIP, DOTS = "button", "shortcut", "grip", "dots"
+
+# The pages, left to right: the touchpad page (home, below the bar a
+# touchpad over a black screensaver) and the apps page (below the bar a
+# surface that takes every new contact, kept away from the pointer).
+HOME, APPS = 0, 1
+PAGE_NAMES = ("touchpad", "apps")
+# A swipe along the bar turns the page: one finger, starting on the bar,
+# at least SWIPE_MIN panel pixels (25 mm at 16 px/mm) across, mostly
+# across (rising at most SWIPE_SLOPE of that), lifted within SWIPE_TIME
+# seconds. Moving the finger left shows the page on the right.
+SWIPE_MIN = 400
+SWIPE_SLOPE = 0.5
+SWIPE_TIME = 0.4
+# Seconds without a touch before the apps page goes back to the touchpad.
+RETURN_AFTER = 8
+MAX_RETURN_AFTER = 3600
 
 
 class TouchbarError(Exception):

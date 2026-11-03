@@ -6,8 +6,9 @@ from .common import (
     ASK_ARM,
     BUTTON,
     CARD_HEIGHT,
+    DOTS,
+    DOTS_X,
     GRIP,
-    GRIP_X,
     HEIGHT_STEP,
     LONG_PRESS,
     MAX_HEIGHT,
@@ -46,11 +47,13 @@ class Bar:
     - shortcut: a tap opens the app; held for LONG_PRESS it turns to
       "remove", and lifting then removes it; sliding away cancels either;
     - grip: dragging it up or down resizes the bar, saved on lift;
+    - dots: a tap turns the page (pager.tap()), while the pager is
+      available (pager.available()); otherwise the spot is empty;
     - while a question shows (asks.shown()), the bar is CARD_HEIGHT tall
       (touch_height()) and the question covers the button and shortcut
       spots: lifting on an answer chooses it, lifting on Dismiss closes
       it with no answer. Touches that start within ASK_ARM of it showing,
-      or on its text, do nothing. The grip stays.
+      or on its text, do nothing. The dots and the grip stay.
     A touch keeps what it started on: a button held when a question appears
     stays held, and a touch on a question that goes away does nothing.
     launch(app), remove(index) and resize(height) do the saving and
@@ -60,7 +63,17 @@ class Bar:
     """
 
     def __init__(
-        self, config, keys, run, launch=None, remove=None, resize=None, clock=time.monotonic, tiles=None, asks=None
+        self,
+        config,
+        keys,
+        run,
+        launch=None,
+        remove=None,
+        resize=None,
+        clock=time.monotonic,
+        tiles=None,
+        asks=None,
+        pager=None,
     ):
         self.config = config
         self.keys = keys  # KeyEmitter
@@ -71,6 +84,7 @@ class Bar:
         self.clock = clock
         self.tiles = tiles
         self.asks = asks
+        self.pager = pager
         self.touch = {}  # slot -> Touch
         self.ask_touch = {}  # slot -> AskTouch
         self.preview = None  # the height while the grip moves
@@ -100,17 +114,20 @@ class Bar:
                         self.preview = h
                         changed = True
                     continue
-                near = self.config.near_spot(t.spot, px, py)
-                if (s.kind == SHORTCUT or s.item.mode == "tap") and near != t.armed:
+                near = self.config.near_spot(t.spot, px, py, self.touch_height())
+                if (s.kind in (SHORTCUT, DOTS) or s.item.mode == "tap") and near != t.armed:
                     t.armed = near
                     changed = True
                 continue
             del self.touch[slot]
             changed = True
-            lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py)
+            lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py, self.touch_height())
             if s.kind == GRIP:
                 if not (kind == "end" and self.preview != self.config.height and self.resize(self.preview)):
                     self.preview = None
+            elif s.kind == DOTS:
+                if lifted:
+                    self.pager.tap()
             elif s.kind == SHORTCUT:
                 if lifted and t.removing:
                     self.remove(s.index)
@@ -134,7 +151,7 @@ class Bar:
 
     def _begin(self, slot, px, py):
         ask = self.asks.shown() if self.asks else None
-        if ask and 0 <= py < self.touch_height() and px < GRIP_X:
+        if ask and 0 <= py < self.touch_height() and px < DOTS_X:
             # Too soon after the question appeared (with the bar grown
             # under it), or on its text: the contact is the question's,
             # and does nothing.
@@ -146,6 +163,11 @@ class Bar:
         if i is None:
             return False
         s = self.config.spots[i]
+        if s.kind == DOTS:
+            if not (self.pager and self.pager.available()):
+                return False
+            self.touch[slot] = Touch(i, self.clock())
+            return True
         if s.item is None and s.kind != GRIP:
             return False
         if s.kind == GRIP:

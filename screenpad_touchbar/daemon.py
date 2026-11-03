@@ -1,4 +1,4 @@
-"""The daemon: grabbing the touchpad, the event loop, publishing the scene, reloading the config."""
+"""The daemon: grabbing the touchpad, the event loop, routing contacts, publishing the scene, reloading the config."""
 
 import json
 import os
@@ -13,15 +13,18 @@ from .bar import Bar
 from .codes import ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT
 from .common import (
     ACTIVE_FLAG,
+    ASKS_PROTOCOL,
     CARD_HEIGHT,
+    DOTS,
     GRIP,
+    HOME,
     LAUNCH,
     LIFT_WAIT,
+    PAGES_PROTOCOL,
     PANEL_H,
     PANEL_W,
     POLL,
     RENDERER_NAME,
-    RENDERER_PROTOCOL,
     SCENE_VERSION,
     SOCKET_NAME,
     ConfigError,
@@ -35,8 +38,9 @@ from .config import config_path, load_config
 from .config_edit import edit_config
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
 from .keys import KeyEmitter
+from .pager import Pager, Surface
 from .scene import DIVIDER_X, ask_tiles, spot_tiles
-from .splitter import RESYNC, Splitter
+from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
 
 
 class Daemon:
@@ -63,16 +67,26 @@ class Daemon:
         # Questions show only while the bar is on screen, drawn by an
         # extension that knows them; otherwise whoever asked hears
         # "unavailable".
-        self.apps.asks.can_show = lambda: self.source is not None and self.source.grabbed and self.renderer_ready()
+        self.apps.asks.can_show = lambda: self.grabbed() and self.renderer_ready()
         # The bar grows for a card only when no touchpad finger is in the
         # band it would cover (or after GROW_WAIT).
         self.apps.asks.band_clear = lambda: (
             not (self.splitter and self.splitter.pad_in_band(self.config.height, CARD_HEIGHT))
         )
         self.apps.notify_policy = config.notifications
+        # The apps page shows only while the bar is on screen, drawn by an
+        # extension that knows the pages.
+        self.pager = Pager(
+            enabled=config.pages.pager,
+            return_after=config.pages.return_after,
+            can_show=lambda: self.grabbed() and self.renderer_protocol() >= PAGES_PROTOCOL,
+        )
+        self.surface = Surface()
+        self.dots_shown = False
         self.server = None
-        # renderer.json's mtime, and whether it is ready
-        self.renderer: tuple[int | None, bool] = (None, False)
+        # renderer.json's mtime, and the protocol it says it draws while
+        # the bar is on screen (0 when it is not)
+        self.renderer: tuple[int | None, int] = (None, 0)
 
     def _mtime(self):
         p = self.config_file or config_path()
@@ -85,40 +99,44 @@ class Daemon:
         if self.bar:
             self.bar.tile_gone(name)
 
-    def renderer_ready(self):
-        """Whether the extension draws questions and has the bar on screen
-        (renderer.json)."""
+    def grabbed(self):
+        return self.source is not None and self.source.grabbed
+
+    def renderer_protocol(self):
+        """The protocol the extension draws while it has the bar on screen
+        (renderer.json), else 0."""
         path = runtime_file(RENDERER_NAME)
         try:
             mtime = os.stat(path).st_mtime_ns
         except OSError:
-            self.renderer = (None, False)
-            return False
+            self.renderer = (None, 0)
+            return 0
         if self.renderer[0] != mtime:
             try:
                 with open(path) as f:
                     said = json.load(f)
                 protocol = said.get("protocol")
-                ready = (
-                    isinstance(protocol, int)
-                    and not isinstance(protocol, bool)
-                    and protocol >= RENDERER_PROTOCOL
-                    and said.get("drawn") is True
-                )
+                if not (isinstance(protocol, int) and not isinstance(protocol, bool) and said.get("drawn") is True):
+                    protocol = 0
             except (OSError, ValueError, AttributeError):
-                ready = False
-            self.renderer = (mtime, ready)
+                protocol = 0
+            self.renderer = (mtime, max(protocol, 0))
         return self.renderer[1]
+
+    def renderer_ready(self):
+        """Whether the extension draws questions and has the bar on screen."""
+        return self.renderer_protocol() >= ASKS_PROTOCOL
 
     def scene(self):
         """The tiles to draw: a question over the spots while one shows."""
         pressed = self.bar.pressed() if self.bar else []
         removing = self.bar.removing() if self.bar else []
-        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided())
+        dots = self.pager.dots() if self.pager.available() else None
+        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), dots)
         ask = self.apps.asks.shown()
         if ask is not None:
             tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
-                t for t in tiles if t["style"] == GRIP
+                t for t in tiles if t["style"] in (GRIP, DOTS)
             ]
         return tiles
 
@@ -138,10 +156,15 @@ class Daemon:
             "tiles": self.scene(),
             "divider": DIVIDER_X,
             "apps": self.apps.names(),
+            # The page shown, black below the bar on the touchpad page (and
+            # whether with a clock), and what the apps page shows there.
+            "page": self.pager.name(),
+            "screensaver": {"clock": self.config.pages.clock} if self.config.pages.screensaver else None,
+            "surface": self.pager.surface(),
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension
             # code only then). It shows no app tiles and no questions.
-            "spots": [s.public() for s in self.config.spots],
+            "spots": [s.public() for s in self.config.spots if s.kind != DOTS],
             "pressed": self.bar.pressed() if self.bar else [],
             "removing": self.bar.removing() if self.bar else [],
         }
@@ -198,6 +221,7 @@ class Daemon:
             self.resize,
             tiles=self.apps,
             asks=self.apps.asks,
+            pager=self.pager,
         )
 
     def reap(self):
@@ -227,9 +251,9 @@ class Daemon:
             raise
         self.source = source
         x, y = source.abs[ABS_MT_POSITION_X], source.abs[ABS_MT_POSITION_Y]
-        # New contacts take the bar's height now, taller while a card
-        # shows; contacts already down keep their kind.
-        self.splitter = Splitter(source.axes(), source.nslots, self._in_bar, source.abs[ABS_MT_SLOT][0])
+        # New contacts take the zone of now (the bar's height, taller while
+        # a card shows, and the page); contacts already down keep their kind.
+        self.splitter = Splitter(source.axes(), source.nslots, self._zone, source.abs[ABS_MT_SLOT][0])
         self.bar = self.new_bar(KeyEmitter(lambda ev: write_events(self.keys_fd, ev)))
         log(
             "grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; bar %d px high, "
@@ -248,9 +272,13 @@ class Daemon:
         )
         return True
 
-    def _in_bar(self, px, py):
+    def _zone(self, px, py):
+        """What a new contact is: the bar's above its height, else the
+        touchpad's on the touchpad page and the surface's on the apps page."""
         assert self.bar is not None  # made right after the splitter, before any event
-        return py < self.bar.touch_height()
+        if py < self.bar.touch_height():
+            return BAR
+        return PAD if self.pager.page == HOME else SURFACE
 
     def destroy_uinput(self):
         for attr in ("pad", "keys_fd"):
@@ -268,9 +296,10 @@ class Daemon:
             return
         assert self.splitter is not None and self.bar is not None
         try:
-            pad, bar = self.splitter.release_all()
+            pad, bar, surface = self.splitter.release_all()
             self.bar.handle(bar)
             self.bar.release_all()
+            self.surface.handle(surface)
             write_events(self.pad, pad)
         except OSError as e:
             log("releasing: %s" % e)
@@ -284,6 +313,7 @@ class Daemon:
             pass
         source.close()
         self.source = self.splitter = self.bar = None
+        self.pager.reset()
         self.destroy_uinput()
         log("released the touchpad: %s" % why)
 
@@ -301,11 +331,21 @@ class Daemon:
                 continue
             if out == RESYNC:
                 out = self.splitter.resync(*self.source.state())
-            pad, bar = out
-            write_events(self.pad, pad)
-            changed |= self.bar.handle(bar)
+            changed |= self.route(*out)
+        changed |= self.pager.take_changed()
         if changed and self.bar:
             self.publish()
+
+    def route(self, pad, bar, surface):
+        """One frame's contacts: the touchpad's to the virtual touchpad, the
+        bar's through the pager (which takes swipes) to the bar, the apps
+        surface's to it. True if the bar changed."""
+        assert self.splitter is not None and self.bar is not None
+        write_events(self.pad, pad)
+        changed = self.bar.handle(self.pager.watch(bar))
+        changed |= self.surface.handle(surface)
+        self.pager.touching(bool(self.splitter.contacts))
+        return changed
 
     def check_config(self):
         mtime = self._mtime()
@@ -321,6 +361,7 @@ class Daemon:
         self.config = config
         self.apps.set_placed(config.tiles())
         self.apps.notify_policy = config.notifications
+        self.pager.configure(config.pages)
         if self.bar:
             self.bar.set_config(config)
         log(
@@ -352,7 +393,16 @@ class Daemon:
                 self.publish()
             self.apps.asks.refresh()
             self.apps.asks.tick()
-            for deadline in (self.bar.deadline() if self.bar else None, self.apps.asks.deadline()):
+            # Back to the touchpad page after a while without a touch, and
+            # the dots shown or hidden as the extension comes and goes.
+            if self.pager.tick() or self.pager.available() != self.dots_shown:
+                self.dots_shown = self.pager.available()
+                self.publish()
+            for deadline in (
+                self.bar.deadline() if self.bar else None,
+                self.apps.asks.deadline(),
+                self.pager.deadline(),
+            ):
                 if deadline is not None:
                     timeout = min(timeout, max(deadline - time.monotonic(), 0))
             if self.apps.take_changed():

@@ -17,6 +17,8 @@
 //   them, and its growth is animated;
 // - mirrors GNOME's notifications to the daemon (notifications.js), which
 //   shows those with buttons as cards;
+// - draws the pages below the bar (pages.js): the touchpad page's black
+//   screensaver and the apps page, as the scene says;
 // - takes apps dropped on the bar (from the dock or the app grid) and has
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
@@ -24,7 +26,7 @@
 //
 // What it agrees on with the daemon is in contract.js, and where tiles go
 // in scene.js; both are plain modules the tests run. tiles.js builds one
-// tile's actors. This file does the rest of what needs GNOME Shell: the
+// tile's actors, pages.js the pages below the bar. This file does the rest of what needs GNOME Shell: the
 // bar and its strut, files, D-Bus, drag and drop.
 
 import Clutter from 'gi://Clutter';
@@ -51,6 +53,7 @@ import {
     rendererJson,
 } from './contract.js';
 import {NotificationMirror} from './notifications.js';
+import {Pages} from './pages.js';
 import {
     badgeBox,
     barGeometry,
@@ -84,6 +87,7 @@ export default class ScreenpadTouchbar extends Extension {
         this._drop = -1;
         this._renderer = this._dir.get_child(RENDERER_NAME);
         this._announced = null;
+        this._pages = new Pages();
 
         this._fileMonitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
         this._fileMonitor.connect('changed', (_monitor, file, other) => {
@@ -162,6 +166,8 @@ export default class ScreenpadTouchbar extends Extension {
         Main.layoutManager.disconnect(this._monitorsChangedId);
         this._fileMonitor.cancel();
         this._fileMonitor = null;
+        this._pages.destroy();
+        this._pages = null;
         this._destroyBar();
         this._state = null;
         this._dir = null;
@@ -218,6 +224,7 @@ export default class ScreenpadTouchbar extends Extension {
         const state = this._state;
         const monitor = state?.active ? this._screenpad(state.monitor) : null;
         if (!monitor) {
+            this._pages.update(null, null, null, 0);
             this._destroyBar();
             this._announce();
             return;
@@ -236,6 +243,7 @@ export default class ScreenpadTouchbar extends Extension {
             else actor.remove_style_pseudo_class('active');
         });
         this._highlight(this._drop);
+        this._pages.update(state, monitor, this._bar, this._drawn?.own ?? 0);
         this._announce();
     }
 

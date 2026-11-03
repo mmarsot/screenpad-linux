@@ -375,13 +375,13 @@ class ContactsToAppsTests(unittest.TestCase):
             asks=apps.asks,
         )
         sp = Split()
-        # The "agents" spot is x 296..592 panel px, 592..1184 device units.
+        # The "agents" spot is x 272..544 panel px, 544..1088 device units.
         for groups in ([touch(0, 1, 800, 100)], [lift(0)]):
-            pad, events = sp.frame(*groups)
+            pad, events, _ = sp.frame(*groups)
             self.assertEqual(pad, [])
             bar.handle(events)
         self.assertEqual([m["type"] for m in app.sent if m["op"] == "event"], ["down", "up"])
-        # A question; a tap on its second answer (x 1224..1520 px), after
+        # A question; a tap on its second answer (x 1128..1400 px), after
         # it has been up for ASK_ARM.
         apps.asks.set_available(True)
         apps.handle(
@@ -395,12 +395,12 @@ class ContactsToAppsTests(unittest.TestCase):
         )
         now[0] += ASK_ARM
         for groups in ([touch(1, 2, 2700, 120)], [lift(1)]):
-            pad, events = sp.frame(*groups)
+            pad, events, _ = sp.frame(*groups)
             self.assertEqual(pad, [])
             bar.handle(events)
         self.assertEqual(app.last("answer"), {"op": "answer", "id": "q", "option": "yes", "reason": "chosen"})
         # The pad below the bar is untouched by all this.
-        pad, events = sp.frame(touch(2, 3, 2000, 1500))
+        pad, events, _ = sp.frame(touch(2, 3, 2000, 1500))
         self.assertEqual((codes(pad, EV_ABS, ABS_MT_TRACKING_ID), events), ([3], []))
 
 

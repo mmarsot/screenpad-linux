@@ -33,7 +33,7 @@ key = "printscreen"
 # app = "org.gnome.Nautilus.desktop"
 ```
 
-The file then documents the `[notifications]` table, commented out (see [Notifications](#notifications)).
+The file then documents the `[notifications]`, `[screensaver]` and `[pager]` tables, commented out (see [Notifications](#notifications) and [Pages](#pages)).
 
 ## Settings
 
@@ -49,6 +49,7 @@ The file then documents the `[notifications]` table, commented out (see [Notific
 | `tile` | instead of `key` or `command`: the name of a tile an app draws and handles in this spot (lower case letters, digits, `.`, `_`, `-`). While no app provides it, the spot shows its `icon` or `label` dimmed and ignores touches. `mode` does not apply. See the [app API](app-api.md) |
 | `[[shortcut]]` `app` | up to three, filling the shortcut spots: an app's desktop file id, such as `"org.gnome.Nautilus.desktop"` (`.desktop` optional). Normally added by drag and drop |
 | `[notifications]` | which GNOME notifications the bar shows as cards; see [Notifications](#notifications) |
+| `[screensaver]`, `[pager]` | the touchpad page's black screensaver and clock, and the apps page; see [Pages](#pages) |
 
 The bar sends keys through its own virtual keyboard, so a key goes to whatever window has the keyboard focus, exactly as if it were typed. Key names are evdev key positions, so on a non-QWERTY layout a letter key gives whatever your layout puts at that position.
 
@@ -116,6 +117,27 @@ mirror = false
 
 `screenpad-touchbar check` prints what applies. Questions from apps (`screenpad-touchbar ask`) are not notifications; these settings do not change them.
 
+## Pages
+
+The bar's page dots show two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A swipe along the bar or a tap on the dots turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). Two tables change that (after the `[[button]]` and `[[shortcut]]` blocks):
+
+```toml
+[screensaver]
+clock = false
+
+[pager]
+return_after = 15
+```
+
+| Setting | Meaning |
+|---|---|
+| `[screensaver]` `enabled` | `false`: below the bar, the touchpad page shows GNOME's desktop background as before, not black. Default `true` |
+| `[screensaver]` `clock` | `false`: no clock on the black. Default `true` |
+| `[pager]` `enabled` | `false`: no page dots, no swipe, no apps page; the panel is always the touchpad page. Default `true` |
+| `[pager]` `return_after` | how many seconds without a touch on the panel the apps page waits before going back to the touchpad, 1 to 3600. Default 8 |
+
+`screenpad-touchbar check` prints what applies (`pages:`).
+
 ## Push to talk
 
 ![Push to talk held: the microphone button turns red](images/touchbar-push-to-talk.png)
@@ -149,4 +171,4 @@ The first version placed buttons with `x` and `width`. Those keys are now ignore
 When the daemon or `screenpad-touchbar on` starts:
 
 - A config that is still exactly an earlier version's default is replaced by the current default.
-- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`, and the settings comment gains the lines about `tile`. The rest of the file is yours and is left as it is.
+- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`, the settings comment gains the lines about `tile`, and the comment describing the bar gains the page dots. The rest of the file is yours and is left as it is.

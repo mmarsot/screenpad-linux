@@ -4,7 +4,8 @@ contract.js against the daemon's constants and its renderer.json check, and
 scene.js on scenes the daemon publishes: what is rebuilt, where tiles, the
 grip, text and badges go, drops and launches. The stylesheet is checked
 against every style and class a tile can carry. Only names that cross from
-the daemon or GNOME Shell into extension.js are read from its source.
+the daemon or GNOME Shell into extension.js and pages.js are read from
+their source.
 
 Run with: python3 -m unittest discover -s tests
 """
@@ -22,11 +23,13 @@ from touchbar_support import EXT, TILE_CONFIG, ConfigHome, FakeClient, config, j
 
 from screenpad_touchbar.cli import main
 from screenpad_touchbar.common import (
+    APPS,
     ASK_ARM,
     CARD_HEIGHT,
     DBUS_IFACE,
     DBUS_PATH,
     HEIGHT_STEP,
+    HOME,
     LAUNCH,
     MAX_HEIGHT,
     MIN_HEIGHT,
@@ -52,11 +55,14 @@ CHROME_OPTIONS = frozenset({"trackFullscreen", "affectsStruts"})
 MONITORS = ({"x": 0, "y": 1080, "width": 1920, "height": 1080}, {"x": 0, "y": 540, "width": 960, "height": 540})
 
 
-def published(text=TILE_CONFIG, ask=None):
-    """The scene the daemon publishes for a config, with a question showing."""
+def published(text=TILE_CONFIG, ask=None, page=HOME):
+    """The scene the daemon publishes for a config, with a question showing,
+    on a page (the page dots shown)."""
     with tempfile.TemporaryDirectory() as d, ConfigHome(d):
         daemon = Daemon(config(text), None)
         daemon.apps.asks.can_show = lambda: True
+        daemon.pager.can_show = lambda: True
+        daemon.pager.turn(page)
         daemon.bar = daemon.new_bar(KeyEmitter(lambda ev: None))
         if ask:
             app = FakeClient()
@@ -110,9 +116,13 @@ class ContractTests(unittest.TestCase):
         self.assertLessEqual(set(self.c["BAR_CHROME"]), CHROME_OPTIONS)
         self.assertEqual(self.c["STRUT_CHROME"], {"affectsStruts": True})
         # Source check of the names crossing into GNOME Shell: every chrome
-        # call passes one of those two.
-        calls = re.findall(r"(?:add|addTop|track)Chrome\(([^;]*?)\);", read("extension.js"))
-        self.assertEqual(sorted(a.split(",")[-1].strip() for a in calls), ["BAR_CHROME", "STRUT_CHROME"])
+        # call passes one of those two (the bar and its strut; the apps page).
+        calls = [
+            call
+            for name in ("extension.js", "pages.js")
+            for call in re.findall(r"(?:add|addTop|track)Chrome\(([^;]*?)\);", read(name))
+        ]
+        self.assertEqual(sorted(a.split(",")[-1].strip() for a in calls), ["BAR_CHROME", "BAR_CHROME", "STRUT_CHROME"])
 
     def test_renderer_json_is_what_the_daemon_reads(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d):
@@ -169,7 +179,10 @@ class SceneTests(unittest.TestCase):
             )
             if tile.get("glyph") == "grip":
                 self.assertEqual((content, name), ("grip", "Resize the touch bar"))
+            if tile.get("glyph") == "dots":
+                self.assertEqual((content, name), ("dots", "Page 1 of 2, touchpad"))
         self.assertIn(["text", "Run it?"], [d[1:] for d in drawn])
+        self.assertIn("dots", [d[1] for d in drawn])
         # Only plain class names: the rest is dropped.
         odd = {"style": "bad style", "classes": ["ok-1", "Bad", "x;y", 3], "glyph": "grip", "icon": "x"}
         self.assertEqual(
@@ -192,7 +205,8 @@ class SceneTests(unittest.TestCase):
                     "scene.js",
                     "(() => { const g = m.barGeometry(v.s, v.monitor);"
                     " return [g, v.s.tiles.map(t => { const b = m.tileBox(t, g);"
-                    " return [b, t.glyph === 'grip' ? m.gripSizes(b.width, b.height) : null]; })]; })()",
+                    " return [b, t.glyph === 'grip' ? m.gripSizes(b.width, b.height)"
+                    " : t.glyph === 'dots' ? m.dotsSizes(t, b.width, b.height, g.iconSize) : null]; })]; })()",
                     s=state,
                     monitor=monitor,
                 )
@@ -200,12 +214,21 @@ class SceneTests(unittest.TestCase):
                 sx = monitor["width"] / PANEL_W
                 self.assertEqual(geometry["height"], round(height * monitor["height"] / PANEL_H))
                 self.assertGreaterEqual(geometry["iconSize"], 8)
+                self.assertEqual(state["tiles"][-1]["glyph"], "dots")
                 for tile, (box, grip) in zip(state["tiles"], boxes, strict=True):
                     msg = (height, monitor["width"], tile["id"])
                     self.assertGreaterEqual(box["width"], 0.6 * tile["width"] * sx, msg)
                     self.assertGreaterEqual(box["height"], 0.75 * geometry["height"], msg)
                     if grip is None:
                         self.assertLessEqual(geometry["iconSize"], box["width"], msg)
+                        continue
+                    if tile["glyph"] == "dots":
+                        dots = grip
+                        row = dots["current"] + (dots["pages"] - 1) * (dots["dot"] + dots["gap"])
+                        self.assertEqual((dots["pages"], dots["page"]), (2, 0), msg)
+                        self.assertGreaterEqual(dots["dot"], 4, msg)
+                        self.assertLessEqual(row, box["width"], msg)
+                        self.assertLessEqual(dots["current"] + dots["gap"] + dots["textSize"], box["height"], msg)
                         continue
                     self.assertGreaterEqual(grip["arrow"], 8, msg)
                     self.assertLessEqual(2 * grip["arrow"] + grip["bar"] + 2 * grip["gap"], box["height"], msg)
@@ -243,6 +266,41 @@ class SceneTests(unittest.TestCase):
         )
         self.assertEqual((label["first"], label["text"], label["start"], label["wrap"]), ("Mute", None, False, False))
         self.assertIsNone(empty)
+
+    def test_the_pages(self):
+        home, apps = published(), published(page=APPS)
+        off = published(TILE_CONFIG + "[screensaver]\nenabled = false\n")
+        out = js(
+            "scene.js",
+            "[v.home, v.apps, v.off, null, {surface: {title: 3}}].map(m.pagesFrom)",
+            home=home,
+            apps=apps,
+            off=off,
+        )
+        self.assertEqual(out[0], {"screensaver": {"clock": True}, "surface": None})
+        self.assertEqual(out[1]["surface"], apps["surface"])
+        self.assertEqual(set(out[1]["surface"]), {"title", "text", "hint"})
+        self.assertEqual(out[2], {"screensaver": None, "surface": None})
+        self.assertEqual(out[3], {"screensaver": None, "surface": None})
+        self.assertEqual(out[4]["surface"], {"title": "", "text": "", "hint": ""})
+        # The dots tile changes with the page, which rebuilds the bar.
+        self.assertNotEqual(
+            *js(
+                "scene.js",
+                "[v.home, v.apps].map(s => m.layoutKey(s, v.monitor))",
+                home=home,
+                apps=apps,
+                monitor=MONITORS[0],
+            )
+        )
+        # The clock is redrawn once a minute, at the minute.
+        self.assertEqual(
+            js("scene.js", "[new Date(2026, 0, 1, 12, 0, 59, 500), new Date(2026, 0, 1, 12, 1)].map(m.msToNextMinute)"),
+            [500, 60000],
+        )
+        sizes = js("scene.js", "m.pageSizes(v.h)", h=MONITORS[0]["height"])
+        self.assertLess(sizes["hint"], sizes["text"])
+        self.assertLess(sizes["text"], sizes["title"])
 
     def test_divider_and_badge(self):
         state = published()
@@ -323,6 +381,14 @@ class StylesheetTests(unittest.TestCase):
             ".screenpad-touchbar-badge",
             ".screenpad-touchbar-text",
             ".screenpad-touchbar-grip-bar",
+            ".screenpad-touchbar-dot",
+            ".screenpad-touchbar-dot.current",
+            ".screenpad-touchbar-screensaver",
+            ".screenpad-touchbar-clock",
+            ".screenpad-touchbar-surface",
+            ".screenpad-touchbar-surface-title",
+            ".screenpad-touchbar-surface-text",
+            ".screenpad-touchbar-surface-hint",
         ):
             self.assertIn(rule + " {", css)
 

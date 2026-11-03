@@ -1,4 +1,4 @@
-"""The zone split: which contacts are the bar's and which go to the virtual touchpad."""
+"""The zone split: which contacts are the bar's, the apps surface's, and which go to the virtual touchpad."""
 
 from .codes import (
     ABS_MT_POSITION_X,
@@ -36,7 +36,7 @@ class Axes:
         )
 
 
-PAD, BAR, IGNORED = "pad", "bar", "ignored"
+PAD, BAR, SURFACE, IGNORED = "pad", "bar", "surface", "ignored"
 # What feed() returns for the SYN_REPORT that ends a SYN_DROPPED gap.
 RESYNC = "resync"
 
@@ -56,21 +56,26 @@ class Contact:
 
 
 class Splitter:
-    """Splits the source touchpad's frames between the bar and the virtual pad.
+    """Splits the source touchpad's frames between the bar, the apps surface
+    and the virtual pad.
 
+    zone(px, py) says what a new contact at panel pixels px, py is: BAR,
+    SURFACE (below the bar while the apps page shows) or PAD.
     feed() takes the source's events one by one. At each SYN_REPORT it returns
-    (pad, bar), or RESYNC after a SYN_DROPPED gap (then call resync()): the
-    events for the virtual touchpad (whole frames, ending in SYN_REPORT, or
-    nothing if the pad did not change) and the bar's contact events,
-    ("begin"|"move"|"end"|"cancel", slot, px, py) in panel pixels.
+    (pad, bar, surface), or RESYNC after a SYN_DROPPED gap (then call
+    resync()): the events for the virtual touchpad (whole frames, ending in
+    SYN_REPORT, or nothing if the pad did not change), then the bar's and the
+    surface's contact events, ("begin"|"move"|"end"|"cancel", slot, px, py)
+    in panel pixels. Only PAD contacts reach the virtual touchpad.
     Contacts keep the kind they started with: a bar contact that slides down
     stays out of the pad, and a pad contact that slides up stays a pad contact,
-    so the pointer never sees a touch appear or vanish mid-stroke.
+    so the pointer never sees a touch appear or vanish mid-stroke; a zone that
+    changes (the bar growing, the page turning) applies to new contacts only.
     """
 
-    def __init__(self, axes, nslots, in_bar, cur=0):
+    def __init__(self, axes, nslots, zone, cur=0):
         self.axes = axes
-        self.in_bar = in_bar  # in_bar(px, py) -> bool
+        self.zone = zone  # zone(px, py) -> BAR, SURFACE or PAD
         self.slots = [Slot() for _ in range(nslots)]
         # The kernel sends ABS_MT_SLOT only when it changes, so a reader
         # starts from the value EVIOCGABS gives at open.
@@ -129,37 +134,38 @@ class Splitter:
         return self.frame()
 
     def frame(self):
-        bar = []
+        bar: list[tuple] = []
+        surface: list[tuple] = []
+        # The events of the contacts the daemon handles itself, by kind.
+        out = {BAR: bar, SURFACE: surface}
         for s, slot in enumerate(self.slots):
             c = self.contacts.get(s)
             if c and c.id != slot.id:
                 del self.contacts[s]
-                if c.kind == BAR:
-                    bar.append(("end", s) + self.axes.panel(c.x, c.y))
+                if c.kind in out:
+                    out[c.kind].append(("end", s) + self.axes.panel(c.x, c.y))
                 c = None
             if slot.id == -1:
                 continue
             if c is None:
                 px, py = self.axes.panel(slot.x, slot.y)
-                if not self.in_bar(px, py):
-                    kind = PAD
-                elif slot.tool == MT_TOOL_PALM:
+                kind = self.zone(px, py)
+                if kind != PAD and slot.tool == MT_TOOL_PALM:
                     kind = IGNORED
-                else:
-                    kind = BAR
-                    bar.append(("begin", s, px, py))
+                elif kind != PAD:
+                    out[kind].append(("begin", s, px, py))
                 self.order += 1
                 self.contacts[s] = Contact(slot.id, kind, slot.x, slot.y, slot.tool, self.order)
                 continue
             moved = (slot.x, slot.y) != (c.x, c.y)
             c.x, c.y = slot.x, slot.y
-            if c.kind == BAR and slot.tool == MT_TOOL_PALM:
+            if c.kind in out and slot.tool == MT_TOOL_PALM:
+                out[c.kind].append(("cancel", s) + self.axes.panel(c.x, c.y))
                 c.kind = IGNORED
-                bar.append(("cancel", s) + self.axes.panel(c.x, c.y))
-            elif c.kind == BAR and moved:
-                bar.append(("move", s) + self.axes.panel(c.x, c.y))
+            elif c.kind in out and moved:
+                out[c.kind].append(("move", s) + self.axes.panel(c.x, c.y))
             c.tool = slot.tool
-        return self.pad_frames(), bar
+        return self.pad_frames(), bar, surface
 
     def wanted(self):
         return {s: (c.id, c.x, c.y, c.tool) for s, c in self.contacts.items() if c.kind == PAD}
@@ -243,10 +249,13 @@ class Splitter:
         return []
 
     def release_all(self):
-        """End everything: the pad's frames, and cancels for the bar's contacts."""
-        bar = [("cancel", s) + self.axes.panel(c.x, c.y) for s, c in sorted(self.contacts.items()) if c.kind == BAR]
+        """End everything: the pad's frames, and cancels for the bar's and the surface's contacts."""
+        bar, surface = (
+            [("cancel", s) + self.axes.panel(c.x, c.y) for s, c in sorted(self.contacts.items()) if c.kind == kind]
+            for kind in (BAR, SURFACE)
+        )
         for c in self.contacts.values():
             c.kind = IGNORED
         self.src_left = False
         self.left_changed = True
-        return self.pad_frames({}), bar
+        return self.pad_frames({}), bar, surface

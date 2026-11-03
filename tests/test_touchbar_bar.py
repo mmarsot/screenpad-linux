@@ -42,7 +42,7 @@ class SplitTests(unittest.TestCase):
 
     def test_pad_contact_passes_through(self):
         sp = Split()
-        pad, bar = sp.frame(touch(0, 7, 1000, 1000))
+        pad, bar, _ = sp.frame(touch(0, 7, 1000, 1000))
         self.assertEqual(bar, [])
         self.assertEqual(
             pad,
@@ -59,7 +59,7 @@ class SplitTests(unittest.TestCase):
                 SYN,
             ],
         )
-        pad, _ = sp.frame(touch(0, None, 1010, 990))
+        pad, _, _ = sp.frame(touch(0, None, 1010, 990))
         self.assertEqual(
             pad,
             [
@@ -71,7 +71,7 @@ class SplitTests(unittest.TestCase):
                 SYN,
             ],
         )
-        pad, _ = sp.frame(lift(0))
+        pad, _, _ = sp.frame(lift(0))
         self.assertEqual(
             pad,
             [
@@ -86,37 +86,37 @@ class SplitTests(unittest.TestCase):
     def test_bar_contact_never_reaches_the_pad(self):
         sp = Split()
         # Starts in the bar (panel y 100 < 160), then slides well into the pad.
-        pad, bar = sp.frame(touch(0, 1, 400, 200))
+        pad, bar, _ = sp.frame(touch(0, 1, 400, 200))
         self.assertEqual((pad, bar), ([], [("begin", 0, 200, 100)]))
-        pad, bar = sp.frame(touch(0, None, 400, 1500))
+        pad, bar, _ = sp.frame(touch(0, None, 400, 1500))
         self.assertEqual((pad, bar), ([], [("move", 0, 200, 750)]))
-        pad, bar = sp.frame(lift(0))
+        pad, bar, _ = sp.frame(lift(0))
         self.assertEqual((pad, bar), ([], [("end", 0, 200, 750)]))
 
     def test_pad_contact_sliding_into_the_bar_stays_a_pad_contact(self):
         sp = Split()
         sp.frame(touch(0, 1, 1000, 1000))
-        pad, bar = sp.frame(touch(0, None, 1000, 100))
+        pad, bar, _ = sp.frame(touch(0, None, 1000, 100))
         self.assertEqual(bar, [])
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_POSITION_Y), [100])
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [])
 
     def test_boundary(self):
         sp = Split()
-        _, bar = sp.frame(touch(0, 1, 100, 319))  # panel y 159.5: bar
+        _, bar, _ = sp.frame(touch(0, 1, 100, 319))  # panel y 159.5: bar
         self.assertEqual([e[0] for e in bar], ["begin"])
-        pad, bar = sp.frame(touch(1, 2, 2000, 320))  # panel y 160: pad
+        pad, bar, _ = sp.frame(touch(1, 2, 2000, 320))  # panel y 160: pad
         self.assertEqual(bar, [])
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [2])
 
     def test_bar_finger_does_not_change_the_finger_count(self):
         sp = Split()
         sp.frame(touch(0, 1, 1000, 1000))
-        pad, bar = sp.frame(touch(1, 2, 400, 100))
+        pad, bar, _ = sp.frame(touch(1, 2, 400, 100))
         self.assertEqual(pad, [])
         self.assertEqual(bar[0][0], "begin")
         # A second pad finger makes it a two-finger gesture on the virtual pad.
-        pad, _ = sp.frame(touch(2, 3, 2000, 1000))
+        pad, _, _ = sp.frame(touch(2, 3, 2000, 1000))
         self.assertEqual(codes(pad, EV_KEY, BTN_TOOL_DOUBLETAP), [1])
         self.assertEqual(codes(pad, EV_KEY, BTN_TOOL_FINGER), [0])
         self.assertEqual(codes(pad, EV_KEY, BTN_TOUCH), [])
@@ -124,25 +124,25 @@ class SplitTests(unittest.TestCase):
     def test_click_only_counts_with_a_pad_finger(self):
         sp = Split()
         sp.frame(touch(0, 1, 400, 100))
-        pad, _ = sp.frame(left=True)
+        pad, _, _ = sp.frame(left=True)
         self.assertEqual(pad, [])
-        pad, _ = sp.frame(left=False)
+        pad, _, _ = sp.frame(left=False)
         self.assertEqual(pad, [])
         sp.frame(lift(0))
         sp.frame(touch(0, 2, 1000, 1000))
-        pad, _ = sp.frame(left=True)
+        pad, _, _ = sp.frame(left=True)
         self.assertEqual(codes(pad, EV_KEY, BTN_LEFT), [1])
-        pad, _ = sp.frame(left=False)
+        pad, _, _ = sp.frame(left=False)
         self.assertEqual(codes(pad, EV_KEY, BTN_LEFT), [0])
 
     def test_palm_in_the_bar_is_ignored(self):
         sp = Split()
-        _, bar = sp.frame(touch(0, 1, 400, 100) + [(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)])
+        _, bar, _ = sp.frame(touch(0, 1, 400, 100) + [(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)])
         self.assertEqual(bar, [])
         sp.frame([(EV_ABS, ABS_MT_TOOL_TYPE, 0)])
-        _, bar = sp.frame(touch(1, 2, 800, 100))
+        _, bar, _ = sp.frame(touch(1, 2, 800, 100))
         self.assertEqual(bar[0][0], "begin")
-        _, bar = sp.frame([(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)])
+        _, bar, _ = sp.frame([(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)])
         self.assertEqual(bar, [("cancel", 1, 400, 50)])
 
     def test_slot_reused_by_a_new_contact(self):
@@ -150,7 +150,7 @@ class SplitTests(unittest.TestCase):
         sp.frame(touch(0, 1, 1000, 1000))
         # The pad lifts and puts a new finger down in one frame: the virtual
         # pad sees the old contact end in a frame of its own.
-        pad, _ = sp.frame(touch(0, 2, 1200, 1200))
+        pad, _, _ = sp.frame(touch(0, 2, 1200, 1200))
         first = pad[: pad.index(SYN) + 1]
         self.assertIn((EV_ABS, ABS_MT_TRACKING_ID, -1), first)
         self.assertIn((EV_ABS, ABS_MT_TRACKING_ID, 2), pad[len(first) :])
@@ -162,7 +162,7 @@ class SplitTests(unittest.TestCase):
         self.assertIsNone(sp.s.feed(EV_ABS, ABS_MT_POSITION_X, 5))
         self.assertEqual(sp.s.feed(*SYN), RESYNC)
         ids, xs, ys = [-1, 9, -1, -1, -1], [0, 400, 0, 0, 0], [0, 100, 0, 0, 0]
-        pad, bar = sp.s.resync(ids, xs, ys, [0] * 5, 0, 1)
+        pad, bar, _ = sp.s.resync(ids, xs, ys, [0] * 5, 0, 1)
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [-1])
         self.assertEqual(bar, [("begin", 1, 200, 50)])
 
@@ -170,13 +170,13 @@ class SplitTests(unittest.TestCase):
         sp = Split()
         sp.frame(touch(0, 1, 1000, 1000), left=True)
         sp.frame(touch(1, 2, 400, 100))
-        pad, bar = sp.s.release_all()
+        pad, bar, _ = sp.s.release_all()
         self.assertEqual(bar, [("cancel", 1, 200, 50)])
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [-1])
         self.assertEqual(codes(pad, EV_KEY, BTN_TOUCH), [0])
         self.assertEqual(codes(pad, EV_KEY, BTN_LEFT), [0])
         # Nothing more comes out for the contacts still on the pad.
-        pad, bar = sp.frame(touch(0, None, 1100, 1000), touch(1, None, 500, 100))
+        pad, bar, _ = sp.frame(touch(0, None, 1100, 1000), touch(1, None, 500, 100))
         self.assertEqual((pad, bar), ([], []))
 
 
@@ -244,7 +244,7 @@ class BarTests(unittest.TestCase):
         self.assertEqual(self.ran[-1], ["/bin/sh", "-c", "b"])
 
     def test_gaps_and_empty_spots_do_nothing(self):
-        for x in (900, 1600):  # the gap; the third shortcut spot, empty
+        for x in (830, 1500):  # the gap; the third shortcut spot, empty
             self.assertFalse(self.bar.handle([("begin", 0, x, 50), ("end", 0, x, 50)]))
         self.assertEqual((self.frames, self.ran, self.launched), ([], [], []))
 

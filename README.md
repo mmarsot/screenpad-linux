@@ -3,11 +3,11 @@
 Makes the first-generation ASUS ScreenPad (5.5", 1080x1920) work on Linux on the **ASUS ZenBook UX480FD**, with Ubuntu and GNOME:
 
 - **Display:** lights the ScreenPad and makes it a normal extended monitor, at boot and after resume, with Secure Boot on or off. It runs in userspace only: no kernel module, no `acpi_call`.
-- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back.
+- **Touch bar:** turns the top strip of the ScreenPad into a row of touch buttons and app shortcuts, and keeps the rest of the panel a touchpad. Buttons send keys or run commands; shortcuts open apps. You add shortcuts by dragging app icons onto the bar, and resize the bar with a grip. Other programs can draw button spots and ask you questions in the bar, through a local socket ([app API](docs/app-api.md)). For a question, and for a GNOME notification that has buttons, the bar grows into a card whose buttons answer it or press the notification's own buttons, then shrinks back. Below the bar the panel is black behind its windows, with a faint clock; a swipe along the bar or a tap on its page dots turns to an apps page, where touches below the bar never move the pointer, and it comes back to the touchpad by itself after 8 s without a touch ([the two pages](docs/touchbar.md#the-two-pages); no apps on it yet).
 
-![The touch bar: push to talk, mute microphone and screenshot buttons, then Files and Firefox shortcuts, an empty shortcut spot and the resize grip](docs/images/touchbar.png)
+![The touch bar: push to talk, mute microphone and screenshot buttons, then Files and Settings shortcuts, an empty shortcut spot, the page dots and the resize grip](docs/images/touchbar.png)
 
-*The touch bar with its three default buttons (push to talk, mute microphone, screenshot), two app shortcuts, an empty shortcut spot and the resize grip. Rendered by the GNOME Shell extension in a headless GNOME Shell 50.1.*
+*The touch bar with its three default buttons (push to talk, mute microphone, screenshot), two app shortcuts, an empty shortcut spot, the page dots and the resize grip. Rendered by the GNOME Shell extension in a headless GNOME Shell 50.1.*
 
 ## Supported hardware and what was tested
 
@@ -30,7 +30,7 @@ What was checked on the hardware:
 What was not checked on the hardware:
 
 - **Display:** relighting after suspend and resume; reading the EDID over DDC (it failed with `Input/output error` on the tested unit); the debugfs path used on kernels without lockdown (covered by unit tests only); X11 sessions.
-- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel. The same goes for the scene of tiles: in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked. The elastic bar and notification cards were checked there too, with real notifications (buttons pressed, Do Not Disturb, dismiss, timeouts), not yet on the panel.
+- **Touch bar:** the latest bar changes (keeping windows below the bar, the new grip) and the Alt+K push-to-talk key were checked in a headless GNOME Shell 50.1, not yet on the panel. The same goes for the scene of tiles: in a headless GNOME Shell 50.1 the new extension draws today's bar pixel for pixel as the previous one did, and draws app tiles and questions; touching app tiles and questions on the panel is not yet checked. The elastic bar and notification cards were checked there too, with real notifications (buttons pressed, Do Not Disturb, dismiss, timeouts), not yet on the panel. The two pages (the black screensaver behind windows, the clock, the page dots and the apps page over windows) were drawn there by the extension from the daemon's own scenes; the swipe along the bar and the apps page's touch routing are tested without hardware, not yet on the panel, whose sample rate decides how reliable a 25 mm swipe on a 10 mm bar is.
 
 ## Quick start
 
