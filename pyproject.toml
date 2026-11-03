@@ -1,0 +1,43 @@
+# Development tooling only. The programs themselves are single-file Python 3
+# scripts using only the standard library; nothing here is installed with
+# them (install.sh copies the files).
+[project]
+name = "screenpad-linux"
+version = "0"
+description = "ASUS ScreenPad display support and touch bar for Ubuntu/GNOME"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["mypy==2.4.1", "ruff==0.17.3"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+# Python files only; the docs keep their snippets as written.
+include = ["*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "I", "RUF"]
+ignore = [
+    "UP031", # %-formatting is the house style
+    "RUF005", # [*a, b] is not clearer than a + [b]
+    "B904", # errors are turned into one-line messages on purpose
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["screenpad.py", "touchbar.py", "tests"]
+mypy_path = ["$MYPY_CONFIG_FILE_DIR", "$MYPY_CONFIG_FILE_DIR/tests"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# In tests a missing regex match failing the test is the point, and fakes
+# record calls in plain lists; the rest is checked as in the programs.
+[[tool.mypy.overrides]]
+module = ["test_screenpad", "test_skills", "test_touchbar", "test_touchbar_cards"]
+disable_error_code = ["func-returns-value", "union-attr", "var-annotated"]

@@ -100,7 +100,7 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 | [Touch bar](docs/touchbar.md) | using the bar, its commands, troubleshooting, how it works |
 | [Touch bar configuration](docs/configuration.md) | `~/.config/screenpad/touchbar.toml`, every setting, examples, push to talk |
 | [Touch bar app API](docs/app-api.md) | the socket for apps: tiles, questions, `screenpad-touchbar ask` |
-| [Development](docs/development.md) | code layout and the test suite |
+| [Development](docs/development.md) | code layout, the checks and the test suite |
 
 ## Follow-ups
 
@@ -116,7 +116,7 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 python3 -m unittest discover -s tests
 ```
 
-They need no root and no hardware; see [Development](docs/development.md).
+They need no root and no hardware. `make check` also runs the format, lint and type checks that CI runs; see [Development](docs/development.md). Contributors and coding agents start from [AGENTS.md](AGENTS.md).
 
 ## Credits and license
 

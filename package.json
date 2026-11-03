@@ -1,0 +1,18 @@
+{
+  "name": "screenpad-linux-dev",
+  "private": true,
+  "description": "Development tooling only (format and lint for the GNOME Shell extension); nothing here is installed.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "format": "prettier --write 'gnome-shell/**/*.js' eslint.config.js",
+    "format:check": "prettier --check 'gnome-shell/**/*.js' eslint.config.js",
+    "lint": "eslint"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "prettier": "3.9.10"
+  }
+}

@@ -21,8 +21,9 @@ import screenpad  # noqa: E402
 NVIDIA_PCI = "0000:02:00.0"
 INTEL_PCI = "0000:00:02.0"
 PARAM = "drm.edid_firmware=HDMI-A-2:screenpad/edid.bin"
-CMDLINE = ("BOOT_IMAGE=/boot/vmlinuz-7.0.0-38-generic root=UUID=b4dea716 ro quiet splash "
-           "crashkernel=2G-4G:320M,4G-32G:512M")
+CMDLINE = (
+    "BOOT_IMAGE=/boot/vmlinuz-7.0.0-38-generic root=UUID=b4dea716 ro quiet splash crashkernel=2G-4G:320M,4G-32G:512M"
+)
 UBUNTU_GRUB = """# If you change this file, run 'update-grub' afterwards to update
 # /boot/grub/grub.cfg.
 
@@ -51,20 +52,19 @@ def tsb_edid(cta_checksum=None):
     """
     b0 = bytearray(128)
     b0[0:8] = screenpad.EDID_HEADER
-    b0[8:10] = b"\x52\x62"            # "TSB"
-    b0[10:12] = b"\x88\x88"           # product 0x8888
-    b0[18:20] = b"\x01\x03"           # EDID 1.3
-    b0[20] = 0x80                     # digital input
+    b0[8:10] = b"\x52\x62"  # "TSB"
+    b0[10:12] = b"\x88\x88"  # product 0x8888
+    b0[18:20] = b"\x01\x03"  # EDID 1.3
+    b0[20] = 0x80  # digital input
     # 140.00 MHz, 1080x1920, blanking 115/10, flags 0x18 (-H -V).
-    b0[54:72] = bytes([0xB0, 0x36, 0x38, 0x73, 0x40, 0x80, 0x0A, 0x70,
-                       0x10, 0x10, 0x11, 0x00, 0, 0, 0, 0, 0, 0x18])
+    b0[54:72] = bytes([0xB0, 0x36, 0x38, 0x73, 0x40, 0x80, 0x0A, 0x70, 0x10, 0x10, 0x11, 0x00, 0, 0, 0, 0, 0, 0x18])
     b0[126] = 1
     b0[127] = screenpad.block_checksum(b0)
 
     b1 = bytearray(128)
     b1[0:4] = b"\x02\x03\x0b\x00"
-    b1[4:11] = b"\x66\x03\x0c\x00\x10\x00\x00"   # vendor block, HDMI OUI 00-0C-03
-    b1[100] = (0x91 - sum(b1[:127])) & 0xFF     # makes the correct checksum 0x6f
+    b1[4:11] = b"\x66\x03\x0c\x00\x10\x00\x00"  # vendor block, HDMI OUI 00-0C-03
+    b1[100] = (0x91 - sum(b1[:127])) & 0xFF  # makes the correct checksum 0x6f
     assert screenpad.block_checksum(b1) == 0x6F
     b1[127] = 0x6F if cta_checksum is None else cta_checksum
     return bytes(b0 + b1)
@@ -73,14 +73,23 @@ def tsb_edid(cta_checksum=None):
 class FakeSys:
     """A minimal sysfs/debugfs/dev tree under a temporary root."""
 
-    def __init__(self, root, nvidia_card="card0", intel_card="card1",
-                 product="ZenBook UX450FDX_UX480FD", debugfs_by_minor=False,
-                 connectors=("HDMI-A-2",), lockdown=None, cmdline=CMDLINE):
+    def __init__(
+        self,
+        root,
+        nvidia_card="card0",
+        intel_card="card1",
+        product="ZenBook UX450FDX_UX480FD",
+        debugfs_by_minor=False,
+        connectors=("HDMI-A-2",),
+        lockdown=None,
+        cmdline=CMDLINE,
+    ):
         self.root = root
         if lockdown:
             modes = ("none", "integrity", "confidentiality")
-            self.write("sys/kernel/security/lockdown",
-                       " ".join("[%s]" % m if m == lockdown else m for m in modes) + "\n")
+            self.write(
+                "sys/kernel/security/lockdown", " ".join("[%s]" % m if m == lockdown else m for m in modes) + "\n"
+            )
         self.write("proc/cmdline", cmdline + "\n")
         self.write("sys/module/drm/parameters/edid_firmware", "\n")
         self.write("etc/default/grub", UBUNTU_GRUB)
@@ -108,8 +117,8 @@ class FakeSys:
         self.adapter(intel, 8, "AUX A/DDI A/PHY A")
         self.adapter("sys/devices/pci0000:00/0000:00:15.1", 1, "Synopsys DesignWare I2C adapter")
 
-        nv_dir = nvidia_card[len("card"):] if debugfs_by_minor else NVIDIA_PCI
-        intel_dir = intel_card[len("card"):] if debugfs_by_minor else INTEL_PCI
+        nv_dir = nvidia_card[len("card") :] if debugfs_by_minor else NVIDIA_PCI
+        intel_dir = intel_card[len("card") :] if debugfs_by_minor else INTEL_PCI
         dri = "sys/kernel/debug/dri"
         self.write("%s/%s/name" % (dri, nv_dir), "nvidia-drm dev=%s unique=%s" % (NVIDIA_PCI, NVIDIA_PCI))
         self.write("%s/%s/name" % (dri, intel_dir), "i915 dev=%s unique=%s" % (INTEL_PCI, INTEL_PCI))
@@ -170,9 +179,9 @@ class FakeAsusWmi:
     def __init__(self, sys, clock, powered=True, compositor_delay=0):
         self.sys = sys
         self.clock = clock
-        self.powered = powered      # what DSTS SCREENPAD_POWER reads back
+        self.powered = powered  # what DSTS SCREENPAD_POWER reads back
         self.lit = not powered
-        self.calls = []             # ("LIGHT" | "POWER=0", connector enabled?)
+        self.calls = []  # ("LIGHT" | "POWER=0", connector enabled?)
         self.compositor_delay = compositor_delay
         self.enable_at = None
         self.bl = sys.p(screenpad.BACKLIGHT)
@@ -263,9 +272,14 @@ class Base(unittest.TestCase):
             return edid_by_bus[bus]
 
         self.ran = []
-        self.env = screenpad.Env(root=self.tmp.name, sleep=sleep,
-                                 euid=lambda: euid, i2c_read=i2c_read, clock=self.time.clock,
-                                 run=self.ran.append)
+        self.env = screenpad.Env(
+            root=self.tmp.name,
+            sleep=sleep,
+            euid=lambda: euid,
+            i2c_read=i2c_read,
+            clock=self.time.clock,
+            run=self.ran.append,
+        )
         return self.sys
 
     def run_cli(self, *argv):
@@ -281,7 +295,7 @@ class ChecksumTests(unittest.TestCase):
         bad = tsb_edid(cta_checksum=0x3E)
         fixed, changes = screenpad.fix_checksums(bad)
         self.assertEqual(changes, [(1, 0x3E, 0x6F)])
-        diff = [(i, a, b) for i, (a, b) in enumerate(zip(bad, fixed)) if a != b]
+        diff = [(i, a, b) for i, (a, b) in enumerate(zip(bad, fixed, strict=True)) if a != b]
         # cmp -l in the report prints this 1-based as offset 256.
         self.assertEqual(diff, [(255, 0x3E, 0x6F)])
         self.assertEqual(len(fixed), 256)
@@ -313,7 +327,7 @@ class ChecksumTests(unittest.TestCase):
         with self.assertRaises(screenpad.ScreenpadError):
             screenpad.fix_checksums(b"\x00" * 256)
         with self.assertRaises(screenpad.ScreenpadError):
-            screenpad.fix_checksums(tsb_edid()[:128 + 64])
+            screenpad.fix_checksums(tsb_edid()[: 128 + 64])
 
     def test_describe(self):
         desc = screenpad.describe_edid(tsb_edid())
@@ -328,7 +342,7 @@ class DmiTests(Base):
     def test_refuses_other_machine_for_every_command(self):
         self.make(product="ZenBook UX425EA")
         for argv in (["on"], ["off"], ["replug"], ["status"], ["capture-edid"]):
-            code, out, err = self.run_cli(*argv)
+            code, _out, err = self.run_cli(*argv)
             self.assertEqual(code, 2, argv)
             self.assertIn("unsupported machine", err)
         self.assertEqual(self.sys.read("sys/class/backlight/asus_screenpad/bl_power"), b"0")
@@ -352,8 +366,9 @@ class DiscoveryTests(Base):
     def test_finds_nvidia_card_connector_buses_debugfs(self):
         self.make()
         t = screenpad.discover(self.env)
-        self.assertEqual((t.card, t.pci, t.connector, t.short_connector),
-                         ("card0", NVIDIA_PCI, "card0-HDMI-A-2", "HDMI-A-2"))
+        self.assertEqual(
+            (t.card, t.pci, t.connector, t.short_connector), ("card0", NVIDIA_PCI, "card0-HDMI-A-2", "HDMI-A-2")
+        )
         self.assertEqual(t.buses, [9, 10])
         self.assertEqual(t.debugfs, self.sys.debugfs)
 
@@ -482,12 +497,18 @@ class CommandTests(Base):
 
 class CmdlineTests(unittest.TestCase):
     def test_split_like_the_kernel(self):
-        text = ('BOOT_IMAGE=/boot/vmlinuz ro quiet "%s" foo="a b" splash= -- drm.edid_firmware=x\n'
-                % PARAM)
-        self.assertEqual(screenpad.cmdline_params(text), [
-            ("BOOT_IMAGE", "/boot/vmlinuz"), ("ro", None), ("quiet", None),
-            ("drm.edid_firmware", "HDMI-A-2:screenpad/edid.bin"), ("foo", "a b"), ("splash", ""),
-        ])
+        text = 'BOOT_IMAGE=/boot/vmlinuz ro quiet "%s" foo="a b" splash= -- drm.edid_firmware=x\n' % PARAM
+        self.assertEqual(
+            screenpad.cmdline_params(text),
+            [
+                ("BOOT_IMAGE", "/boot/vmlinuz"),
+                ("ro", None),
+                ("quiet", None),
+                ("drm.edid_firmware", "HDMI-A-2:screenpad/edid.bin"),
+                ("foo", "a b"),
+                ("splash", ""),
+            ],
+        )
 
     def edid_firmware(self, cmdline):
         env = screenpad.Env(root=self.tmp)
@@ -505,8 +526,7 @@ class CmdlineTests(unittest.TestCase):
         self.assertIsNone(self.edid_firmware(CMDLINE))
         self.assertEqual(self.edid_firmware(CMDLINE + " " + PARAM), "HDMI-A-2:screenpad/edid.bin")
         # - and _ are the same in parameter names, and the last one wins.
-        self.assertEqual(self.edid_firmware("drm.edid-firmware=a.bin quiet drm.edid_firmware=b.bin"),
-                         "b.bin")
+        self.assertEqual(self.edid_firmware("drm.edid-firmware=a.bin quiet drm.edid_firmware=b.bin"), "b.bin")
         self.assertIsNone(self.edid_firmware("quiet -- " + PARAM))
         self.assertIsNone(self.edid_firmware("drm_kms_helper.edid_firmware=old.bin"))
 
@@ -700,7 +720,7 @@ class PanelTests(Base):
     """on/replug end lit and off ends dark, whatever state the panel was in."""
 
     # (bl_power, what the firmware reports for SCREENPAD_POWER)
-    STATES = [(bl_power, powered) for bl_power in ("0", "4") for powered in (False, True)]
+    STATES = tuple((bl_power, powered) for bl_power in ("0", "4") for powered in (False, True))
 
     def start(self, bl_power, powered, lockdown="integrity", **kw):
         self.tmp = tempfile.TemporaryDirectory()
@@ -808,8 +828,9 @@ class DdcRetryTests(Base):
         self.assertEqual(code, 0, err)
         self.assertIn("retrying", err)
         self.assertEqual(s.read("var/lib/screenpad/edid.bin"), tsb_edid())
-        self.assertEqual(self.time.sleeps, [screenpad.RELIGHT_GAP, screenpad.POWER_SETTLE]
-                         + [screenpad.DDC_RETRY_DELAY] * 6)
+        self.assertEqual(
+            self.time.sleeps, [screenpad.RELIGHT_GAP, screenpad.POWER_SETTLE] + [screenpad.DDC_RETRY_DELAY] * 6
+        )
 
     def test_gives_up_with_the_file_hint(self):
         self.make(edid_by_bus={})
@@ -863,22 +884,26 @@ class GrubTests(Base):
 
     def test_add_and_remove_edge_cases(self):
         add, remove = screenpad.grub_add, screenpad.grub_remove
-        self.assertEqual(add('GRUB_CMDLINE_LINUX_DEFAULT=""\n', PARAM),
-                         'GRUB_CMDLINE_LINUX_DEFAULT="%s"\n' % PARAM)
-        self.assertEqual(add("GRUB_CMDLINE_LINUX_DEFAULT='quiet'", PARAM),
-                         "GRUB_CMDLINE_LINUX_DEFAULT='quiet %s'" % PARAM)
-        self.assertEqual(add("GRUB_TIMEOUT=0", PARAM),
-                         'GRUB_TIMEOUT=0\nGRUB_CMDLINE_LINUX_DEFAULT="%s"\n' % PARAM)
+        self.assertEqual(add('GRUB_CMDLINE_LINUX_DEFAULT=""\n', PARAM), 'GRUB_CMDLINE_LINUX_DEFAULT="%s"\n' % PARAM)
+        self.assertEqual(
+            add("GRUB_CMDLINE_LINUX_DEFAULT='quiet'", PARAM), "GRUB_CMDLINE_LINUX_DEFAULT='quiet %s'" % PARAM
+        )
+        self.assertEqual(add("GRUB_TIMEOUT=0", PARAM), 'GRUB_TIMEOUT=0\nGRUB_CMDLINE_LINUX_DEFAULT="%s"\n' % PARAM)
         # The last assignment is the one the shell keeps.
         two = 'GRUB_CMDLINE_LINUX_DEFAULT="a"\n#GRUB_CMDLINE_LINUX_DEFAULT="x"\nGRUB_CMDLINE_LINUX_DEFAULT="b"\n'
         self.assertEqual(add(two, PARAM), two.replace('"b"', '"b %s"' % PARAM))
-        self.assertEqual(remove('GRUB_CMDLINE_LINUX_DEFAULT="%s quiet"\n' % PARAM),
-                         'GRUB_CMDLINE_LINUX_DEFAULT="quiet"\n')
+        self.assertEqual(
+            remove('GRUB_CMDLINE_LINUX_DEFAULT="%s quiet"\n' % PARAM), 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"\n'
+        )
         # Ours under an older connector name goes too; anything else stays.
-        self.assertEqual(remove('GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=HDMI-A-1:screenpad/edid.bin"'),
-                         'GRUB_CMDLINE_LINUX_DEFAULT="quiet"')
-        for other in ('GRUB_CMDLINE_LINUX_DEFAULT="quiet %sx"\n' % PARAM,
-                      'GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=HDMI-A-2:edid/x.bin"\n'):
+        self.assertEqual(
+            remove('GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=HDMI-A-1:screenpad/edid.bin"'),
+            'GRUB_CMDLINE_LINUX_DEFAULT="quiet"',
+        )
+        for other in (
+            'GRUB_CMDLINE_LINUX_DEFAULT="quiet %sx"\n' % PARAM,
+            'GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=HDMI-A-2:edid/x.bin"\n',
+        ):
             self.assertEqual(remove(other), other)
         with self.assertRaisesRegex(screenpad.ScreenpadError, "already sets"):
             add('GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=edid/x.bin"\n', PARAM)
@@ -899,8 +924,10 @@ class GrubTests(Base):
 
     def test_connector_option_and_override_warning(self):
         s = self.make(euid=1000)
-        s.write("etc/default/grub.d/kdump-tools.cfg",
-                'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=512M"\n')
+        s.write(
+            "etc/default/grub.d/kdump-tools.cfg",
+            'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=512M"\n',
+        )
         out = self.run_cli("--connector", "card0-HDMI-A-4", "grub")[1]
         self.assertIn("parameter:     drm.edid_firmware=HDMI-A-4:screenpad/edid.bin", out)
         self.assertNotIn("warning", out)
@@ -916,10 +943,12 @@ class GrubTests(Base):
 @unittest.skipIf(os.geteuid() == 0, "runs install.sh, so never as root")
 class InstallTests(Base):
     STUBS = ("id", "systemctl", "update-initramfs", "lsinitramfs", "udevadm")
-    TOUCHBAR_FILES = ("usr/local/bin/screenpad-touchbar",
-                      "usr/lib/systemd/user/screenpad-touchbar.service",
-                      "usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad",
-                      "etc/udev/rules.d/70-screenpad-uinput.rules")
+    TOUCHBAR_FILES = (
+        "usr/local/bin/screenpad-touchbar",
+        "usr/lib/systemd/user/screenpad-touchbar.service",
+        "usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad",
+        "etc/udev/rules.d/70-screenpad-uinput.rules",
+    )
 
     def setUp(self):
         super().setUp()
@@ -945,10 +974,10 @@ class InstallTests(Base):
         listing = os.path.join(self.tmp.name, "initramfs.txt")
         with open(listing, "w") as f:
             f.write(initramfs)
-        env = dict(os.environ, DESTDIR=self.s.root, PATH=self.path,
-                   STUB_CALLS=self.calls, STUB_INITRAMFS=listing)
-        return subprocess.run(["sh", os.path.join(REPO, "install.sh")] + list(argv),
-                              env=env, capture_output=True, text=True)
+        env = dict(os.environ, DESTDIR=self.s.root, PATH=self.path, STUB_CALLS=self.calls, STUB_INITRAMFS=listing)
+        return subprocess.run(
+            ["sh", os.path.join(REPO, "install.sh")] + list(argv), env=env, capture_output=True, text=True
+        )
 
     def called(self):
         try:
@@ -967,17 +996,26 @@ class InstallTests(Base):
         r = self.install()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.s.read("lib/firmware/screenpad/edid.bin"), tsb_edid())
-        self.assertEqual(self.s.read("usr/local/sbin/screenpad"),
-                         repo_file("screenpad.py"))
-        for rel in ("etc/systemd/system/screenpad.service", "usr/lib/systemd/system-sleep/screenpad",
-                    "usr/local/share/doc/screenpad/README.md",
-                    "usr/local/share/doc/screenpad/docs/install.md",
-                    "usr/local/share/doc/screenpad/docs/touchbar.md"):
+        self.assertEqual(self.s.read("usr/local/sbin/screenpad"), repo_file("screenpad.py"))
+        for rel in (
+            "etc/systemd/system/screenpad.service",
+            "usr/lib/systemd/system-sleep/screenpad",
+            "usr/local/share/doc/screenpad/README.md",
+            "usr/local/share/doc/screenpad/docs/install.md",
+            "usr/local/share/doc/screenpad/docs/touchbar.md",
+        ):
             self.assertTrue(os.path.exists(self.s.p(rel)), rel)
         self.assertFalse(os.path.exists(self.s.p("etc/initramfs-tools/hooks/screenpad")))
-        self.assertEqual(self.called(), [["udevadm", "control"], ["udevadm", "trigger"],
-                                         ["lsinitramfs", self.s.p("boot/initrd.img-%s" % os.uname().release)],
-                                         ["systemctl", "daemon-reload"], ["systemctl", "enable"]])
+        self.assertEqual(
+            self.called(),
+            [
+                ["udevadm", "control"],
+                ["udevadm", "trigger"],
+                ["lsinitramfs", self.s.p("boot/initrd.img-%s" % os.uname().release)],
+                ["systemctl", "daemon-reload"],
+                ["systemctl", "enable"],
+            ],
+        )
         self.assertNotIn("lockdown", r.stdout)
         self.assertEqual(self.s.read("etc/default/grub").decode(), UBUNTU_GRUB)
 
@@ -986,14 +1024,19 @@ class InstallTests(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.s.read("usr/local/bin/screenpad-touchbar"), repo_file("touchbar.py"))
         self.assertTrue(os.access(self.s.p("usr/local/bin/screenpad-touchbar"), os.X_OK))
-        self.assertEqual(self.s.read("usr/lib/systemd/user/screenpad-touchbar.service"),
-                         repo_file("systemd/screenpad-touchbar.service"))
-        self.assertEqual(self.s.read("etc/udev/rules.d/70-screenpad-uinput.rules"),
-                         repo_file("udev/70-screenpad-uinput.rules"))
+        self.assertEqual(
+            self.s.read("usr/lib/systemd/user/screenpad-touchbar.service"),
+            repo_file("systemd/screenpad-touchbar.service"),
+        )
+        self.assertEqual(
+            self.s.read("etc/udev/rules.d/70-screenpad-uinput.rules"), repo_file("udev/70-screenpad-uinput.rules")
+        )
         ext = "gnome-shell/screenpad-touchbar@screenpad"
         for name in os.listdir(os.path.join(REPO, ext)):
-            self.assertEqual(self.s.read("usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/%s" % name),
-                             repo_file("%s/%s" % (ext, name)))
+            self.assertEqual(
+                self.s.read("usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/%s" % name),
+                repo_file("%s/%s" % (ext, name)),
+            )
         self.assertIn("screenpad-touchbar on", r.stdout)
         # The touch bar is the user's to turn on; install never enables it.
         self.assertNotIn(["systemctl", "--user"], self.called())
@@ -1008,8 +1051,7 @@ class InstallTests(Base):
         self.saved()
         r = self.install(initramfs="usr/lib/modules/7.0.0-38-generic/kernel/nvidia-580/nvidia-drm.ko.zst\n")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.s.read("etc/initramfs-tools/hooks/screenpad"),
-                         repo_file("initramfs/screenpad"))
+        self.assertEqual(self.s.read("etc/initramfs-tools/hooks/screenpad"), repo_file("initramfs/screenpad"))
         self.assertIn(["update-initramfs", "-u"], self.called())
 
         r = self.install("uninstall")
@@ -1037,9 +1079,13 @@ class InstallTests(Base):
         self.assertEqual(self.install().returncode, 0)
         r = self.install("uninstall")
         self.assertEqual(r.returncode, 0, r.stderr)
-        for rel in ("usr/local/sbin/screenpad", "etc/systemd/system/screenpad.service",
-                    "usr/lib/systemd/system-sleep/screenpad", "usr/local/share/doc/screenpad",
-                    "lib/firmware/screenpad") + self.TOUCHBAR_FILES:
+        for rel in (
+            "usr/local/sbin/screenpad",
+            "etc/systemd/system/screenpad.service",
+            "usr/lib/systemd/system-sleep/screenpad",
+            "usr/local/share/doc/screenpad",
+            "lib/firmware/screenpad",
+        ) + self.TOUCHBAR_FILES:
             self.assertFalse(os.path.exists(self.s.p(rel)), rel)
         self.assertTrue(os.path.exists(self.s.p("var/lib/screenpad/edid.bin")))
         self.assertEqual(self.install("purge").returncode, 0)

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Format, lint and typecheck: the same commands as 'make check' runs.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Format check
+        run: make format-check
+      - name: Lint
+        run: make lint
+      - name: Typecheck
+        run: make typecheck
+
+  # The unit tests need no root, hardware or GNOME Shell. Oldest supported
+  # Python and a current one.
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: make test

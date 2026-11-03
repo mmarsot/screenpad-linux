@@ -94,10 +94,13 @@ class EmitterTests(unittest.TestCase):
     def test_press_release_order(self):
         self.k.press((29, 56, 20))
         self.k.release((29, 56, 20))
-        self.assertEqual(self.frames, [
-            [(t.EV_KEY, 29, 1), (t.EV_KEY, 56, 1), (t.EV_KEY, 20, 1), SYN],
-            [(t.EV_KEY, 20, 0), (t.EV_KEY, 56, 0), (t.EV_KEY, 29, 0), SYN],
-        ])
+        self.assertEqual(
+            self.frames,
+            [
+                [(t.EV_KEY, 29, 1), (t.EV_KEY, 56, 1), (t.EV_KEY, 20, 1), SYN],
+                [(t.EV_KEY, 20, 0), (t.EV_KEY, 56, 0), (t.EV_KEY, 29, 0), SYN],
+            ],
+        )
 
     def test_shared_modifier_stays_down(self):
         self.k.press((29, 30))
@@ -124,19 +127,26 @@ class ConfigTests(unittest.TestCase):
     def test_builtin_default(self):
         c = config(t.EXAMPLE_CONFIG)
         self.assertEqual(c.height, t.DEFAULT_HEIGHT)
-        self.assertEqual([(b.label, b.icon, b.mode, b.keys) for b in c.buttons], [
-            # Alt+K: Claude Code's "meta+k" push-to-talk binding.
-            ("Push to talk", "audio-input-microphone-symbolic", "hold", (56, 37)),
-            ("Mute microphone", "microphone-sensitivity-muted-symbolic", "tap", (248,)),
-            ("Screenshot", "applets-screenshooter-symbolic", "tap", (99,)),
-        ])
+        self.assertEqual(
+            [(b.label, b.icon, b.mode, b.keys) for b in c.buttons],
+            [
+                # Alt+K: Claude Code's "meta+k" push-to-talk binding.
+                ("Push to talk", "audio-input-microphone-symbolic", "hold", (56, 37)),
+                ("Mute microphone", "microphone-sensitivity-muted-symbolic", "tap", (248,)),
+                ("Screenshot", "applets-screenshooter-symbolic", "tap", (99,)),
+            ],
+        )
         self.assertEqual(c.shortcuts, [])
 
     def test_default_icons_are_installed(self):
         # The icons the default config names, in GNOME's own theme.
         for b in config(t.EXAMPLE_CONFIG).buttons:
-            found = [os.path.join(root, f) for root, _, files in os.walk("/usr/share/icons/Adwaita")
-                     for f in files if f.startswith(b.icon + ".")]
+            found = [
+                os.path.join(root, f)
+                for root, _, files in os.walk("/usr/share/icons/Adwaita")
+                for f in files
+                if f.startswith(b.icon + ".")
+            ]
             if not os.path.isdir("/usr/share/icons/Adwaita"):
                 self.skipTest("no Adwaita icon theme here")
             self.assertTrue(found, b.icon)
@@ -150,17 +160,25 @@ class ConfigTests(unittest.TestCase):
     def test_spots(self):
         c = config()
         spots = [(s.kind, s.index, s.x, s.width) for s in c.spots]
-        self.assertEqual(spots, [
-            ("button", 0, 0, 296), ("button", 1, 296, 296), ("button", 2, 592, 296),
-            ("shortcut", 0, 928, 296), ("shortcut", 1, 1224, 296), ("shortcut", 2, 1520, 296),
-            ("grip", 0, 1816, 104)])
+        self.assertEqual(
+            spots,
+            [
+                ("button", 0, 0, 296),
+                ("button", 1, 296, 296),
+                ("button", 2, 592, 296),
+                ("shortcut", 0, 928, 296),
+                ("shortcut", 1, 1224, 296),
+                ("shortcut", 2, 1520, 296),
+                ("grip", 0, 1816, 104),
+            ],
+        )
         self.assertEqual(c.spot_at(0, 0), 0)
         self.assertEqual(c.spot_at(295, 159), 0)
         self.assertEqual(c.spot_at(296, 10), 1)
-        self.assertIsNone(c.spot_at(900, 10))      # the gap between the groups
+        self.assertIsNone(c.spot_at(900, 10))  # the gap between the groups
         self.assertEqual(c.spot_at(928, 10), 3)
         self.assertEqual(c.spot_at(1919, 10), 6)
-        self.assertIsNone(c.spot_at(100, 160))     # below the bar
+        self.assertIsNone(c.spot_at(100, 160))  # below the bar
 
     def test_buttons_and_shortcuts(self):
         c = config("""
@@ -179,19 +197,29 @@ app = "org.gnome.Nautilus.desktop"
 app = "firefox_firefox"
 """)
         term, ptt = c.buttons
-        self.assertEqual((term.mode, term.command, term.keys, term.icon),
-                         ("tap", ["gnome-terminal", "--"], None, None))
+        self.assertEqual((term.mode, term.command, term.keys, term.icon), ("tap", ["gnome-terminal", "--"], None, None))
         self.assertEqual(ptt.icon, os.path.expanduser("~/icons/ptt.svg"))
         self.assertEqual(ptt.command, ["/bin/sh", "-c", "pactl set-source-mute @DEFAULT_SOURCE@ 0"])
         self.assertEqual(ptt.release_command[2], "pactl set-source-mute @DEFAULT_SOURCE@ 1")
         self.assertEqual(c.shortcuts, ["org.gnome.Nautilus.desktop", "firefox_firefox.desktop"])
-        self.assertEqual([s.item for s in c.spots if s.kind == "shortcut"],
-                         ["org.gnome.Nautilus.desktop", "firefox_firefox.desktop", None])
-        self.assertEqual(c.spots[1].public(), {
-            "kind": "button", "x": 296, "width": 296, "label": "",
-            "icon": os.path.expanduser("~/icons/ptt.svg"), "mode": "hold"})
-        self.assertEqual(c.spots[3].public(), {"kind": "shortcut", "x": 928, "width": 296,
-                                               "app": "org.gnome.Nautilus.desktop"})
+        self.assertEqual(
+            [s.item for s in c.spots if s.kind == "shortcut"],
+            ["org.gnome.Nautilus.desktop", "firefox_firefox.desktop", None],
+        )
+        self.assertEqual(
+            c.spots[1].public(),
+            {
+                "kind": "button",
+                "x": 296,
+                "width": 296,
+                "label": "",
+                "icon": os.path.expanduser("~/icons/ptt.svg"),
+                "mode": "hold",
+            },
+        )
+        self.assertEqual(
+            c.spots[3].public(), {"kind": "shortcut", "x": 928, "width": 296, "app": "org.gnome.Nautilus.desktop"}
+        )
 
     def test_first_version_x_and_width_are_ignored(self):
         c = config('[[button]]\nlabel = "PTT"\nx = 0\nwidth = 480\nmode = "hold"\nkey = "F14"\n')
@@ -205,30 +233,31 @@ app = "firefox_firefox"
             "height = 541": "height",
             "height = 1.5": "whole number",
             "colour = 1": "unknown setting",
-            "[[button]]\nkey = \"a\"\n": "icon or a label",
-            "[[button]]\nlabel = \"A\"\n": "exactly one of key, command or tile",
-            button + "tile = \"x\"\n": "exactly one",
-            "[[button]]\nlabel = \"A\"\ntile = \"Agents\"\n": "tile must be a name",
-            "[[button]]\nlabel = \"A\"\ntile = 3\n": "tile must be a name",
-            "[[button]]\nlabel = \"A\"\ntile = \"a\"\nmode = \"hold\"\n": "mode does not apply",
-            "[[button]]\nlabel = \"A\"\ntile = \"a\"\n" "[[button]]\nlabel = \"B\"\ntile = \"a\"\n":
-                "already in another spot",
-            "[[button]]\nlabel = \"A\"\nkey = \"a\"\ncommand = \"b\"\n": "exactly one",
-            button + "mode = \"toggle\"\n": "mode",
-            "[[button]]\nlabel = \"A\"\nkey = \"nope\"\n": "unknown key",
+            '[[button]]\nkey = "a"\n': "icon or a label",
+            '[[button]]\nlabel = "A"\n': "exactly one of key, command or tile",
+            button + 'tile = "x"\n': "exactly one",
+            '[[button]]\nlabel = "A"\ntile = "Agents"\n': "tile must be a name",
+            '[[button]]\nlabel = "A"\ntile = 3\n': "tile must be a name",
+            '[[button]]\nlabel = "A"\ntile = "a"\nmode = "hold"\n': "mode does not apply",
+            '[[button]]\nlabel = "A"\ntile = "a"\n[[button]]\nlabel = "B"\ntile = "a"\n': "already in another spot",
+            '[[button]]\nlabel = "A"\nkey = "a"\ncommand = "b"\n': "exactly one",
+            button + 'mode = "toggle"\n': "mode",
+            '[[button]]\nlabel = "A"\nkey = "nope"\n': "unknown key",
             button + "size = 2\n": "unknown setting",
-            "[[button]]\nlabel = \"A\"\ncommand = []\n": "non-empty list",
-            button + "release_command = \"b\"\n": "release_command",
-            button + "icon = \"icons/a.svg\"\n": "must start with",
-            button + "icon = \"\"\n": "icon must be",
+            '[[button]]\nlabel = "A"\ncommand = []\n': "non-empty list",
+            button + 'release_command = "b"\n': "release_command",
+            button + 'icon = "icons/a.svg"\n': "must start with",
+            button + 'icon = ""\n': "icon must be",
             button * 4: "at most 3",
             "[[shortcut]]\n": "desktop file id",
-            "[[shortcut]]\napp = \"a b\"\n": "desktop file id",
-            "[[shortcut]]\napp = \"../x.desktop\"\n": "desktop file id",
-            "[[shortcut]]\napp = \"a\"\nicon = \"x\"\n": "unknown setting",
-            "[[shortcut]]\napp = \"a\"\n[[shortcut]]\napp = \"a.desktop\"\n": "already",
-            "[[shortcut]]\napp = \"a\"\n" "[[shortcut]]\napp = \"b\"\n"
-            "[[shortcut]]\napp = \"c\"\n" "[[shortcut]]\napp = \"d\"\n": "at most 3",
+            '[[shortcut]]\napp = "a b"\n': "desktop file id",
+            '[[shortcut]]\napp = "../x.desktop"\n': "desktop file id",
+            '[[shortcut]]\napp = "a"\nicon = "x"\n': "unknown setting",
+            '[[shortcut]]\napp = "a"\n[[shortcut]]\napp = "a.desktop"\n': "already",
+            '[[shortcut]]\napp = "a"\n'
+            '[[shortcut]]\napp = "b"\n'
+            '[[shortcut]]\napp = "c"\n'
+            '[[shortcut]]\napp = "d"\n': "at most 3",
             "shortcut = 1": "[[shortcut]] blocks",
             "height = ": "",
         }
@@ -239,7 +268,7 @@ app = "firefox_firefox"
 
     def test_error_names_the_button(self):
         with self.assertRaises(t.ConfigError) as cm:
-            config("[[button]]\nlabel = \"PTT\"\nkey = \"nope\"\n")
+            config('[[button]]\nlabel = "PTT"\nkey = "nope"\n')
         self.assertIn("button 1 (PTT)", str(cm.exception))
 
     def test_load_order(self):
@@ -279,14 +308,14 @@ class ConfigHome:
 
 class ConfigEditTests(unittest.TestCase):
     def test_with_height_edits_only_that_line(self):
-        text = "# top\nheight = 160  # mine\n\n[[button]]\nlabel = \"A\"\nkey = \"a\"\n"
+        text = '# top\nheight = 160  # mine\n\n[[button]]\nlabel = "A"\nkey = "a"\n'
         self.assertEqual(t.with_height(text, 240), text.replace("160  # mine", "240"))
         # No height line yet: one goes in before the first table.
-        out = t.with_height("# top\n[[button]]\nlabel = \"A\"\nkey = \"a\"\n", 96)
-        self.assertEqual(out, "# top\nheight = 96\n\n[[button]]\nlabel = \"A\"\nkey = \"a\"\n")
+        out = t.with_height('# top\n[[button]]\nlabel = "A"\nkey = "a"\n', 96)
+        self.assertEqual(out, '# top\nheight = 96\n\n[[button]]\nlabel = "A"\nkey = "a"\n')
         self.assertEqual(t.with_height("", 96), "height = 96\n\n")
         # A height inside a table is not the bar's.
-        self.assertEqual(config(t.with_height("[[shortcut]]\napp = \"a\"\n", 200)).height, 200)
+        self.assertEqual(config(t.with_height('[[shortcut]]\napp = "a"\n', 200)).height, 200)
 
     def test_with_shortcuts_keeps_everything_else(self):
         text = t.EXAMPLE_CONFIG
@@ -300,11 +329,13 @@ class ConfigEditTests(unittest.TestCase):
         self.assertEqual(again, added)
 
     def test_with_shortcuts_in_the_middle(self):
-        text = ('height = 100\n[[shortcut]]\napp = "a.desktop"  # files\n\n# Buttons:\n'
-                '[[button]]\nlabel = "A"\nkey = "a"\n')
+        text = (
+            'height = 100\n[[shortcut]]\napp = "a.desktop"  # files\n\n# Buttons:\n[[button]]\nlabel = "A"\nkey = "a"\n'
+        )
         out = t.with_shortcuts(text, ["c.desktop"])
-        self.assertEqual(out, 'height = 100\n\n# Buttons:\n[[button]]\nlabel = "A"\nkey = "a"\n'
-                              '\n[[shortcut]]\napp = "c.desktop"\n')
+        self.assertEqual(
+            out, 'height = 100\n\n# Buttons:\n[[button]]\nlabel = "A"\nkey = "a"\n\n[[shortcut]]\napp = "c.desktop"\n'
+        )
 
     def test_add_shortcut(self):
         self.assertEqual(t.add_shortcut([], "a"), ["a"])
@@ -371,7 +402,6 @@ class ConfigEditTests(unittest.TestCase):
             t.migrate_config()
             self.assertEqual(t.load_config()[0].height, 200)
 
-
     def test_migrate_the_f14_push_to_talk(self):
         # The default the previous version wrote: F14, which terminals never
         # receive, becomes Alt+K, and the user's other edits stay.
@@ -387,8 +417,7 @@ class ConfigEditTests(unittest.TestCase):
                 self.assertEqual(f.read(), t.EXAMPLE_CONFIG)
             self.assertFalse(t.migrate_config())
 
-            edited = (v2.replace("height = 160", "height = 240")
-                      + '\n[[shortcut]]\napp = "discord.desktop"\n')
+            edited = v2.replace("height = 160", "height = 240") + '\n[[shortcut]]\napp = "discord.desktop"\n'
             with open(path, "w") as f:
                 f.write(edited)
             self.assertTrue(t.migrate_config())
@@ -415,21 +444,44 @@ class SplitTests(unittest.TestCase):
         sp = Split()
         pad, bar = sp.frame(touch(0, 7, 1000, 1000))
         self.assertEqual(bar, [])
-        self.assertEqual(pad, [
-            (t.EV_ABS, t.ABS_MT_SLOT, 0), (t.EV_ABS, t.ABS_MT_TRACKING_ID, 7),
-            (t.EV_ABS, t.ABS_MT_TOOL_TYPE, 0), (t.EV_ABS, t.ABS_MT_POSITION_X, 1000),
-            (t.EV_ABS, t.ABS_MT_POSITION_Y, 1000), (t.EV_KEY, t.BTN_TOUCH, 1),
-            (t.EV_KEY, t.BTN_TOOL_FINGER, 1), (t.EV_ABS, t.ABS_X, 1000), (t.EV_ABS, t.ABS_Y, 1000),
-            SYN])
+        self.assertEqual(
+            pad,
+            [
+                (t.EV_ABS, t.ABS_MT_SLOT, 0),
+                (t.EV_ABS, t.ABS_MT_TRACKING_ID, 7),
+                (t.EV_ABS, t.ABS_MT_TOOL_TYPE, 0),
+                (t.EV_ABS, t.ABS_MT_POSITION_X, 1000),
+                (t.EV_ABS, t.ABS_MT_POSITION_Y, 1000),
+                (t.EV_KEY, t.BTN_TOUCH, 1),
+                (t.EV_KEY, t.BTN_TOOL_FINGER, 1),
+                (t.EV_ABS, t.ABS_X, 1000),
+                (t.EV_ABS, t.ABS_Y, 1000),
+                SYN,
+            ],
+        )
         pad, _ = sp.frame(touch(0, None, 1010, 990))
-        self.assertEqual(pad, [
-            (t.EV_ABS, t.ABS_MT_SLOT, 0), (t.EV_ABS, t.ABS_MT_POSITION_X, 1010),
-            (t.EV_ABS, t.ABS_MT_POSITION_Y, 990), (t.EV_ABS, t.ABS_X, 1010), (t.EV_ABS, t.ABS_Y, 990),
-            SYN])
+        self.assertEqual(
+            pad,
+            [
+                (t.EV_ABS, t.ABS_MT_SLOT, 0),
+                (t.EV_ABS, t.ABS_MT_POSITION_X, 1010),
+                (t.EV_ABS, t.ABS_MT_POSITION_Y, 990),
+                (t.EV_ABS, t.ABS_X, 1010),
+                (t.EV_ABS, t.ABS_Y, 990),
+                SYN,
+            ],
+        )
         pad, _ = sp.frame(lift(0))
-        self.assertEqual(pad, [
-            (t.EV_ABS, t.ABS_MT_SLOT, 0), (t.EV_ABS, t.ABS_MT_TRACKING_ID, -1),
-            (t.EV_KEY, t.BTN_TOUCH, 0), (t.EV_KEY, t.BTN_TOOL_FINGER, 0), SYN])
+        self.assertEqual(
+            pad,
+            [
+                (t.EV_ABS, t.ABS_MT_SLOT, 0),
+                (t.EV_ABS, t.ABS_MT_TRACKING_ID, -1),
+                (t.EV_KEY, t.BTN_TOUCH, 0),
+                (t.EV_KEY, t.BTN_TOOL_FINGER, 0),
+                SYN,
+            ],
+        )
 
     def test_bar_contact_never_reaches_the_pad(self):
         sp = Split()
@@ -451,7 +503,7 @@ class SplitTests(unittest.TestCase):
 
     def test_boundary(self):
         sp = Split()
-        _, bar = sp.frame(touch(0, 1, 100, 319))     # panel y 159.5: bar
+        _, bar = sp.frame(touch(0, 1, 100, 319))  # panel y 159.5: bar
         self.assertEqual([e[0] for e in bar], ["begin"])
         pad, bar = sp.frame(touch(1, 2, 2000, 320))  # panel y 160: pad
         self.assertEqual(bar, [])
@@ -499,9 +551,9 @@ class SplitTests(unittest.TestCase):
         # The pad lifts and puts a new finger down in one frame: the virtual
         # pad sees the old contact end in a frame of its own.
         pad, _ = sp.frame(touch(0, 2, 1200, 1200))
-        first = pad[:pad.index(SYN) + 1]
+        first = pad[: pad.index(SYN) + 1]
         self.assertIn((t.EV_ABS, t.ABS_MT_TRACKING_ID, -1), first)
-        self.assertIn((t.EV_ABS, t.ABS_MT_TRACKING_ID, 2), pad[len(first):])
+        self.assertIn((t.EV_ABS, t.ABS_MT_TRACKING_ID, 2), pad[len(first) :])
 
     def test_dropped_events_resync(self):
         sp = Split()
@@ -562,8 +614,16 @@ app = "web.desktop"
         def resize(h):
             self.resized.append(h)
             return True
-        return t.Bar(c, t.KeyEmitter(self.frames.append), self.ran.append,
-                     self.launched.append, remove, resize, clock=lambda: self.now)
+
+        return t.Bar(
+            c,
+            t.KeyEmitter(self.frames.append),
+            self.ran.append,
+            self.launched.append,
+            remove,
+            resize,
+            clock=lambda: self.now,
+        )
 
     def test_hold_sends_down_on_touch_and_up_on_release(self):
         self.assertTrue(self.bar.handle([("begin", 0, 100, 50)]))
@@ -602,7 +662,7 @@ app = "web.desktop"
         self.assertEqual(self.ran[-1], ["/bin/sh", "-c", "b"])
 
     def test_gaps_and_empty_spots_do_nothing(self):
-        for x in (900, 1600):      # the gap; the third shortcut spot, empty
+        for x in (900, 1600):  # the gap; the third shortcut spot, empty
             self.assertFalse(self.bar.handle([("begin", 0, x, 50), ("end", 0, x, 50)]))
         self.assertEqual((self.frames, self.ran, self.launched), ([], [], []))
 
@@ -678,8 +738,7 @@ app = "web.desktop"
         self.assertEqual(self.launched, [])
 
     def test_release_all(self):
-        self.bar.handle([("begin", 0, 100, 50), ("begin", 2, 700, 50), ("begin", 3, 1850, 50),
-                         ("move", 3, 1850, 300)])
+        self.bar.handle([("begin", 0, 100, 50), ("begin", 2, 700, 50), ("begin", 3, 1850, 50), ("move", 3, 1850, 300)])
         self.bar.release_all()
         self.assertEqual(self.frames[-1], [(t.EV_KEY, 184, 0), SYN])
         self.assertEqual(self.ran[-1], ["/bin/sh", "-c", "b"])
@@ -697,7 +756,7 @@ class ShortcutCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
             self.assertEqual(self.run_cli("add", "org.gnome.Nautilus")[0], 0)
             self.assertEqual(self.run_cli("add", "b.desktop", "--spot", "1")[0], 0)
-            code, out = self.run_cli("list")
+            _code, out = self.run_cli("list")
             self.assertEqual(out, "1  b.desktop\n2  org.gnome.Nautilus.desktop\n3  (empty)\n")
             self.assertEqual(self.run_cli("remove", "1")[0], 0)
             self.assertEqual(t.load_config(path)[0].shortcuts, ["org.gnome.Nautilus.desktop"])
@@ -715,12 +774,14 @@ class StatusTests(unittest.TestCase):
             os.chmod(node, 0)
             out = io.StringIO()
             done = mock.Mock(stdout="active\n")
-            with mock.patch.object(t, "find_source", return_value=node), \
-                    mock.patch.object(t.subprocess, "run", return_value=done), \
-                    contextlib.redirect_stdout(out):
+            with (
+                mock.patch.object(t, "find_source", return_value=node),
+                mock.patch.object(t.subprocess, "run", return_value=done),
+                contextlib.redirect_stdout(out),
+            ):
                 self.assertEqual(t.main(["status"]), 0)
-            self.assertIn("touchpad: %s (not readable: add your user to group input" % node,
-                          out.getvalue())
+            self.assertIn("touchpad: %s (not readable: add your user to group input" % node, out.getvalue())
+
 
 class SourceDiscoveryTests(unittest.TestCase):
     def setUp(self):
@@ -753,7 +814,7 @@ class MonitorIdentityTests(unittest.TestCase):
     def edid(name=b"no-audio-HD", serial_text=None):
         e = bytearray(128)
         e[0:8] = b"\x00\xff\xff\xff\xff\xff\xff\x00"
-        e[8:10] = b"\x52\x62"            # TSB
+        e[8:10] = b"\x52\x62"  # TSB
         e[10:12] = b"\x88\x88"
         e[12:16] = b"\x00\x88\x88\x88"
         descriptors = []
@@ -762,15 +823,14 @@ class MonitorIdentityTests(unittest.TestCase):
         if serial_text:
             descriptors.append(b"\0\0\0\xff\0" + (serial_text + b"\n").ljust(13, b" "))
         for i, d in enumerate(descriptors):
-            e[72 + 18 * i:90 + 18 * i] = d
+            e[72 + 18 * i : 90 + 18 * i] = d
         return bytes(e)
 
     def test_like_mutter(self):
         # What mutter reports for the ScreenPad on this machine.
         self.assertEqual(t.edid_identity(self.edid()), ("TSB", "no-audio-HD", "0x88888800"))
         self.assertEqual(t.edid_identity(self.edid(name=None)), ("TSB", "0x8888", "0x88888800"))
-        self.assertEqual(t.edid_identity(self.edid(b"ACME 27IN", b"SN0001234")),
-                         ("TSB", "ACME 27IN", "SN0001234"))
+        self.assertEqual(t.edid_identity(self.edid(b"ACME 27IN", b"SN0001234")), ("TSB", "ACME 27IN", "SN0001234"))
         self.assertIsNone(t.edid_identity(b"\0" * 128))
         self.assertIsNone(t.edid_identity(self.edid()[:100]))
 
@@ -790,7 +850,7 @@ class ExtensionTests(unittest.TestCase):
     # Params.parse throws on any other key, after addChrome has already put
     # the actor on the stage; the shell then unloads the extension's
     # stylesheet, leaving bare labels with no bar and no pressed state.
-    CHROME_OPTIONS = {"trackFullscreen", "affectsStruts"}
+    CHROME_OPTIONS = frozenset({"trackFullscreen", "affectsStruts"})
 
     def source(self):
         path = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad", "extension.js")
@@ -799,6 +859,7 @@ class ExtensionTests(unittest.TestCase):
 
     def test_chrome_options_exist_in_gnome_50(self):
         import re
+
         calls = re.findall(r"(?:add|addTop|track)Chrome\(([^;]*?)\);", self.source())
         self.assertTrue(calls)
         for args in calls:
@@ -807,6 +868,7 @@ class ExtensionTests(unittest.TestCase):
 
     def test_card_growth_is_animated_within_the_arming_delay(self):
         import re
+
         grow = int(re.search(r"const GROW_MS = (\d+);", self.source()).group(1))
         # Fully drawn before a tap on it counts.
         self.assertLess(grow, t.ASK_ARM * 1000)
@@ -815,8 +877,7 @@ class ExtensionTests(unittest.TestCase):
         # The grip is narrow (104 px); insets and icons scaled by the
         # height alone left it 1 px wide on a tall bar.
         src = self.source()
-        self.assertIn("if (tile.glyph === 'grip') {\n"
-                      "            child = this._grip(width, height);", src)
+        self.assertIn("if (tile.glyph === 'grip') {\n            child = this._grip(width, height);", src)
         self.assertIn("Math.round(narrowest * MAX_INSET)", src)
         self.assertNotIn("list-drag-handle-symbolic", src)
         css_path = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad", "stylesheet.css")
@@ -825,6 +886,7 @@ class ExtensionTests(unittest.TestCase):
 
     def test_dbus_matches_the_daemon(self):
         import re
+
         src = self.source()
         self.assertIn("const DBUS_PATH = '%s';" % t.DBUS_PATH, src)
         self.assertIn('<interface name="%s">' % t.DBUS_IFACE, src)
@@ -840,10 +902,14 @@ class ExtensionTests(unittest.TestCase):
         # A tap button is the plain button style; every other class has a rule.
         for name in set(t.TILE_CLASSES) - {"tap"}:
             self.assertRegex(css, r"\.%s[ {:.,]" % re.escape(name), name)
-        for rule in (".screenpad-touchbar-button.hold:active",
-                     ".screenpad-touchbar-shortcut.removing",
-                     ".screenpad-touchbar-shortcut.drop", ".screenpad-touchbar-spot.empty",
-                     ".screenpad-touchbar-badge", ".screenpad-touchbar-text"):
+        for rule in (
+            ".screenpad-touchbar-button.hold:active",
+            ".screenpad-touchbar-shortcut.removing",
+            ".screenpad-touchbar-shortcut.drop",
+            ".screenpad-touchbar-spot.empty",
+            ".screenpad-touchbar-badge",
+            ".screenpad-touchbar-text",
+        ):
             self.assertIn(rule + " {", css)
 
     def test_renderer_handshake_matches_the_daemon(self):
@@ -853,10 +919,10 @@ class ExtensionTests(unittest.TestCase):
         # It says whether the bar is on screen, every time _sync decides.
         self.assertIn("JSON.stringify({protocol: RENDERER_PROTOCOL, drawn})", src)
         self.assertIn("const drawn = this._bar !== null;", src)
-        sync = src[src.index("    _sync() {"):src.index("    _announce() {")]
+        sync = src[src.index("    _sync() {") : src.index("    _announce() {")]
         self.assertEqual(sync.count("this._announce();"), 2)
         # Removed first in disable(), before the bar goes.
-        disable = src[src.index("    disable() {"):src.index("    Launch(id)")]
+        disable = src[src.index("    disable() {") : src.index("    Launch(id)")]
         self.assertLess(disable.index("this._renderer.delete"), disable.index("this._destroyBar"))
 
     def test_draws_tiles_without_knowing_them(self):
@@ -868,7 +934,6 @@ class ExtensionTests(unittest.TestCase):
         # No tile kinds in the renderer: it never asks what a tile is.
         self.assertNotIn("state.spots", src)
         self.assertNotRegex(src, r"\.kind\s*===")
-
 
 
 class FakeClient:
@@ -904,69 +969,139 @@ class SceneTests(unittest.TestCase):
     def test_spots_as_tiles(self):
         c = config(TILE_CONFIG)
         tiles = t.spot_tiles(c, pressed=[0], removing=[])
-        self.assertEqual([(x["id"], x["x"], x["width"], x["style"]) for x in tiles], [
-            ("button-0", 0, 296, "button"), ("button-1", 296, 296, "button"),
-            ("button-2", 592, 296, "button"), ("shortcut-0", 928, 296, "shortcut"),
-            ("shortcut-1", 1224, 296, "shortcut"), ("shortcut-2", 1520, 296, "shortcut"),
-            ("grip", 1816, 104, "grip")])
-        self.assertEqual(tiles[0], {"id": "button-0", "x": 0, "width": 296, "style": "button",
-                                    "pressed": True, "classes": ["hold"],
-                                    "icon": "audio-input-microphone-symbolic", "label": "PTT"})
+        self.assertEqual(
+            [(x["id"], x["x"], x["width"], x["style"]) for x in tiles],
+            [
+                ("button-0", 0, 296, "button"),
+                ("button-1", 296, 296, "button"),
+                ("button-2", 592, 296, "button"),
+                ("shortcut-0", 928, 296, "shortcut"),
+                ("shortcut-1", 1224, 296, "shortcut"),
+                ("shortcut-2", 1520, 296, "shortcut"),
+                ("grip", 1816, 104, "grip"),
+            ],
+        )
+        self.assertEqual(
+            tiles[0],
+            {
+                "id": "button-0",
+                "x": 0,
+                "width": 296,
+                "style": "button",
+                "pressed": True,
+                "classes": ["hold"],
+                "icon": "audio-input-microphone-symbolic",
+                "label": "PTT",
+            },
+        )
         # No app provides "agents": its config label, dimmed.
         self.assertEqual(tiles[1]["classes"], ["tile", "offline"])
         self.assertEqual(tiles[1]["label"], "Agents")
         self.assertEqual(tiles[2]["classes"], ["empty"])
-        self.assertEqual(tiles[3], {"id": "shortcut-0", "x": 928, "width": 296, "style": "shortcut",
-                                    "drop": 1, "app": "files.desktop"})
+        self.assertEqual(
+            tiles[3],
+            {"id": "shortcut-0", "x": 928, "width": 296, "style": "shortcut", "drop": 1, "app": "files.desktop"},
+        )
         self.assertEqual(tiles[4]["classes"], ["empty"])
-        self.assertEqual((tiles[4]["icon"], tiles[4]["icon_scale"], tiles[4]["drop"]),
-                         ("list-add-symbolic", 0.6, 2))
+        self.assertEqual((tiles[4]["icon"], tiles[4]["icon_scale"], tiles[4]["drop"]), ("list-add-symbolic", 0.6, 2))
         self.assertTrue(tiles[4]["empty"])
         self.assertEqual(tiles[6]["glyph"], "grip")
         self.assertEqual(t.DIVIDER_X, 908)
 
     def test_removing_and_app_tiles(self):
         c = config(TILE_CONFIG)
-        tiles = t.spot_tiles(c, pressed=[3], removing=[3], provided={
-            "agents": {"tone": "warning", "label": "1 blocked", "badge": "3"}})
+        tiles = t.spot_tiles(
+            c, pressed=[3], removing=[3], provided={"agents": {"tone": "warning", "label": "1 blocked", "badge": "3"}}
+        )
         self.assertEqual(tiles[3]["classes"], ["removing"])
         self.assertEqual(tiles[3]["icon"], "edit-delete-symbolic")
-        self.assertEqual(tiles[1], {"id": "button-1", "x": 296, "width": 296, "style": "button",
-                                    "classes": ["tile", "tone-warning"], "label": "1 blocked",
-                                    "badge": "3"})
+        self.assertEqual(
+            tiles[1],
+            {
+                "id": "button-1",
+                "x": 296,
+                "width": 296,
+                "style": "button",
+                "classes": ["tile", "tone-warning"],
+                "label": "1 blocked",
+                "badge": "3",
+            },
+        )
         # An app that says nothing yet shows the config's icon or label.
         tiles = t.spot_tiles(c, provided={"agents": {}})
-        self.assertEqual((tiles[1]["classes"], tiles[1]["label"]),
-                         (["tile", "tone-neutral"], "Agents"))
+        self.assertEqual((tiles[1]["classes"], tiles[1]["label"]), (["tile", "tone-neutral"], "Agents"))
 
     def test_every_class_is_known(self):
         c = config(TILE_CONFIG)
-        ask = t.parse_ask(None, {"id": "q", "title": "T", "options": [
-            {"id": "a", "label": "A", "tone": tone} for tone in t.TONES[:1]]}, 0)
-        tiles = (t.spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}})
-                 + t.ask_tiles(ask))
+        ask = t.parse_ask(
+            None,
+            {"id": "q", "title": "T", "options": [{"id": "a", "label": "A", "tone": tone} for tone in t.TONES[:1]]},
+            0,
+        )
+        tiles = t.spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}}) + t.ask_tiles(ask)
         for tile in tiles:
             self.assertIn(tile["style"], t.TILE_STYLES)
             for name in tile.get("classes", []):
                 self.assertIn(name, t.TILE_CLASSES)
 
     def test_question_tiles(self):
-        ask = t.parse_ask(None, {"id": "q", "title": "Run npm test?", "text": "in api",
-                                 "options": [{"id": "no", "label": "Deny", "tone": "reject"},
-                                             {"id": "yes", "label": "Allow", "tone": "accept"}]}, 0)
+        ask = t.parse_ask(
+            None,
+            {
+                "id": "q",
+                "title": "Run npm test?",
+                "text": "in api",
+                "options": [
+                    {"id": "no", "label": "Deny", "tone": "reject"},
+                    {"id": "yes", "label": "Allow", "tone": "accept"},
+                ],
+            },
+            0,
+        )
         tiles = t.ask_tiles(ask, pressed=[1], queued=2)
-        self.assertEqual(tiles[0], {"id": "ask-text", "x": 0, "width": 592, "style": "ask-text",
-                                    "title": "Run npm test?", "text": "in api", "badge": "+2"})
+        self.assertEqual(
+            tiles[0],
+            {
+                "id": "ask-text",
+                "x": 0,
+                "width": 592,
+                "style": "ask-text",
+                "title": "Run npm test?",
+                "text": "in api",
+                "badge": "+2",
+            },
+        )
         # Every card can be dismissed, from the third button spot.
-        self.assertEqual(tiles[1], {"id": "ask-dismiss", "x": 592, "width": 296, "style": "option",
-                                    "classes": ["tone-neutral"], "icon": "window-close-symbolic",
-                                    "icon_scale": 0.6, "label": "Dismiss"})
-        self.assertEqual(tiles[2], {"id": "ask-option-0", "x": 928, "width": 296, "style": "option",
-                                    "classes": ["tone-reject"], "label": "Deny"})
+        self.assertEqual(
+            tiles[1],
+            {
+                "id": "ask-dismiss",
+                "x": 592,
+                "width": 296,
+                "style": "option",
+                "classes": ["tone-neutral"],
+                "icon": "window-close-symbolic",
+                "icon_scale": 0.6,
+                "label": "Dismiss",
+            },
+        )
+        self.assertEqual(
+            tiles[2],
+            {
+                "id": "ask-option-0",
+                "x": 928,
+                "width": 296,
+                "style": "option",
+                "classes": ["tone-reject"],
+                "label": "Deny",
+            },
+        )
         self.assertEqual(tiles[3]["pressed"], True)
         self.assertTrue(t.ask_tiles(ask, pressed=[t.DISMISS])[1]["pressed"])
-        self.assertEqual([t.ask_option_at(ask, x) for x in (0, 591, 700, 900, 928, 1300, 1600)],
-                         [None, None, t.DISMISS, None, 0, 1, None])
+        self.assertEqual(
+            [t.ask_option_at(ask, x) for x in (0, 591, 700, 900, 928, 1300, 1600)],
+            [None, None, t.DISMISS, None, 0, 1, None],
+        )
 
 
 class AskBarTests(unittest.TestCase):
@@ -977,15 +1112,20 @@ class AskBarTests(unittest.TestCase):
         self.frames, self.launched, self.resized = [], [], []
         self.asks = t.Asks(clock=lambda: self.now)
         self.asks.set_available(True)
-        self.bar = t.Bar(config(BarTests.CONFIG), t.KeyEmitter(self.frames.append), lambda a: None,
-                         self.launched.append, resize=lambda h: self.resized.append(h) or True,
-                         clock=lambda: self.now, asks=self.asks)
+        self.bar = t.Bar(
+            config(BarTests.CONFIG),
+            t.KeyEmitter(self.frames.append),
+            lambda a: None,
+            self.launched.append,
+            resize=lambda h: self.resized.append(h) or True,
+            clock=lambda: self.now,
+            asks=self.asks,
+        )
         self.app = FakeClient()
 
     def ask(self, ask_id="q", n=2):
         options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
-        self.asks.add(t.parse_ask(self.app, {"id": ask_id, "title": "T", "options": options},
-                                  self.now))
+        self.asks.add(t.parse_ask(self.app, {"id": ask_id, "title": "T", "options": options}, self.now))
         self.now += t.ASK_ARM
 
     def test_lifting_on_an_answer_chooses_it(self):
@@ -993,15 +1133,15 @@ class AskBarTests(unittest.TestCase):
         self.assertTrue(self.bar.handle([("begin", 0, 1300, 50)]))
         self.assertEqual(self.bar.ask_pressed(self.asks.shown()), [1])
         self.bar.handle([("end", 0, 1310, 60)])
-        self.assertEqual(self.app.last("answer"),
-                         {"op": "answer", "id": "q", "option": "o1", "reason": "chosen"})
+        self.assertEqual(self.app.last("answer"), {"op": "answer", "id": "q", "option": "o1", "reason": "chosen"})
         self.assertIsNone(self.asks.shown())
         # Nothing reached the spots under the question.
         self.assertEqual((self.frames, self.launched), ([], []))
 
     def test_too_soon_does_nothing(self):
-        self.asks.add(t.parse_ask(self.app, {"id": "q", "title": "T", "options": [
-            {"id": "a", "label": "A"}]}, self.now))
+        self.asks.add(
+            t.parse_ask(self.app, {"id": "q", "title": "T", "options": [{"id": "a", "label": "A"}]}, self.now)
+        )
         self.now += t.ASK_ARM / 2
         self.assertFalse(self.bar.handle([("begin", 0, 1000, 50)]))
         self.now += 1
@@ -1066,9 +1206,9 @@ class TileBarTests(unittest.TestCase):
 
             def event(self, name, kind, inside=None):
                 bar_self.events.append((name, kind, inside))
+
         self.frames = []
-        self.bar = t.Bar(config(TILE_CONFIG), t.KeyEmitter(self.frames.append), lambda a: None,
-                         tiles=Tiles())
+        self.bar = t.Bar(config(TILE_CONFIG), t.KeyEmitter(self.frames.append), lambda a: None, tiles=Tiles())
 
     def test_down_and_up(self):
         self.assertTrue(self.bar.handle([("begin", 0, 400, 50)]))
@@ -1086,7 +1226,7 @@ class TileBarTests(unittest.TestCase):
 
     def test_reload_release_and_app_gone(self):
         self.bar.handle([("begin", 0, 400, 50)])
-        self.bar.set_config(config(TILE_CONFIG))       # same tile, same spot: still down
+        self.bar.set_config(config(TILE_CONFIG))  # same tile, same spot: still down
         self.assertEqual(self.events, [("agents", "down", None)])
         self.bar.release_all()
         self.assertEqual(self.events[-1], ("agents", "up", False))
@@ -1110,9 +1250,10 @@ class AppsTests(unittest.TestCase):
 
     def test_hello_and_tiles(self):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents", "ci"]})
-        self.assertEqual(self.a.last("welcome"), {"op": "welcome", "app": "fleet",
-                                                  "placed": ["agents"], "unplaced": ["ci"],
-                                                  "taken": []})
+        self.assertEqual(
+            self.a.last("welcome"),
+            {"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": ["ci"], "taken": []},
+        )
         self.apps.handle(self.b, {"op": "hello", "app": "other", "tiles": ["agents"]})
         self.assertEqual(self.b.last("welcome")["taken"], ["agents"])
         self.assertTrue(self.apps.online("agents"))
@@ -1125,16 +1266,30 @@ class AppsTests(unittest.TestCase):
     def test_set(self):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
         self.apps.take_changed()
-        self.apps.handle(self.a, {"op": "set", "tile": "agents", "label": "1 blocked",
-                                  "tone": "warning", "badge": "2",
-                                  "icon": "dialog-warning-symbolic"})
-        self.assertEqual(self.apps.provided(), {"agents": {
-            "tone": "warning", "label": "1 blocked", "badge": "2",
-            "icon": "dialog-warning-symbolic"}})
+        self.apps.handle(
+            self.a,
+            {
+                "op": "set",
+                "tile": "agents",
+                "label": "1 blocked",
+                "tone": "warning",
+                "badge": "2",
+                "icon": "dialog-warning-symbolic",
+            },
+        )
+        self.assertEqual(
+            self.apps.provided(),
+            {"agents": {"tone": "warning", "label": "1 blocked", "badge": "2", "icon": "dialog-warning-symbolic"}},
+        )
         self.assertTrue(self.apps.take_changed())
-        bad = [{"tile": "ci"}, {"tile": "agents", "tone": "pink"},
-               {"tile": "agents", "label": "x" * 33}, {"tile": "agents", "label": "a\nb"},
-               {"tile": "agents", "icon": "../x"}, {"tile": "agents", "colour": "red"}]
+        bad = [
+            {"tile": "ci"},
+            {"tile": "agents", "tone": "pink"},
+            {"tile": "agents", "label": "x" * 33},
+            {"tile": "agents", "label": "a\nb"},
+            {"tile": "agents", "icon": "../x"},
+            {"tile": "agents", "colour": "red"},
+        ]
         for msg in bad:
             self.apps.handle(self.a, dict(msg, op="set"))
             self.assertEqual(self.a.last("error")["request"], "set", msg)
@@ -1150,8 +1305,7 @@ class AppsTests(unittest.TestCase):
         self.assertEqual(len([m for m in self.a.sent if m["op"] == "error"]), 3)
         self.apps.handle(self.a, {"op": "ping"})
         self.assertEqual(self.a.sent[-1], {"op": "pong"})
-        for msg in ({"app": "Fleet"}, {"app": "x", "tiles": "agents"},
-                    {"app": "x", "tiles": ["A"]}):
+        for msg in ({"app": "Fleet"}, {"app": "x", "tiles": "agents"}, {"app": "x", "tiles": ["A"]}):
             self.apps.handle(self.b, dict(msg, op="hello"))
             self.assertEqual(self.b.last("error")["request"], "hello", msg)
 
@@ -1160,20 +1314,31 @@ class AppsTests(unittest.TestCase):
         self.apps.event("agents", "down")
         self.apps.event("agents", "up", True)
         self.apps.event("nobody", "down")
-        self.assertEqual([m for m in self.a.sent if m["op"] == "event"], [
-            {"op": "event", "tile": "agents", "type": "down"},
-            {"op": "event", "tile": "agents", "type": "up", "inside": True}])
+        self.assertEqual(
+            [m for m in self.a.sent if m["op"] == "event"],
+            [
+                {"op": "event", "tile": "agents", "type": "down"},
+                {"op": "event", "tile": "agents", "type": "up", "inside": True},
+            ],
+        )
         self.assertEqual(self.b.sent, [])
 
     def test_ask_validation(self):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet"})
         ok = {"op": "ask", "id": "q1", "title": "Run it?", "options": [{"id": "y", "label": "Yes"}]}
-        bad = [dict(ok, id="no spaces"), dict(ok, title=""), dict(ok, title="x" * 81),
-               dict(ok, options=[]), dict(ok, options=[{"id": "y", "label": "Y"}] * 2),
-               dict(ok, options=[{"id": str(k), "label": "L"} for k in range(4)]),
-               dict(ok, options=[{"id": "y", "label": "Y", "tone": "pink"}]),
-               dict(ok, timeout=0), dict(ok, timeout=True), dict(ok, timeout=4000),
-               dict(ok, colour=1)]
+        bad = [
+            dict(ok, id="no spaces"),
+            dict(ok, title=""),
+            dict(ok, title="x" * 81),
+            dict(ok, options=[]),
+            dict(ok, options=[{"id": "y", "label": "Y"}] * 2),
+            dict(ok, options=[{"id": str(k), "label": "L"} for k in range(4)]),
+            dict(ok, options=[{"id": "y", "label": "Y", "tone": "pink"}]),
+            dict(ok, timeout=0),
+            dict(ok, timeout=True),
+            dict(ok, timeout=4000),
+            dict(ok, colour=1),
+        ]
         for msg in bad:
             self.apps.handle(self.a, msg)
             self.assertEqual(self.a.last("error")["request"], "ask", msg)
@@ -1181,12 +1346,16 @@ class AppsTests(unittest.TestCase):
 
     def test_ask_answers(self):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet"})
-        ask = {"op": "ask", "id": "q1", "title": "Run it?", "timeout": 5,
-               "options": [{"id": "y", "label": "Yes"}, {"id": "n", "label": "No"}]}
+        ask = {
+            "op": "ask",
+            "id": "q1",
+            "title": "Run it?",
+            "timeout": 5,
+            "options": [{"id": "y", "label": "Yes"}, {"id": "n", "label": "No"}],
+        }
         # The bar cannot show questions: answered at once.
         self.apps.handle(self.a, ask)
-        self.assertEqual(self.a.last("answer"),
-                         {"op": "answer", "id": "q1", "option": None, "reason": "unavailable"})
+        self.assertEqual(self.a.last("answer"), {"op": "answer", "id": "q1", "option": None, "reason": "unavailable"})
         self.apps.asks.set_available(True)
         self.apps.handle(self.a, ask)
         self.apps.handle(self.a, ask)
@@ -1213,11 +1382,9 @@ class AppsTests(unittest.TestCase):
     def test_disconnect(self):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
         self.apps.asks.set_available(True)
-        self.apps.handle(self.a, {"op": "ask", "id": "q", "title": "T",
-                                  "options": [{"id": "y", "label": "Y"}]})
+        self.apps.handle(self.a, {"op": "ask", "id": "q", "title": "T", "options": [{"id": "y", "label": "Y"}]})
         self.apps.disconnect(self.a)
-        self.assertEqual((self.apps.online("agents"), self.apps.asks.shown(), self.gone),
-                         (False, None, ["agents"]))
+        self.assertEqual((self.apps.online("agents"), self.apps.asks.shown(), self.gone), (False, None, ["agents"]))
         self.assertIsNone(self.a.last("answer"))
         # The tile is free for another app now.
         self.apps.handle(self.b, {"op": "hello", "app": "other", "tiles": ["agents"]})
@@ -1259,7 +1426,7 @@ class Conn:
             self.s.settimeout(0.01)
             try:
                 data = self.s.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             if not data:
                 return None
@@ -1329,14 +1496,28 @@ class AppServerTests(unittest.TestCase):
                 ask = self.apps.asks.shown()
                 if ask is not None:
                     self.apps.asks.choose(ask, 1)
+
         thread = threading.Thread(target=serve)
         thread.start()
         out = io.StringIO()
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                code = t.main(["ask", "Run npm test?", "--text", "in api",
-                               "--option", "allow=Allow once", "--option", "deny=Deny",
-                               "--tone", "deny=reject", "--timeout", "5"])
+                code = t.main(
+                    [
+                        "ask",
+                        "Run npm test?",
+                        "--text",
+                        "in api",
+                        "--option",
+                        "allow=Allow once",
+                        "--option",
+                        "deny=Deny",
+                        "--tone",
+                        "deny=reject",
+                        "--timeout",
+                        "5",
+                    ]
+                )
         finally:
             stop.set()
             thread.join()
@@ -1349,6 +1530,7 @@ class AppServerTests(unittest.TestCase):
         def serve():
             while not stop.is_set():
                 pump(self.server)
+
         thread = threading.Thread(target=serve)
         thread.start()
         try:
@@ -1373,15 +1555,21 @@ class DaemonSceneTests(unittest.TestCase):
             self.assertFalse(daemon.renderer_ready())
             os.makedirs(os.path.dirname(t.state_path()))
             renderer = t.runtime_file(t.RENDERER_NAME)
-            for i, (said, ready) in enumerate((('{"protocol": 2, "drawn": true}', True),
-                                ('{"protocol": 2, "drawn": false}', False),
-                                ('{"protocol": 1, "drawn": true}', False),
-                                ('{"protocol": true, "drawn": true}', False),
-                                ('{"protocol": 2}', False), ("not json at all", False),
-                                ("[2]", False), ('{"protocol": 3, "drawn": true}', True))):
+            for i, (said, ready) in enumerate(
+                (
+                    ('{"protocol": 2, "drawn": true}', True),
+                    ('{"protocol": 2, "drawn": false}', False),
+                    ('{"protocol": 1, "drawn": true}', False),
+                    ('{"protocol": true, "drawn": true}', False),
+                    ('{"protocol": 2}', False),
+                    ("not json at all", False),
+                    ("[2]", False),
+                    ('{"protocol": 3, "drawn": true}', True),
+                )
+            ):
                 with open(renderer, "w") as f:
                     f.write(said)
-                os.utime(renderer, ns=(0, 1000 + i))       # a new mtime each time
+                os.utime(renderer, ns=(0, 1000 + i))  # a new mtime each time
                 self.assertEqual(daemon.renderer_ready(), ready, said)
             os.unlink(renderer)
             self.assertFalse(daemon.renderer_ready())
@@ -1399,13 +1587,11 @@ class DaemonSceneTests(unittest.TestCase):
             daemon.apps.handle(app, {"op": "hello", "app": "fleet"})
             # As if the pad were grabbed and the bar on screen.
             daemon.apps.asks.can_show = lambda: True
-            daemon.apps.handle(app, {"op": "ask", "id": "q", "title": "T",
-                                     "options": [{"id": "y", "label": "Y"}]})
+            daemon.apps.handle(app, {"op": "ask", "id": "q", "title": "T", "options": [{"id": "y", "label": "Y"}]})
             daemon.publish()
             with open(t.state_path()) as f:
                 state = json.load(f)
-            self.assertEqual([x["id"] for x in state["tiles"]],
-                             ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
+            self.assertEqual([x["id"] for x in state["tiles"]], ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
             self.assertEqual(state["apps"], ["fleet"])
 
 
@@ -1419,8 +1605,14 @@ class ContactsToAppsTests(unittest.TestCase):
         app = FakeClient()
         apps.connect(app)
         apps.handle(app, {"op": "hello", "app": "fleet", "tiles": ["agents"]})
-        bar = t.Bar(config(TILE_CONFIG), t.KeyEmitter(lambda ev: None), lambda a: None,
-                    clock=lambda: now[0], tiles=apps, asks=apps.asks)
+        bar = t.Bar(
+            config(TILE_CONFIG),
+            t.KeyEmitter(lambda ev: None),
+            lambda a: None,
+            clock=lambda: now[0],
+            tiles=apps,
+            asks=apps.asks,
+        )
         sp = Split()
         # The "agents" spot is x 296..592 panel px, 592..1184 device units.
         for groups in ([touch(0, 1, 800, 100)], [lift(0)]):
@@ -1431,15 +1623,21 @@ class ContactsToAppsTests(unittest.TestCase):
         # A question; a tap on its second answer (x 1224..1520 px), after
         # it has been up for ASK_ARM.
         apps.asks.set_available(True)
-        apps.handle(app, {"op": "ask", "id": "q", "title": "Run it?",
-                          "options": [{"id": "no", "label": "No"}, {"id": "yes", "label": "Yes"}]})
+        apps.handle(
+            app,
+            {
+                "op": "ask",
+                "id": "q",
+                "title": "Run it?",
+                "options": [{"id": "no", "label": "No"}, {"id": "yes", "label": "Yes"}],
+            },
+        )
         now[0] += t.ASK_ARM
         for groups in ([touch(1, 2, 2700, 120)], [lift(1)]):
             pad, events = sp.frame(*groups)
             self.assertEqual(pad, [])
             bar.handle(events)
-        self.assertEqual(app.last("answer"),
-                         {"op": "answer", "id": "q", "option": "yes", "reason": "chosen"})
+        self.assertEqual(app.last("answer"), {"op": "answer", "id": "q", "option": "yes", "reason": "chosen"})
         # The pad below the bar is untouched by all this.
         pad, events = sp.frame(touch(2, 3, 2000, 1500))
         self.assertEqual((codes(pad, t.EV_ABS, t.ABS_MT_TRACKING_ID), events), ([3], []))
@@ -1466,7 +1664,7 @@ class DaemonLoopTests(unittest.TestCase):
             daemon = t.Daemon(config(TILE_CONFIG), None, flag=flag)
             daemon.server = t.AppServer(t.runtime_file(t.SOCKET_NAME), daemon.apps)
             pad = self.Pad()
-            daemon.source = pad
+            daemon.source = pad  # type: ignore[assignment]  # stands in for the parts loop() uses
             thread = threading.Thread(target=daemon.loop)
             thread.start()
             try:
@@ -1476,12 +1674,13 @@ class DaemonLoopTests(unittest.TestCase):
                 lines = app.makefile("rw")
 
                 def ask(ask_id):
-                    lines.write(json.dumps({"op": "ask", "id": ask_id, "title": "T",
-                                            "options": [{"id": "y", "label": "Y"}]}) + "\n")
+                    lines.write(
+                        json.dumps({"op": "ask", "id": ask_id, "title": "T", "options": [{"id": "y", "label": "Y"}]})
+                        + "\n"
+                    )
                     lines.flush()
 
-                lines.write(json.dumps({"op": "hello", "app": "fleet", "tiles": ["agents"]})
-                            + "\n")
+                lines.write(json.dumps({"op": "hello", "app": "fleet", "tiles": ["agents"]}) + "\n")
                 lines.flush()
                 self.assertEqual(json.loads(lines.readline())["placed"], ["agents"])
                 # No renderer.json: the bar cannot show questions.
@@ -1496,14 +1695,13 @@ class DaemonLoopTests(unittest.TestCase):
                     if state["tiles"][0]["id"] == "ask-text":
                         break
                     threading.Event().wait(0.05)
-                self.assertEqual([x["id"] for x in state["tiles"]],
-                                 ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
+                self.assertEqual([x["id"] for x in state["tiles"]], ["ask-text", "ask-dismiss", "ask-option-0", "grip"])
                 self.assertEqual(state["apps"], ["fleet"])
                 # The bar leaves the screen: the waiting question is answered.
                 os.unlink(t.runtime_file(t.RENDERER_NAME))
-                self.assertEqual(json.loads(lines.readline()),
-                                 {"op": "answer", "id": "q2", "option": None,
-                                  "reason": "unavailable"})
+                self.assertEqual(
+                    json.loads(lines.readline()), {"op": "answer", "id": "q2", "option": None, "reason": "unavailable"}
+                )
                 app.close()
             finally:
                 daemon.stop = True
@@ -1517,8 +1715,7 @@ class TileConfigTests(unittest.TestCase):
     def test_tile_buttons(self):
         c = config(TILE_CONFIG)
         self.assertEqual(c.tiles(), ["agents"])
-        self.assertEqual((c.buttons[1].tile, c.buttons[1].keys, c.buttons[1].command),
-                         ("agents", None, None))
+        self.assertEqual((c.buttons[1].tile, c.buttons[1].keys, c.buttons[1].command), ("agents", None, None))
 
     def test_check_lists_a_tile(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
@@ -1528,8 +1725,7 @@ class TileConfigTests(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(t.main(["check"]), 0)
-            self.assertIn("button   2  x  296..592  Agents, icon none, tile agents (an app draws it)",
-                          out.getvalue())
+            self.assertIn("button   2  x  296..592  Agents, icon none, tile agents (an app draws it)", out.getvalue())
 
     def test_migrate_the_default_before_tiles(self):
         with open(os.path.join(REPO, "tests", "touchbar-v3-default.toml")) as f:
@@ -1545,14 +1741,14 @@ class TileConfigTests(unittest.TestCase):
             self.assertFalse(t.migrate_config())
             # An edited one keeps the edits and gains the 'tile' lines once.
             with open(path, "w") as f:
-                f.write(v3.replace("height = 160", "height = 168")
-                        + '\n[[shortcut]]\napp = "bitwarden.desktop"\n')
+                f.write(v3.replace("height = 160", "height = 168") + '\n[[shortcut]]\napp = "bitwarden.desktop"\n')
             self.assertTrue(t.migrate_config())
             self.assertFalse(t.migrate_config())
             c = t.load_config()[0]
             self.assertEqual((c.height, c.shortcuts), (168, ["bitwarden.desktop"]))
             with open(path) as f:
                 self.assertEqual(f.read().count("#   tile "), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
