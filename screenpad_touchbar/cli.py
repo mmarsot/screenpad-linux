@@ -16,10 +16,10 @@ from .common import (
     ACTIVE_FLAG,
     ASK_TIMEOUT,
     CARD_HEIGHT,
-    DOTS,
     GRIP,
     MAX_OPTIONS,
     MAX_SHORTCUTS,
+    PAGE,
     PANEL_H,
     SHORTCUT,
     SOCKET_NAME,
@@ -69,8 +69,8 @@ def cmd_check(args):
         where = "  %-8s %d  x %4d..%-4d " % (s.kind, s.index + 1, s.x, s.x + s.width)
         if s.kind == GRIP:
             print(where + "drag to resize")
-        elif s.kind == DOTS:
-            print(where + "tap or swipe the bar to turn the page")
+        elif s.kind == PAGE:
+            print(where + "tap to go to the other page, or swipe the bar")
         elif s.item is None:
             print(where + "empty")
         elif s.kind == SHORTCUT:

@@ -1,5 +1,5 @@
 """The pages: the touchpad page and the apps page, the swipe along the bar
-and the page dots that turn them, and the return to the touchpad."""
+and the page button that turn them, and the return to the touchpad."""
 
 import time
 
@@ -27,7 +27,8 @@ class Pager:
       SWIPE_SLOPE of that, lifted within SWIPE_TIME of touching) turns the
       page: moving the finger left shows the page on the right. Its end
       becomes a "cancel", so the spot it started on does nothing.
-    - tap() turns to the next page, wrapping: a tap on the page dots.
+    - tap() turns to target(), the next page, wrapping: a tap on the page
+      button, which shows that page's icon.
     - touching(down) is told after each frame whether any contact is down;
       after return_after seconds with none, tick() goes back to the
       touchpad page. It also does when the apps page can no longer be shown.
@@ -45,7 +46,7 @@ class Pager:
         self.changed = False
 
     def available(self):
-        """Whether the dots show and the pages turn."""
+        """Whether the page button shows and the pages turn."""
         return self.can_show()
 
     def configure(self, pages):
@@ -63,9 +64,13 @@ class Pager:
         if self.idle_since is not None:
             self.idle_since = self.clock()
 
+    def target(self):
+        """The page a tap on the page button turns to."""
+        return (self.page + 1) % len(PAGE_NAMES)
+
     def tap(self):
         if self.available():
-            self.turn((self.page + 1) % len(PAGE_NAMES))
+            self.turn(self.target())
 
     def watch(self, events):
         """The bar's events, with a swipe's end turned into a cancel."""
@@ -125,7 +130,3 @@ class Pager:
         self.turn(HOME)
         self.strokes.clear()
         self.idle_since = None
-
-    def dots(self):
-        """What the page dots tile draws: the page shown and how many."""
-        return {"page": self.page, "pages": len(PAGE_NAMES)}

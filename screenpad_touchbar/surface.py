@@ -37,6 +37,10 @@ from .common import (
 # The surface's own widgets: Home, and a page in the home page's list.
 HOME_WIDGET = "home"
 OPEN = "open:"
+# How to go back, under the apps page's title.
+BACK_HINT = (
+    "Tap the touchpad button, swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
+)
 # Every CSS class a widget can carry; the stylesheet has a rule for each
 # (tests/test_touchbar_surface.py checks it).
 WIDGET_CLASSES = ("inert", "long", "held") + tuple("tone-" + tone for tone in TONES)
@@ -140,7 +144,7 @@ class Surface:
                 x, y, wd, h = grid(0, y0, PANEL_W, height, page.columns, page.rows, w.col, w.row, w.cols, w.rows)
                 spots.append(Spot(page.name, w.id, x, y, wd, h, w.look, w.touch, page.client))
             return spots
-        hint = "Swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
+        hint = BACK_HINT
         spots = [
             Spot(
                 None,
@@ -269,8 +273,7 @@ class Surface:
             return {
                 "title": "Apps",
                 "text": "Apps need the touch bar's new extension: log out and in once.",
-                "hint": "Swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
-                % self.pager.return_after,
+                "hint": BACK_HINT % self.pager.return_after,
             }
         self.refresh()
         widgets = []

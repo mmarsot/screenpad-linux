@@ -16,6 +16,7 @@ from screenpad_touchbar.codes import (
 )
 from screenpad_touchbar.common import (
     DEFAULT_HEIGHT,
+    PAGE_ICONS,
     ConfigError,
 )
 from screenpad_touchbar.config import load_config
@@ -95,22 +96,23 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.shortcuts, [])
 
     def test_default_icons_are_installed(self):
-        # The icons the default config names, in GNOME's own theme.
-        for b in config(EXAMPLE_CONFIG).buttons:
+        # The icons the default config and the page button name, in GNOME's
+        # own theme.
+        for icon in [b.icon for b in config(EXAMPLE_CONFIG).buttons] + list(PAGE_ICONS):
             found = [
                 os.path.join(root, f)
                 for root, _, files in os.walk("/usr/share/icons/Adwaita")
                 for f in files
-                if f.startswith(b.icon + ".")
+                if f.startswith(icon + ".")
             ]
             if not os.path.isdir("/usr/share/icons/Adwaita"):
                 self.skipTest("no Adwaita icon theme here")
-            self.assertTrue(found, b.icon)
+            self.assertTrue(found, icon)
 
     def test_empty_is_a_bar_without_buttons(self):
         c = config()
         self.assertEqual((c.height, c.buttons, c.shortcuts), (DEFAULT_HEIGHT, [], []))
-        self.assertEqual([s.kind for s in c.spots], ["button"] * 3 + ["shortcut"] * 3 + ["grip", "dots"])
+        self.assertEqual([s.kind for s in c.spots], ["button"] * 3 + ["shortcut"] * 3 + ["grip", "page"])
         self.assertTrue(all(s.item is None for s in c.spots))
 
     def test_spots(self):
@@ -126,7 +128,7 @@ class ConfigTests(unittest.TestCase):
                 ("shortcut", 1, 1128, 272),
                 ("shortcut", 2, 1400, 272),
                 ("grip", 0, 1816, 104),
-                ("dots", 0, 1672, 144),
+                ("page", 0, 1672, 144),
             ],
         )
         self.assertEqual(c.spot_at(0, 0), 0)

@@ -1,6 +1,6 @@
 // The scene in touchbar.json as the extension draws it: which states it
 // draws, when the bar must be rebuilt, and where each tile, its icon, text,
-// badge, the grip and the page dots go, in logical pixels; and the pages
+// badge and the grip go, in logical pixels; and the pages
 // below the bar: the black screensaver and the apps page.
 //
 // Plain JavaScript with no GNOME imports, so the tests run it under node on
@@ -60,8 +60,8 @@ export function barGeometry(state, monitor) {
     const own = Math.min(Math.round((strutRows * monitor.height) / panelHeight), height);
     const narrowest = Math.min(...state.tiles.map(t => t.width)) * sx;
     const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
-    // The narrow tiles drawn by their own code (the grip, the page dots)
-    // do not limit the icons.
+    // The narrow tiles (a glyph: the grip, the page button) do not limit
+    // the icons; the page button's own icon is fitted to it (iconSizeFor).
     const iconWidth = Math.min(...state.tiles.filter(t => !t.glyph).map(t => t.width)) * sx;
     const iconSize = Math.max(
         Math.min(Math.round(own * ICON), Math.round((iconWidth - 2 * inset) * MAX_ICON)),
@@ -116,20 +116,21 @@ export function tileClasses(tile) {
     return classes;
 }
 
-// What a tile shows, in this order of preference: the grip or the page
-// dots (drawn by their own code), an icon, an app's icon, or text.
+// What a tile shows, in this order of preference: the grip (drawn by its
+// own code), an icon, an app's icon, or text. Any other glyph (the page
+// button) is drawn from its icon.
 export function tileContent(tile) {
     if (tile.glyph === 'grip') return 'grip';
-    if (tile.glyph === 'dots') return 'dots';
     if (tile.icon) return 'icon';
     if (tile.app) return 'app';
     return 'text';
 }
 
-// An icon tile's icon size in px.
-export function iconSizeFor(tile, iconSize) {
+// An icon tile's icon size in px, never wider than MAX_ICON of the tile's
+// drawn width, so a narrow tile's icon fits at every bar height.
+export function iconSizeFor(tile, iconSize, width) {
     const scale = Number.isFinite(tile.icon_scale) ? tile.icon_scale : 1;
-    return Math.max(Math.round(iconSize * scale), 8);
+    return Math.max(Math.min(Math.round(iconSize * scale), Math.round(width * MAX_ICON)), 8);
 }
 
 // A text tile's lines: the title or label, and a smaller text under it,
@@ -168,24 +169,6 @@ export function gripSizes(width, height) {
         8,
     );
     return {bar, gap, arrow, barWidth: Math.max(Math.round(width * 0.6), arrow)};
-}
-
-// The page dots in a tile of this size: one dot per page, the shown one
-// (page) bigger, in a row that fits the tile, and the size of the page's
-// name under them.
-export function dotsSizes(tile, width, height, iconSize) {
-    const pages = Number.isInteger(tile.pages) && tile.pages > 0 ? Math.min(tile.pages, 8) : 1;
-    const page = Number.isInteger(tile.page) ? tile.page : 0;
-    const fit = Math.floor((width * 0.8) / (2 * pages));
-    const dot = Math.max(Math.min(Math.round(iconSize * 0.28), fit, Math.round(height * 0.3)), 4);
-    return {
-        pages,
-        page,
-        dot,
-        current: Math.round(dot * 1.4),
-        gap: dot,
-        textSize: Math.max(Math.round(iconSize * 0.26), 8),
-    };
 }
 
 // Whether the bar grows into a card from what was drawn before: taller over

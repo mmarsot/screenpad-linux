@@ -166,7 +166,7 @@ class Conn:
         raise AssertionError("no reply")
 
 
-# Buttons at x 0, 272, 544; shortcuts at 856, 1128, 1400; the page dots at
+# Buttons at x 0, 272, 544; shortcuts at 856, 1128, 1400; the page button at
 # 1672; the grip at 1816. The
 # bar is 160 px high (device rows 0..320); a card makes it 456 (0..912).
 CONFIG = """
@@ -212,7 +212,7 @@ def js(module, expr, **values):
 
 
 # The bar tests' config. Spots: buttons at x 0, 272, 544; shortcuts at 856,
-# 1128, 1400; the page dots at 1672; the grip at 1816.
+# 1128, 1400; the page button at 1672; the grip at 1816.
 BAR_CONFIG = """
 [[button]]
 label = "PTT"

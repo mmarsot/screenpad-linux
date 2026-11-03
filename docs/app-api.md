@@ -8,7 +8,7 @@ $XDG_RUNTIME_DIR/screenpad/touchbar.sock
 
 The directory is your user's own and the socket is mode `0600`; the daemon also checks that the connecting process runs as the same user. There is no other authentication: any program you run can use the bar.
 
-![A question in the touch bar, grown into a card: its text over the first two button spots, a Dismiss cross in the third, Cancel and Deploy in the shortcut spots, the page dots and the grip at the right end](images/touchbar-ask.png)
+![A question in the touch bar, grown into a card: its text over the first two button spots, a Dismiss cross in the third, Cancel and Deploy in the shortcut spots, the page button and the grip at the right end](images/touchbar-ask.png)
 
 *A question, as `screenpad-touchbar ask` below shows it: the bar grows into a card for it. Rendered by the extension in a headless GNOME Shell 50.1.*
 
@@ -33,7 +33,7 @@ It shows the question in the bar until you tap an answer, dismiss it or the time
 
 - **The bar grows into a card** for it: 456 px tall (about 29 mm, which leaves about 39 mm of touchpad below), or the bar's own height if that is taller. The growth is animated. It shrinks back once the question is answered, dismissed or timed out, or goes on to the next question.
 - **It grows only when no touchpad finger is in the band it is about to cover**, so it never draws a card under a finger moving the pointer. If one is there, it waits for it to leave, at most 0.3 s, then grows anyway. Either way the touchpad finger stays a touchpad finger to the end of its stroke; only new touches in that band are the card's.
-- The card covers the bar's button and shortcut spots: the title and text over the first two button spots, a **Dismiss** cross in the third, and the answers in the three shortcut spots, left to right. The page dots stay and still turn the page, and the grip stays and still resizes the bar (its own height, which shows again when the card goes). A card shows the same way on both [pages](touchbar.md#the-two-pages).
+- The card covers the bar's button and shortcut spots: the title and text over the first two button spots, a **Dismiss** cross in the third, and the answers in the three shortcut spots, left to right. The page button stays and still turns the page, and the grip stays and still resizes the bar (its own height, which shows again when the card goes). A card shows the same way on both [pages](touchbar.md#the-two-pages).
 - Tap an answer and lift on it (or within 60 px of it, as for tap buttons) to choose it. Sliding away before lifting cancels the tap. A touch on the text does nothing. Dismiss closes the card with no answer (`dismissed`).
 - **A touch that starts within 0.3 s of the card appearing does nothing**, counted from when the bar grew, so a tap already on its way to a button, or to where the touchpad was, cannot land on an answer.
 - A touch keeps what it started on: a push-to-talk button held when a question appears stays held until you lift, and a finger on an answer when its question goes away (answered elsewhere, timed out) chooses nothing.

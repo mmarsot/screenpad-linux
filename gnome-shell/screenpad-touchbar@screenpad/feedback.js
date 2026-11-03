@@ -3,7 +3,7 @@
 //
 // The daemon counts the presses it accepts in the scene ("clicks"): a hold
 // button as the finger goes down, and a tap button, an app's tile, a
-// shortcut, the page dots, a card's answer or an apps page widget as the
+// shortcut, the page button, a card's answer or an apps page widget as the
 // finger lifts on it, which is when their action happens. A slide away, a
 // cancel, a swipe, the grip and the touchpad count nothing. The extension
 // plays click.wav (made by gnome-shell/make_click.py) each time the count

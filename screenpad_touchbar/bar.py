@@ -6,13 +6,13 @@ from .common import (
     ASK_ARM,
     BUTTON,
     CARD_HEIGHT,
-    DOTS,
-    DOTS_X,
     GRIP,
     HEIGHT_STEP,
     LONG_PRESS,
     MAX_HEIGHT,
     MIN_HEIGHT,
+    PAGE,
+    PAGE_X,
     SHORTCUT,
     SPOT_W,
 )
@@ -47,21 +47,21 @@ class Bar:
     - shortcut: a tap opens the app; held for LONG_PRESS it turns to
       "remove", and lifting then removes it; sliding away cancels either;
     - grip: dragging it up or down resizes the bar, saved on lift;
-    - dots: a tap turns the page (pager.tap()), while the pager is
+    - page: a tap turns the page (pager.tap()), while the pager is
       available (pager.available()); otherwise the spot is empty;
     - while a question shows (asks.shown()), the bar is CARD_HEIGHT tall
       (touch_height()) and the question covers the button and shortcut
       spots: lifting on an answer chooses it, lifting on Dismiss closes
       it with no answer. Touches that start within ASK_ARM of it showing,
-      or on its text, do nothing. The dots and the grip stay.
+      or on its text, do nothing. The page button and the grip stay.
     A touch keeps what it started on: a button held when a question appears
     stays held, and a touch on a question that goes away does nothing.
     launch(app), remove(index) and resize(height) do the saving and
     launching; remove and resize return whether they did. click() is
     called once for each press the bar accepts, when its action happens: a
     hold button's touch, and the lift on (or near) a tap button, an app's
-    tile, a shortcut, the dots or an answer; never a slide away, a cancel
-    or the grip. tiles has online(name) and event(name, kind, inside); asks
+    tile, a shortcut, the page button or an answer; never a slide away, a
+    cancel or the grip. tiles has online(name) and event(name, kind, inside); asks
     has shown(), the shown question's shown_at, choose(ask, option) and
     dismiss(ask).
     """
@@ -121,7 +121,7 @@ class Bar:
                         changed = True
                     continue
                 near = self.config.near_spot(t.spot, px, py, self.touch_height())
-                if (s.kind in (SHORTCUT, DOTS) or s.item.mode == "tap") and near != t.armed:
+                if (s.kind in (SHORTCUT, PAGE) or s.item.mode == "tap") and near != t.armed:
                     t.armed = near
                     changed = True
                 continue
@@ -133,7 +133,7 @@ class Bar:
             if s.kind == GRIP:
                 if not (kind == "end" and self.preview != self.config.height and self.resize(self.preview)):
                     self.preview = None
-            elif s.kind == DOTS:
+            elif s.kind == PAGE:
                 if lifted:
                     self.pager.tap()
             elif s.kind == SHORTCUT:
@@ -159,7 +159,7 @@ class Bar:
 
     def _begin(self, slot, px, py):
         ask = self.asks.shown() if self.asks else None
-        if ask and 0 <= py < self.touch_height() and px < DOTS_X:
+        if ask and 0 <= py < self.touch_height() and px < PAGE_X:
             # Too soon after the question appeared (with the bar grown
             # under it), or on its text: the contact is the question's,
             # and does nothing.
@@ -171,7 +171,7 @@ class Bar:
         if i is None:
             return False
         s = self.config.spots[i]
-        if s.kind == DOTS:
+        if s.kind == PAGE:
             if not (self.pager and self.pager.available()):
                 return False
             self.touch[slot] = Touch(i, self.clock())

@@ -56,7 +56,7 @@ MONITORS = ({"x": 0, "y": 1080, "width": 1920, "height": 1080}, {"x": 0, "y": 54
 
 def published(text=TILE_CONFIG, ask=None, page=HOME):
     """The scene the daemon publishes for a config, with a question showing,
-    on a page (the page dots shown)."""
+    on a page (the page button shown)."""
     with tempfile.TemporaryDirectory() as d, ConfigHome(d):
         daemon = Daemon(config(text), None)
         daemon.apps.asks.can_show = lambda: True
@@ -174,10 +174,12 @@ class SceneTests(unittest.TestCase):
             )
             if tile.get("glyph") == "grip":
                 self.assertEqual((content, name), ("grip", "Resize the touch bar"))
-            if tile.get("glyph") == "dots":
-                self.assertEqual((content, name), ("dots", "Page 1 of 2, touchpad"))
+            if tile.get("glyph") == "page":
+                # Drawn as its icon, the page a tap goes to.
+                self.assertEqual((content, name), ("icon", "Go to apps"))
+                self.assertEqual(tile["icon"], "view-app-grid-symbolic")
         self.assertIn(["text", "Run it?"], [d[1:] for d in drawn])
-        self.assertIn("dots", [d[1] for d in drawn])
+        self.assertIn("page", [t.get("glyph") for t in state["tiles"]])
         # Only plain class names: the rest is dropped.
         odd = {"style": "bad style", "classes": ["ok-1", "Bad", "x;y", 3], "glyph": "grip", "icon": "x"}
         self.assertEqual(
@@ -201,15 +203,19 @@ class SceneTests(unittest.TestCase):
                     "(() => { const g = m.barGeometry(v.s, v.monitor);"
                     " return [g, v.s.tiles.map(t => { const b = m.tileBox(t, g);"
                     " return [b, t.glyph === 'grip' ? m.gripSizes(b.width, b.height)"
-                    " : t.glyph === 'dots' ? m.dotsSizes(t, b.width, b.height, g.iconSize) : null]; })]; })()",
+                    " : t.glyph === 'page' ? m.iconSizeFor(t, g.iconSize, b.width) : null]; }),"
+                    " m.barGeometry({...v.s, tiles: v.s.tiles.filter(t => t.glyph !== 'page')}, v.monitor).iconSize];"
+                    " })()",
                     s=state,
                     monitor=monitor,
                 )
-                geometry, boxes = out
+                geometry, boxes, without_page = out
+                # The narrow page button does not shrink the others' icons.
+                self.assertEqual(geometry["iconSize"], without_page)
                 sx = monitor["width"] / PANEL_W
                 self.assertEqual(geometry["height"], round(height * monitor["height"] / PANEL_H))
                 self.assertGreaterEqual(geometry["iconSize"], 8)
-                self.assertEqual(state["tiles"][-1]["glyph"], "dots")
+                self.assertEqual(state["tiles"][-1]["glyph"], "page")
                 for tile, (box, grip) in zip(state["tiles"], boxes, strict=True):
                     msg = (height, monitor["width"], tile["id"])
                     self.assertGreaterEqual(box["width"], 0.6 * tile["width"] * sx, msg)
@@ -217,13 +223,14 @@ class SceneTests(unittest.TestCase):
                     if grip is None:
                         self.assertLessEqual(geometry["iconSize"], box["width"], msg)
                         continue
-                    if tile["glyph"] == "dots":
-                        dots = grip
-                        row = dots["current"] + (dots["pages"] - 1) * (dots["dot"] + dots["gap"])
-                        self.assertEqual((dots["pages"], dots["page"]), (2, 0), msg)
-                        self.assertGreaterEqual(dots["dot"], 4, msg)
-                        self.assertLessEqual(row, box["width"], msg)
-                        self.assertLessEqual(dots["current"] + dots["gap"] + dots["textSize"], box["height"], msg)
+                    if tile["glyph"] == "page":
+                        # The page button's icon fits it at every height,
+                        # as big as the others' while it has room.
+                        icon = grip
+                        self.assertGreaterEqual(icon, 8, msg)
+                        self.assertLessEqual(icon, min(box["width"], box["height"]), msg)
+                        if geometry["iconSize"] <= 0.8 * box["width"]:
+                            self.assertEqual(icon, geometry["iconSize"], msg)
                         continue
                     self.assertGreaterEqual(grip["arrow"], 8, msg)
                     self.assertLessEqual(2 * grip["arrow"] + grip["bar"] + 2 * grip["gap"], box["height"], msg)
@@ -278,7 +285,13 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(out[2], {"screensaver": {"clock": False}, "surface": None})
         self.assertEqual(out[3], {"screensaver": None, "surface": None})
         self.assertEqual(out[4]["surface"], {"title": "", "text": "", "hint": ""})
-        # The dots tile changes with the page, which rebuilds the bar.
+        # The page button shows where a tap goes: apps from the touchpad
+        # page, the touchpad from the apps page. It changes with the page,
+        # which rebuilds the bar.
+        self.assertEqual(
+            [(s["tiles"][-1]["icon"], s["tiles"][-1]["label"]) for s in (home, apps)],
+            [("view-app-grid-symbolic", "Go to apps"), ("input-touchpad-symbolic", "Go to the touchpad")],
+        )
         self.assertNotEqual(
             *js(
                 "scene.js",
@@ -401,8 +414,6 @@ class StylesheetTests(unittest.TestCase):
             ".screenpad-touchbar-badge",
             ".screenpad-touchbar-text",
             ".screenpad-touchbar-grip-bar",
-            ".screenpad-touchbar-dot",
-            ".screenpad-touchbar-dot.current",
             ".screenpad-touchbar-screensaver",
             ".screenpad-touchbar-clock",
             ".screenpad-touchbar-battery",

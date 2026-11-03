@@ -23,8 +23,8 @@ from screenpad_touchbar.keys import KeyEmitter
 
 # BAR_CONFIG's spots, in panel pixels: push to talk (hold) at 0, mute (tap)
 # at 272, Term (hold, a command) at 544, the shortcuts at 856 and 1128, the
-# page dots at 1672 and the grip at 1816. The bar is 160 rows high.
-PTT, MUTE, FILES, DOTS, GRIP = 100, 400, 1000, 1700, 1850
+# page button at 1672 and the grip at 1816. The bar is 160 rows high.
+PTT, MUTE, FILES, PAGE, GRIP = 100, 400, 1000, 1700, 1850
 
 
 class Harness:
@@ -91,8 +91,8 @@ class CountTests(unittest.TestCase):
         h.bar(("move", 0, FILES - 500, 80), ("end", 0, FILES - 500, 80))
         self.assertEqual(h.daemon.pager.page, APPS)
         self.assertEqual(h.clicks(), 0)
-        # A tap on the page dots turns it back, with one.
-        h.tap(DOTS)
+        # A tap on the page button turns it back, with one.
+        h.tap(PAGE)
         self.assertEqual((h.daemon.pager.page, h.clicks()), (HOME, 1))
 
     def test_a_card_answer_clicks_and_a_touch_too_soon_does_not(self):
