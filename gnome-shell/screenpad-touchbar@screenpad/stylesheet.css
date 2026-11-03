@@ -105,6 +105,16 @@
     color: #ffffff;
 }
 
+/* A second line stays readable on a colored tone. */
+.screenpad-touchbar-spot.tone-accept .screenpad-touchbar-text,
+.screenpad-touchbar-spot.tone-reject .screenpad-touchbar-text {
+    color: #f0f0f4;
+}
+
+.screenpad-touchbar-spot.tone-warning .screenpad-touchbar-text {
+    color: #2a2000;
+}
+
 /* A question: its text over the button spots, its answers in the shortcut
    spots, each lighter while a finger is on it. */
 .screenpad-touchbar-ask-text {
@@ -179,4 +189,31 @@
 
 .screenpad-touchbar-surface-hint {
     color: #9a9aa2;
+}
+
+/* The apps page's widgets: colored by their tone, lighter while a finger is
+   on them. A widget that takes no touch (a title, text) is darker; one
+   that takes a long press has a light edge, white once held long enough
+   that lifting is a long press. Fixed-width lines show a program's own
+   text, as in its terminal. */
+.screenpad-touchbar-widget {
+    border: 2px solid transparent;
+}
+
+.screenpad-touchbar-widget.inert.tone-neutral {
+    background-color: #1c1c21;
+}
+
+.screenpad-touchbar-widget.long {
+    border: 2px solid #9a9aa2;
+}
+
+.screenpad-touchbar-widget.held {
+    border: 4px solid #ffffff;
+}
+
+.screenpad-touchbar-lines {
+    font-family: monospace;
+    font-weight: normal;
+    color: #e0e0e6;
 }

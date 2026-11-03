@@ -1,6 +1,7 @@
 """What the touch bar tests share: the checkout on sys.path, the GDX1505's axes,
 events in device units, a Splitter fed whole frames, a config home, fake and
-real app connections, and the extension's plain modules run under node."""
+real app connections, the extension's plain modules run under node, and an
+app's page for the apps surface."""
 
 import json
 import os
@@ -26,6 +27,7 @@ from screenpad_touchbar.codes import (
     EV_SYN,
     SYN_REPORT,
 )
+from screenpad_touchbar.common import HEADER_H, PANEL_H
 from screenpad_touchbar.config import parse_config
 from screenpad_touchbar.splitter import BAR, PAD, Axes, Splitter
 
@@ -248,3 +250,46 @@ def notify(**kw):
     }
     msg.update(kw)
     return msg
+
+
+# The apps surface's tests: a bar of TOP rows, so the page's grid starts
+# at GRID_Y and is GRID_H rows tall.
+TOP = 160  # the bar's own height in these tests
+GRID_Y = TOP + HEADER_H
+GRID_H = PANEL_H - GRID_Y
+
+
+class Clock:
+    def __init__(self, now=100.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def page_msg(**kw):
+    """A page message: Allow (tap or long press), Deny and the prompt's
+    lines, in a 3 by 2 grid; kw changes fields."""
+    msg = {
+        "op": "page",
+        "page": "agents",
+        "title": "Agents",
+        "text": "1 blocked",
+        "tone": "warning",
+        "columns": 3,
+        "rows": 2,
+        "widgets": [
+            {"id": "prompt", "col": 0, "row": 0, "cols": 3, "lines": ["Run npm test?", "1. Yes"], "touch": "none"},
+            {"id": "allow", "col": 0, "row": 1, "label": "Allow", "tone": "accept", "touch": "long"},
+            {"id": "deny", "col": 2, "row": 1, "label": "Deny", "tone": "reject"},
+        ],
+    }
+    msg.update(kw)
+    return msg
+
+
+def hello(apps, name="fleet"):
+    client = FakeClient()
+    apps.connect(client)
+    apps.handle(client, {"op": "hello", "app": name, "tiles": []})
+    return client

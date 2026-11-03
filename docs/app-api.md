@@ -1,6 +1,6 @@
 # Touch bar app API
 
-Other programs can use the touch bar: an **app** draws and handles button spots the config gives it, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
+Other programs can use the touch bar: an **app** draws and handles button spots the config gives it and [pages of large widgets](#pages-on-the-apps-page) on the apps page, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
 
 ```
 $XDG_RUNTIME_DIR/screenpad/touchbar.sock
@@ -41,7 +41,7 @@ It shows the question in the bar until you tap an answer, dismiss it or the time
 
 ### When questions show
 
-Only while the daemon holds the touchpad (the ScreenPad is on) **and** the bar is on screen, drawn by an extension that knows questions. The extension says so in `renderer.json` next to the socket: `{"protocol": 3, "drawn": true}` while the bar is on screen (questions need protocol 2 or later), `"drawn": false` while it is not (no ScreenPad monitor found, for example). It writes the file while it is enabled and removes it when it is disabled. An extension from before this version, still loaded until you log out and in, does not write it, and could not draw a question. The rule behind all of this: a touch must never answer a question nobody can see. GNOME also disables extensions on the lock screen, so no question shows, or takes an answer, while the screen is locked.
+Only while the daemon holds the touchpad (the ScreenPad is on) **and** the bar is on screen, drawn by an extension that knows questions. The extension says so in `renderer.json` next to the socket: `{"protocol": 4, "drawn": true}` while the bar is on screen (questions need protocol 2 or later), `"drawn": false` while it is not (no ScreenPad monitor found, for example). It writes the file while it is enabled and removes it when it is disabled. An extension from before this version, still loaded until you log out and in, does not write it, and could not draw a question. The rule behind all of this: a touch must never answer a question nobody can see. GNOME also disables extensions on the lock screen, so no question shows, or takes an answer, while the screen is locked.
 
 When questions cannot show, a new question is answered `unavailable` at once, and questions already waiting are answered `unavailable` too. Whoever asked can then ask another way, for example in a terminal.
 
@@ -57,6 +57,8 @@ Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB
 | `{"op": "set", "tile": "agents", "label": "1 blocked", "tone": "warning", "badge": "2"}` | What one of your tiles shows. Fields: `icon` (an icon name from the theme, or an absolute image path), `label` (at most 32 characters), `text` (a second line, at most 48), `badge` (a short count in the corner, at most 4), `tone` (as for answers). Each `set` replaces the previous one. The extension draws the icon if there is one, otherwise the label and text. A tile you have not `set` yet shows the config's `icon` or `label` |
 | `{"op": "ask", "id": "q1", "title": "Run npm test?", "text": "in ~/api", "options": [{"id": "no", "label": "Deny", "tone": "reject"}, {"id": "yes", "label": "Allow once", "tone": "accept"}], "timeout": 45}` | Ask a question. `id` names it in the answer and in `cancel`; it must be unique among your waiting questions. The limits are the `ask` command's |
 | `{"op": "cancel", "id": "q1"}` | Withdraw a waiting question; it is answered `cancelled` |
+| `{"op": "page", "page": "agents", "title": "Agents", "widgets": [...]}` | Give the apps page a page of widgets, or replace it; see [Pages on the apps page](#pages-on-the-apps-page) |
+| `{"op": "unpage", "page": "agents"}` | Take one of your pages away |
 | `{"op": "ping"}` | Answered `{"op": "pong"}` |
 
 ### To an app
@@ -66,10 +68,11 @@ Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB
 | `{"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": [], "taken": []}` | The answer to `hello`: your tiles that have a spot in the config (`placed`), those that do not (`unplaced`: nothing shows them until the config gives them one), and those another app already provides (`taken`) |
 | `{"op": "event", "tile": "agents", "type": "down"}` | A finger went down on your tile |
 | `{"op": "event", "tile": "agents", "type": "up", "inside": true}` | It lifted: `inside` is true when it lifted on the tile (or within 60 px of it), which is a tap; false when it slid away, or the touch was cancelled. Hold-style behavior is yours to build from `down` and `up` |
+| `{"op": "event", "page": "agents", "widget": "allow", "type": "tap"}` | A touch on a widget of your page: `down`, then one of `tap`, `long` or `cancel`; see [Pages on the apps page](#pages-on-the-apps-page) |
 | `{"op": "answer", "id": "q1", "option": "yes", "reason": "chosen"}` | The answer to a question. `option` is `null` when there is none, with `reason` `dismissed` (the user closed the card), `timeout`, `unavailable` or `cancelled` |
 | `{"op": "error", "request": "set", "message": "..."}` | A message was refused; `id` is added when the message had one. The connection stays open |
 
-When an app disconnects, its tiles go back to the config's dimmed look and its waiting questions are dropped unanswered.
+When an app disconnects, its tiles go back to the config's dimmed look, its pages leave the apps page and its waiting questions are dropped unanswered.
 
 ## Notifications
 
@@ -98,6 +101,57 @@ tile = "agents"
 ```
 
 While no app provides `agents`, the spot shows that icon (or label) dimmed and ignores touches.
+
+## Pages on the apps page
+
+The [apps page](touchbar.md#the-two-pages) is the panel below the bar, swiped to from the bar. It opens on the **home page**, a list of the pages apps give it; tapping one opens it. An app's page has a header with **Home** (back to the list) and the page's title, and under it a grid of large widgets the app lays out. The daemon draws them through the extension, decides what each touch is, and tells the app.
+
+![An app's page: Home and the page's title in the header, a widget of fixed-width lines across the top, then Allow once, Interrupt and Deny](images/touchbar-app-page.png)
+
+*A page of four widgets in a 3 by 2 grid, as the example below gives it. Rendered by the extension in a headless GNOME Shell 50.1.*
+
+```json
+{"op": "page", "page": "agents", "title": "Agents", "text": "1 blocked", "tone": "warning",
+ "columns": 3, "rows": 2, "widgets": [
+  {"id": "prompt", "col": 0, "row": 0, "cols": 3, "touch": "none",
+   "lines": ["Bash command", "  npm test", "Do you want to proceed?"]},
+  {"id": "allow", "col": 0, "row": 1, "label": "Allow once", "text": "hold: Always", "tone": "accept", "touch": "long"},
+  {"id": "interrupt", "col": 1, "row": 1, "label": "Interrupt", "icon": "media-playback-stop-symbolic"},
+  {"id": "deny", "col": 2, "row": 1, "label": "Deny", "tone": "reject"}]}
+```
+
+| Page field | Meaning |
+|---|---|
+| `page` | its name, as for apps (lower case letters, digits, `.`, `_`, `-`, at most 32). A page belongs to the first app that gives it, until that app disconnects or sends `unpage`; each app has at most 4 |
+| `title`, `text`, `icon`, `badge`, `tone` | what the home page's list shows for it (`title` at most 32 characters, else the page's name; `text` at most 48), and `title` in its header |
+| `columns`, `rows` | its grid: 1 to 6 columns (default 4) by 1 to 4 rows (default 2) |
+| `widgets` | at most 24 widgets; none may overlap |
+
+| Widget field | Meaning |
+|---|---|
+| `id` | its name in events: letters, digits, `.`, `_`, `-`, at most 32, unique in the page |
+| `col`, `row` | its top left cell, from 0 |
+| `cols`, `rows` | how many cells it covers, default 1 |
+| `label` | a large line, centered (at most 32 characters) |
+| `text` | a smaller line under it, which wraps (at most 200) |
+| `lines` | up to 16 lines of fixed-width text, each at most 120 characters, drawn as they are (a program's own screen); they shrink to fit the widget. Give such a widget no `icon` or `text` |
+| `icon` | an icon name from the theme, or an absolute image path, over the label |
+| `badge` | a short count in the corner, at most 4 characters |
+| `tone` | its color, as for answers: `neutral`, `accept`, `reject`, `warning` |
+| `touch` | `tap` (the default), `long` (a tap, or a long press), or `none` (shown only; touches on it do nothing) |
+
+A widget must show something: a `label`, `text`, `lines` or an `icon`. Each `page` replaces that page's previous version whole; sending the same page again changes nothing on screen.
+
+**What a touch does.**
+
+- The grid fills the panel below the header, which sits under the bar's own height: a taller bar makes the cells shorter. A card growing out of the bar covers the top of the page for as long as it shows; touches there are the card's.
+- A finger on a widget sends `down`; lifting on it (or within 60 px of it) sends `tap`. Sliding away and lifting sends `cancel`.
+- A `long` widget held for 0.8 s gets a white edge: lifting then sends `long` instead of `tap`. Sliding away still cancels.
+- **A touch that starts within 0.3 s of a widget appearing does nothing**: the page opening or the apps page turning to, the widget being new, changed by a `page` or moved (the bar resized), or a card growing over the page or going. A tap already on its way when the page changed lands on nothing.
+- **A widget that changes or goes while a finger is on it sends `cancel`**, and that finger chooses nothing, even if the new version has the same id. So a widget's meaning cannot change under a finger: answer only `tap` and `long`, and only for what the page showed then.
+- A touch keeps what it started on, as on the bar: one that started on a widget stays that widget's (or nothing) until it lifts, and a page turning to the touchpad under it cancels it.
+
+The pages need the extension of this version (`renderer.json` protocol 4). An older extension, still loaded until you log out and in, shows only that the apps page needs it, and touches there do nothing.
 
 ## A minimal app
 

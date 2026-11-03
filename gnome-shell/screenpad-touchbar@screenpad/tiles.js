@@ -18,7 +18,7 @@ import {
     tileContent,
 } from './scene.js';
 
-function iconFor(name) {
+export function iconFor(name) {
     if (name.startsWith('/')) return Gio.FileIcon.new(Gio.File.new_for_path(name));
     return Gio.ThemedIcon.new(name);
 }

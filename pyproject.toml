@@ -65,9 +65,11 @@ module = [
     "test_touchbar_config",
     "test_touchbar_extension",
     "test_touchbar_extension_cards",
+    "test_touchbar_extension_widgets",
     "test_touchbar_notify",
     "test_touchbar_pager",
     "test_touchbar_scene",
+    "test_touchbar_surface",
     "touchbar_support",
 ]
 disable_error_code = ["func-returns-value", "union-attr", "var-annotated"]
