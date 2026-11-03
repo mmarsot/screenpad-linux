@@ -161,7 +161,7 @@ class MovesTests(unittest.TestCase):
     def answer(self, option):
         """Tap an answer of the card shown (0 Cancel, 1 Replace)."""
         self.clock.now += ASK_ARM
-        x, width = ask_option_box(self.daemon.apps.asks.shown(), option)
+        x, width = ask_option_box(self.daemon.apps.asks.shown(), option, self.daemon.bar.card_height())
         x += width // 2
         self.down((x, 200))
         self.frame(lift(0))

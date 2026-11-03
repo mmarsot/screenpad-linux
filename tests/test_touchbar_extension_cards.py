@@ -126,7 +126,7 @@ class AnswerTests(unittest.TestCase):
     def tap(self, option):
         """The answer the extension gets for a tap at the middle of an
         option's tile (an index, or DISMISS) on the shown card."""
-        x, width = ask_option_box(self.apps.asks.shown(), option)
+        x, width = ask_option_box(self.apps.asks.shown(), option, self.bar.card_height())
         x += width // 2
         self.bar.handle([("begin", 0, x, 300), ("end", 0, x, 300)])
         [answer] = [m for m in self.ext.sent if m["op"] == "answer"]

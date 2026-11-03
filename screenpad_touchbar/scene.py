@@ -2,7 +2,6 @@
 
 from .common import (
     APP,
-    CARD_HEIGHT,
     GRIP,
     GROUP_GAP,
     PAGE,
@@ -46,6 +45,7 @@ TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline", "moving",
 # A question (an attention card): its title and text, a narrow Dismiss,
 # then its answers up to the page button, GROUP_GAP after Dismiss. The text
 # and the answers share the rest: an answer is as wide as the card is tall
+# (height: CARD_HEIGHT, or the bar's own height if taller, Bar.card_height())
 # while the text keeps at least one and a half spots (one or two answers),
 # else (three) the answers share what the text leaves. The page button and
 # the grip stay.
@@ -118,41 +118,44 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
     return tiles
 
 
-def ask_answer_width(ask):
-    """The width of each of a question's answers."""
-    return min(CARD_HEIGHT, (ASK_SPACE - ASK_TEXT_MIN) // len(ask.options))
+def ask_answer_width(ask, height):
+    """The width of each of a question's answers on a card height tall."""
+    return min(height, (ASK_SPACE - ASK_TEXT_MIN) // len(ask.options))
 
 
-def ask_text_width(ask):
+def ask_text_width(ask, height):
     """The width of a question's text tile, at the left of the bar."""
-    return ASK_SPACE - len(ask.options) * ask_answer_width(ask)
+    return ASK_SPACE - len(ask.options) * ask_answer_width(ask, height)
 
 
-def ask_option_box(ask, option):
-    """Where an answer's tile (an index, or DISMISS) is: its x and width."""
+def ask_option_box(ask, option, height):
+    """Where an answer's tile (an index, or DISMISS) is on a card height
+    tall: its x and width."""
     if option == DISMISS:
-        return ask_text_width(ask), DISMISS_W
-    width = ask_answer_width(ask)
-    return ask_text_width(ask) + DISMISS_W + GROUP_GAP + option * width, width
+        return ask_text_width(ask, height), DISMISS_W
+    width = ask_answer_width(ask, height)
+    return ask_text_width(ask, height) + DISMISS_W + GROUP_GAP + option * width, width
 
 
-def ask_option_at(ask, px):
-    """The answer under a touch at px (an index, or DISMISS), or None."""
+def ask_option_at(ask, px, height):
+    """The answer under a touch at px on a card height tall (an index, or
+    DISMISS), or None."""
     for option in (DISMISS, *range(len(ask.options))):
-        x, width = ask_option_box(ask, option)
+        x, width = ask_option_box(ask, option, height)
         if x <= px < x + width:
             return option
     return None
 
 
-def ask_tiles(ask, pressed=(), queued=0):
-    """The tiles of a question: its text, Dismiss, then one tile per answer."""
-    text = {"id": "ask-text", "x": 0, "width": ask_text_width(ask), "style": "ask-text", "title": ask.title}
+def ask_tiles(ask, height, pressed=(), queued=0):
+    """The tiles of a question on a card height tall: its text, Dismiss,
+    then one tile per answer."""
+    text = {"id": "ask-text", "x": 0, "width": ask_text_width(ask, height), "style": "ask-text", "title": ask.title}
     if ask.text:
         text["text"] = ask.text
     if queued:
         text["badge"] = "+%d" % queued
-    x, width = ask_option_box(ask, DISMISS)
+    x, width = ask_option_box(ask, DISMISS, height)
     dismiss = {
         "id": "ask-dismiss",
         "x": x,
@@ -168,7 +171,7 @@ def ask_tiles(ask, pressed=(), queued=0):
         dismiss["pressed"] = True
     tiles = [text, dismiss]
     for k, o in enumerate(ask.options):
-        x, width = ask_option_box(ask, k)
+        x, width = ask_option_box(ask, k, height)
         tile = {
             "id": "ask-option-%d" % k,
             "x": x,

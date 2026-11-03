@@ -195,7 +195,7 @@ class NotifyAppsTests(unittest.TestCase):
             agent, {"op": "ask", "id": "q", "title": "Run npm test?", "options": [{"id": "yes", "label": "Allow once"}]}
         )
         self.send()
-        tiles = ask_tiles(self.apps.asks.shown(), queued=len(self.apps.asks.queue) - 1)
+        tiles = ask_tiles(self.apps.asks.shown(), self.bar.card_height(), queued=len(self.apps.asks.queue) - 1)
         self.assertEqual((tiles[0]["title"], tiles[0]["badge"]), ("Run npm test?", "+1"))
 
     def test_bad_messages(self):

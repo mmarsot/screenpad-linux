@@ -196,7 +196,7 @@ class Bar:
             # under it), or on its text: the contact is the question's,
             # and does nothing.
             fresh = self.clock() < ask.shown_at + ASK_ARM
-            option = None if fresh else ask_option_at(ask, px)
+            option = None if fresh else ask_option_at(ask, px, self.card_height())
             self.ask_touch[slot] = AskTouch(ask, option)
             return option is not None
         i = self.config.spot_at(px, py, self.touch_height())
@@ -243,8 +243,9 @@ class Bar:
             if kind != "move":
                 del self.ask_touch[slot]
             return False
-        x, width = ask_option_box(t.ask, t.option)
-        here = near(x, width, max(self.config.height, CARD_HEIGHT), px, py)
+        height = self.card_height()
+        x, width = ask_option_box(t.ask, t.option, height)
+        here = near(x, width, height, px, py)
         if kind == "move":
             if here != t.armed:
                 t.armed = here
@@ -309,8 +310,13 @@ class Bar:
         """The height drawn: the bar's own, or CARD_HEIGHT while a question
         shows on a shorter bar."""
         if self.asks and self.asks.shown():
-            return max(self.base_height(), CARD_HEIGHT)
+            return self.card_height()
         return self.base_height()
+
+    def card_height(self):
+        """A card's height, drawn and touched: CARD_HEIGHT, or the bar's own
+        height (the grip's while it moves) if taller."""
+        return max(self.base_height(), CARD_HEIGHT)
 
     def pressed(self):
         return sorted({t.spot for t in self.touch.values() if t.armed})
