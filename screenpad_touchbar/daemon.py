@@ -40,7 +40,6 @@ from .config import config_path, load_config
 from .config_edit import edit_config, remove_app
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
-from .items import app_label
 from .keys import KeyEmitter
 from .pager import Pager
 from .scene import ask_tiles, page_look, spot_tiles
@@ -379,8 +378,6 @@ class Daemon:
             log("keeping the current bar: %s" % e)
             return
         self.config = config
-        # An app installed since shows its name.
-        app_label.cache_clear()
         self.apps.set_placed(config.tiles())
         self.apps.notify_policy = config.notifications
         self.pager.configure(config.pages)

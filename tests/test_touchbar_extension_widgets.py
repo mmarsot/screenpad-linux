@@ -110,8 +110,8 @@ class ExtensionTests(unittest.TestCase):
         self.assertEqual(
             out,
             [
-                ["org.gnome.Settings.desktop", "org.gnome.Settings.desktop", None, True, "Settings"],
-                ["b.desktop", None, "x-symbolic", True, "b"],
+                ["org.gnome.Settings.desktop", "org.gnome.Settings.desktop", None, True, None],
+                ["b.desktop", None, "x-symbolic", True, None],
             ],
         )
         launch = js(

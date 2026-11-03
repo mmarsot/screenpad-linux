@@ -37,6 +37,11 @@ const PowerProxy = Gio.DBusProxy.makeProxyWrapper(
     loadInterfaceXML('org.freedesktop.UPower.Device'),
 );
 
+const lookupApp = id => Shell.AppSystem.get_default().lookup_app(id);
+
+// An app's name on the apps page, as GNOME shows it, else its id.
+const appName = id => lookupApp(id)?.get_name() || id;
+
 export class Pages {
     constructor() {
         this._saver = null;
@@ -263,7 +268,11 @@ export class Pages {
             height: monitor.height,
         });
         const scale = monitor.height / panel[1];
-        for (const widget of widgets) {
+        for (const given of widgets) {
+            const widget =
+                given.app && !(given.title ?? given.label)
+                    ? {...given, label: appName(given.app)}
+                    : given;
             const box = widgetBox(widget, panel, monitor);
             const actor = this._widgetActor(widget, box, widgetParts(widget, box, scale));
             this._surface.add_child(actor);
@@ -301,7 +310,7 @@ export class Pages {
             );
         } else if (parts.app) {
             // An app on the apps page: its own icon, as the bar draws one.
-            const app = Shell.AppSystem.get_default().lookup_app(parts.app);
+            const app = lookupApp(parts.app);
             const icon = app
                 ? app.create_icon_texture(parts.iconSize)
                 : new St.Icon({icon_name: 'image-missing', icon_size: parts.iconSize});

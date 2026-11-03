@@ -12,12 +12,10 @@ An item is one of five kinds, by the one key that says what it does:
   tap opens.
 
 Every kind goes on the bar and on the apps page alike; icon and label are
-what it shows (an app's own icon and name, an app's tile or page as the app
-draws it, unless set).
+what it shows (an app's own icon and name, which the extension looks
+up, an app's tile or page as the app draws it, unless set).
 """
 
-import configparser
-import functools
 import os
 import re
 import shlex
@@ -161,33 +159,3 @@ def parse_item(b):
     else:
         item.name = _name(b[kind], kind)
     return item
-
-
-def _desktop_file(app):
-    """The path of an app's desktop file, where GLib looks for it, or None."""
-    home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    dirs = [home] + (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
-    for d in dirs:
-        path = os.path.join(d, "applications", app)
-        if d and os.path.isfile(path):
-            return path
-    return None
-
-
-@functools.cache
-def app_label(app):
-    """An app's name, from its desktop file (Name), else from its id:
-    "org.gnome.Nautilus.desktop" is "Nautilus". Read once per app; the
-    daemon forgets them when it reloads the config (cache_clear())."""
-    path = _desktop_file(app)
-    if path:
-        parser = configparser.RawConfigParser(strict=False, interpolation=None)
-        parser.optionxform = str  # type: ignore[assignment,method-assign]  # desktop keys are case sensitive
-        try:
-            parser.read(path, encoding="utf-8")
-            name = parser.get("Desktop Entry", "Name", fallback="").strip()
-        except (configparser.Error, OSError, UnicodeDecodeError):
-            name = ""
-        if name:
-            return name[:32]
-    return app[: -len(".desktop")].rsplit(".", 1)[-1][:32]

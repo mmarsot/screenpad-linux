@@ -22,7 +22,6 @@ from screenpad_touchbar.common import (
 )
 from screenpad_touchbar.config import load_config
 from screenpad_touchbar.defaults import EXAMPLE_CONFIG
-from screenpad_touchbar.items import app_label
 from screenpad_touchbar.keys import KeyEmitter, parse_key
 
 
@@ -290,25 +289,6 @@ icon = "x-symbolic"
             with self.assertRaises(ConfigError) as cm:
                 load_config()
             self.assertIn(path, str(cm.exception))
-
-    def test_app_labels(self):
-        with tempfile.TemporaryDirectory() as d:
-            apps = os.path.join(d, "applications")
-            os.makedirs(apps)
-            with open(os.path.join(apps, "com.example.Tool.desktop"), "w") as f:
-                f.write("[Desktop Entry]\nName=Example Tool\nName[fr]=Outil\nExec=tool\n")
-            old = {k: os.environ.get(k) for k in ("XDG_DATA_HOME", "XDG_DATA_DIRS")}
-            os.environ.update(XDG_DATA_HOME=d, XDG_DATA_DIRS=os.path.join(d, "none"))
-            app_label.cache_clear()
-            try:
-                self.assertEqual(app_label("com.example.Tool.desktop"), "Example Tool")
-                # Without a desktop file, from its id.
-                self.assertEqual(app_label("org.gnome.Nautilus.desktop"), "Nautilus")
-                self.assertEqual(app_label("bitwarden.desktop"), "bitwarden")
-            finally:
-                for k, v in old.items():
-                    os.environ.pop(k, None) if v is None else os.environ.update({k: v})
-                app_label.cache_clear()
 
 
 class TileConfigTests(unittest.TestCase):

@@ -38,7 +38,7 @@ from .common import (
     TILE,
     TONES,
 )
-from .items import Item, app_label
+from .items import Item
 from .scene import page_look
 
 # The surface's own widgets: Home, a page in the home page's list, and an
@@ -212,10 +212,7 @@ class Surface:
                         shown.update(item.looks())
                     cells.append((ITEM + str(n), shown, "tap", item))
             elif item.kind == APP:
-                look = {"label": item.label or app_label(item.name), "app": item.name}
-                if item.icon:
-                    look["icon"] = item.icon
-                cells.append((ITEM + str(n), look, "tap", item))
+                cells.append((ITEM + str(n), {"app": item.name, **item.looks()}, "tap", item))
             else:
                 cells.append((ITEM + str(n), item.looks(), "tap", item))
         placed = {i.name for i in items if i.kind == PAGE_ITEM}

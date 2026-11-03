@@ -126,7 +126,8 @@ class ItemsTests(unittest.TestCase):
         self.assertEqual(
             [(x["id"], x.get("label")) for x in cells],
             [
-                ("surface/item:0", "Settings"),
+                # An app without a label: the extension names it.
+                ("surface/item:0", None),
                 ("surface/item:1", "Talk"),
                 ("surface/item:2", "Mute"),
                 ("surface/item:3", "Run"),
