@@ -131,8 +131,8 @@ MAX_RETURN_AFTER = 3600
 # page's title and, on an app's page, Home; under it the page's grid of
 # widgets, at most MAX_COLUMNS by MAX_ROWS cells. The home page lists the
 # apps' pages HOME_COLUMNS by HOME_ROWS, so it holds at most that many in
-# all. An app has at most MAX_PAGES pages
-# of at most MAX_WIDGETS widgets; a widget's lines at most MAX_LINES.
+# all. An app has at most MAX_PAGES pages of at most MAX_WIDGETS widgets;
+# a widget's lines at most MAX_LINES.
 HEADER_H = 144
 HOME_W = 2 * SPOT_W
 MAX_COLUMNS = 6
