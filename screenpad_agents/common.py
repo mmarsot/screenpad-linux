@@ -45,6 +45,13 @@ MAX_LINE_CHARS = 120
 # firstmate's interrupt (bin/fm-control.sh <task> interrupt) waits for the
 # harness to acknowledge, about 5 s; past this it is reported failed.
 CONTROL_TIMEOUT = 60.0
+# Finding and opening the decisions board: fm-bearings-board.sh path, the
+# Lavish session listing (node, about 0.5 s), and the URL handler.
+BOARD_TIMEOUT = 15.0
+LAVISH_TIMEOUT = 15.0
+OPEN_TIMEOUT = 15.0
+# The card that says no board is open stays this long, unless dismissed.
+BOARD_CARD_TIMEOUT = 30
 
 
 class AgentsError(Exception):

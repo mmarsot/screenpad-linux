@@ -17,6 +17,18 @@ knows the task's harness and checks what it did:
   FM_HOME=<home> <code>/bin/fm-control.sh <task id> interrupt
 
 It is the only firstmate command that acts; nothing writes into firstmate.
+
+Tapping Captain's Call opens firstmate's decisions board, the Lavish board
+of /bearings lavish, in the browser on the main screen, where the decisions
+are answered; the panel answers none. Its file is what firstmate says,
+
+  FM_HOME=<home> <code>/bin/fm-bearings-board.sh path
+
+and it is open when Lavish's own session listing (lavish-axi, run with no
+argument) shows that file "open", with its session's URL. That URL, and only
+a loopback http one, is handed to the desktop's URL handler (gio open). With
+no session open nothing is built or armed from here: firstmate composes the
+board, so the panel says to ask it for /bearings lavish.
 """
 
 import json
@@ -24,11 +36,16 @@ import os
 import re
 import subprocess
 
-from .common import BEARINGS_SCHEMA, CONTROL_TIMEOUT, FIRSTMATE_TIMEOUT
+from .common import BEARINGS_SCHEMA, BOARD_TIMEOUT, CONTROL_TIMEOUT, FIRSTMATE_TIMEOUT, LAVISH_TIMEOUT, OPEN_TIMEOUT
 
 # A task id as fm-control.sh takes it: a bare id, never an option or an
 # endpoint.
 TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+# A row of lavish-axi's session listing after its file and comma:
+# <status>,"<url>",... (the listing is TOON: sessions[N]{file,status,url,...}).
+SESSION_ROW = re.compile(r'(?P<status>[^,]*),"(?P<url>[^"]*)"')
+# The board's URL as Lavish serves it: on this machine only.
+BOARD_URL = re.compile(r"http://(127\.0\.0\.1|localhost|\[::1\]):[0-9]{1,5}/[A-Za-z0-9._~/%-]*")
 
 
 class FirstmateError(Exception):
@@ -74,8 +91,19 @@ class Bearings:
 
 
 class Firstmate:
-    def __init__(self, home, bearings, control, run=subprocess.run, timeout=FIRSTMATE_TIMEOUT):
+    def __init__(
+        self,
+        home,
+        bearings,
+        control,
+        run=subprocess.run,
+        timeout=FIRSTMATE_TIMEOUT,
+        board=None,
+        lavish=("lavish-axi",),
+        opener=("gio", "open"),
+    ):
         self.home, self.bearings, self.control, self._run, self.timeout = home, bearings, control, run, timeout
+        self.board, self.lavish, self.opener = board, list(lavish), list(opener)
 
     def read(self):
         """The Bearings now; FirstmateError when the reader fails."""
@@ -95,11 +123,33 @@ class Firstmate:
         out = (done.stdout or "").strip().splitlines()
         return out[-1] if out else "interrupted"
 
-    def _call(self, argv, what, timeout):
-        """Run one of firstmate's commands with FM_HOME, and none of the other
-        FM_* variables of this environment."""
+    def board_url(self):
+        """The URL of firstmate's decisions board when Lavish has it open,
+        None when it has not; FirstmateError when either cannot say."""
+        if not self.board or not os.access(self.board, os.X_OK):
+            raise FirstmateError("firstmate has no bin/fm-bearings-board.sh")
+        done = self._call([self.board, "path"], "fm-bearings-board.sh path", BOARD_TIMEOUT)
+        lines = (done.stdout or "").strip().splitlines()
+        if len(lines) != 1 or not os.path.isabs(lines[0]):
+            raise FirstmateError("fm-bearings-board.sh path printed no board path")
+        listing = self._call(self.lavish, "lavish-axi", LAVISH_TIMEOUT, home=False)
+        return listed_url(listing.stdout or "", os.path.realpath(lines[0]))
+
+    def open_board(self):
+        """Open the decisions board in the browser: its URL, or None when no
+        board is open (then nothing is opened); FirstmateError on a failure."""
+        url = self.board_url()
+        if url is not None:
+            self._call(self.opener + [url], "opening the board", OPEN_TIMEOUT, home=False)
+        return url
+
+    def _call(self, argv, what, timeout, home=True):
+        """Run one of firstmate's commands with FM_HOME (or, home False,
+        another program without it), and none of the other FM_* variables of
+        this environment."""
         env = {k: v for k, v in os.environ.items() if not k.startswith("FM_")}
-        env["FM_HOME"] = self.home
+        if home:
+            env["FM_HOME"] = self.home
         try:
             done = self._run(argv, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
         except OSError as e:
@@ -135,6 +185,22 @@ def parse(model):
         flight = flights.get(task_id, {})
         tasks[target] = Task(task_id, _text(flight.get("name")), _text(flight.get("doing")))
     return Bearings(len(decisions) + len(captain), more, tasks)
+
+
+def listed_url(listing, path):
+    """The URL lavish-axi's listing gives the session open on path, None
+    when it lists none open; FirstmateError for a URL off this machine."""
+    for line in listing.splitlines():
+        line = line.strip()
+        if not line.startswith(path + ","):
+            continue
+        row = SESSION_ROW.match(line[len(path) + 1 :])
+        if row is None or row["status"] != "open":
+            continue
+        if not BOARD_URL.fullmatch(row["url"]):
+            raise FirstmateError("Lavish lists the board at %r, not a local URL" % row["url"])
+        return row["url"]
+    return None
 
 
 def _list(model, key):

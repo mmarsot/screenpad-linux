@@ -15,6 +15,9 @@ ConfigError naming it.
   code = "/path/to/firstmate"  # the checkout with bin/fm-bearings-snapshot.sh
                                # and bin/fm-control.sh
   poll = 60                    # seconds, at least 60
+  lavish = "lavish-axi"        # or a list: the program that lists Lavish's
+                               # sessions, where the decisions board is open
+  opener = ["gio", "open"]     # what opens the board's URL in the browser
 """
 
 import os
@@ -26,19 +29,36 @@ from .common import FIRSTMATE_POLL, FIRSTMATE_POLL_RANGE, HERDR_POLL, HERDR_POLL
 SESSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 BEARINGS = os.path.join("bin", "fm-bearings-snapshot.sh")
 CONTROL = os.path.join("bin", "fm-control.sh")
+BOARD = os.path.join("bin", "fm-bearings-board.sh")
+LAVISH = ["lavish-axi"]
+OPENER = ["gio", "open"]
 
 
 class Config:
     """The settings: Herdr's command and session, and firstmate's paths
-    (home None when the config has no [firstmate])."""
+    and the commands that find and open its decisions board (home None when
+    the config has no [firstmate])."""
 
-    __slots__ = ("bearings", "control", "firstmate_poll", "herdr", "herdr_poll", "home", "path", "session")
+    __slots__ = (
+        "bearings",
+        "board",
+        "control",
+        "firstmate_poll",
+        "herdr",
+        "herdr_poll",
+        "home",
+        "lavish",
+        "opener",
+        "path",
+        "session",
+    )
 
     def __init__(
         self, path, herdr, session, herdr_poll, home=None, bearings=None, firstmate_poll=FIRSTMATE_POLL, control=None
     ):
         self.path, self.herdr, self.session, self.herdr_poll = path, herdr, session, herdr_poll
         self.home, self.bearings, self.firstmate_poll, self.control = home, bearings, firstmate_poll, control
+        self.board, self.lavish, self.opener = None, list(LAVISH), list(OPENER)
 
 
 def load(path):
@@ -61,7 +81,7 @@ def parse(path, data):
     if herdr is None:
         raise ConfigError("%s: [herdr] is required, with at least its session" % path)
     _known(path, herdr, {"command", "session", "poll"}, "key in [herdr]")
-    command = _command(path, herdr.get("command", "herdr"))
+    command = _command(path, herdr.get("command", "herdr"), "[herdr] command", "herdr")
     session = herdr.get("session")
     if not isinstance(session, str) or not SESSION.fullmatch(session):
         raise ConfigError('%s: [herdr] session must be a Herdr session name, like "default"' % path)
@@ -69,10 +89,15 @@ def parse(path, data):
     config = Config(path, command, session, herdr_poll)
     fm = _table(path, data, "firstmate")
     if fm is not None:
-        _known(path, fm, {"home", "code", "poll"}, "key in [firstmate]")
+        _known(path, fm, {"home", "code", "poll", "lavish", "opener"}, "key in [firstmate]")
         config.home = _directory(path, fm, "home")
         code = _directory(path, fm, "code")
         config.bearings, config.control = os.path.join(code, BEARINGS), os.path.join(code, CONTROL)
+        # Checked when Captain's Call is tapped, not here: a checkout without
+        # it still runs the rest of the app.
+        config.board = os.path.join(code, BOARD)
+        config.lavish = _command(path, fm.get("lavish", LAVISH), "[firstmate] lavish", "lavish-axi")
+        config.opener = _command(path, fm.get("opener", OPENER), "[firstmate] opener", "gio")
         for script in (BEARINGS, CONTROL):
             if not os.access(os.path.join(code, script), os.X_OK):
                 raise ConfigError("%s: [firstmate] code has no executable %s" % (path, script))
@@ -93,10 +118,10 @@ def _table(path, data, name):
     return table
 
 
-def _command(path, value):
+def _command(path, value, key, example):
     words = [value] if isinstance(value, str) else value
     if not isinstance(words, list) or not words or not all(isinstance(w, str) and w for w in words):
-        raise ConfigError('%s: [herdr] command must be a program, or a list of words like ["herdr"]' % path)
+        raise ConfigError('%s: %s must be a program, or a list of words like ["%s"]' % (path, key, example))
     return list(words)
 
 

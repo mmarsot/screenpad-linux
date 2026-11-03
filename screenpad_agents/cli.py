@@ -15,7 +15,16 @@ from .herdr import Herdr, HerdrError
 
 def clients(config):
     herdr = Herdr(config.herdr, config.session)
-    firstmate = Firstmate(config.home, config.bearings, config.control) if config.home else None
+    firstmate = None
+    if config.home:
+        firstmate = Firstmate(
+            config.home,
+            config.bearings,
+            config.control,
+            board=config.board,
+            lavish=config.lavish,
+            opener=config.opener,
+        )
     return herdr, firstmate
 
 
@@ -59,6 +68,12 @@ def cmd_show(args):
         print("Captain's Call: %s" % tile["text"])
         if fleet.firstmate_error:
             print("  " + fleet.firstmate_error)
+        try:
+            url = firstmate.board_url()
+        except FirstmateError as e:
+            print("Decisions board: unknown (%s)" % e)
+        else:
+            print("Decisions board: %s" % (url or "none open; ask firstmate for /bearings lavish"))
     return 1 if fleet.herdr_error else 0
 
 
