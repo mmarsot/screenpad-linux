@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 # Keep root from leaving root-owned __pycache__ directories in the checkout.
 sys.dont_write_bytecode = True
 
-from screenpad_display.cli import main
+from screenpad_display.cli import main  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main())
