@@ -3,8 +3,8 @@
 import time
 
 from .common import (
+    APP,
     ASK_ARM,
-    BUTTON,
     CARD_HEIGHT,
     GRIP,
     HEIGHT_STEP,
@@ -12,9 +12,10 @@ from .common import (
     MAX_HEIGHT,
     MIN_HEIGHT,
     PAGE,
+    PAGE_ITEM,
     PAGE_X,
-    SHORTCUT,
     SPOT_W,
+    TILE,
 )
 from .config import near
 from .scene import DISMISS, ask_option_at, option_x
@@ -38,31 +39,36 @@ class AskTouch:
 
 
 class Bar:
-    """Turns bar contacts into button presses, shortcut taps and resizes.
+    """Turns bar contacts into what the items do, page turns and resizes.
 
-    - button: "hold" sends its keys down on touch and up on lift; "tap" sends
-      them when the finger lifts on (or near) the button; a "tile" button
-      belongs to an app, which gets "down" on touch and "up" on lift, with
-      whether the finger lifted on (or near) it;
-    - shortcut: a tap opens the app; held for LONG_PRESS it turns to
+    - a key or command item: "hold" sends its keys down (or runs its
+      command) on touch and up (release_command) on lift; "tap" sends them
+      when the finger lifts on (or near) it;
+    - a tile item belongs to an app, which gets "down" on touch and "up" on
+      lift, with whether the finger lifted on (or near) it;
+    - an app item: a tap opens the app; held for LONG_PRESS it turns to
       "remove", and lifting then removes it; sliding away cancels either;
+    - a page item: a tap opens that app's page on the apps page
+      (open_page(name)), while the pages turn and an app gives it
+      (tiles.pages);
     - grip: dragging it up or down resizes the bar, saved on lift;
     - page: a tap turns the page (pager.tap()), while the pager is
       available (pager.available()); otherwise the spot is empty;
     - while a question shows (asks.shown()), the bar is CARD_HEIGHT tall
-      (touch_height()) and the question covers the button and shortcut
-      spots: lifting on an answer chooses it, lifting on Dismiss closes
-      it with no answer. Touches that start within ASK_ARM of it showing,
-      or on its text, do nothing. The page button and the grip stay.
-    A touch keeps what it started on: a button held when a question appears
+      (touch_height()) and the question covers the item spots: lifting on
+      an answer chooses it, lifting on Dismiss closes it with no answer.
+      Touches that start within ASK_ARM of it showing, or on its text, do
+      nothing. The page button and the grip stay.
+    A touch keeps what it started on: an item held when a question appears
     stays held, and a touch on a question that goes away does nothing.
-    launch(app), remove(index) and resize(height) do the saving and
-    launching; remove and resize return whether they did. click() is
-    called once for each press the bar accepts, when its action happens: a
-    hold button's touch, and the lift on (or near) a tap button, an app's
-    tile, a shortcut, the page button or an answer; never a slide away, a
-    cancel or the grip. tiles has online(name) and event(name, kind, inside); asks
-    has shown(), the shown question's shown_at, choose(ask, option) and
+    launch(app), remove(index), resize(height) and open_page(name) do
+    the saving, launching and opening; remove and resize return whether
+    they did. click() is called once for each press the bar accepts, when
+    its action happens: a hold item's touch, and the lift on (or near) a
+    tap item, an app's tile, an app, a page, the page button or an answer;
+    never a slide away, a cancel or the grip. tiles has online(name),
+    event(name, kind, inside) and pages (the apps' pages by name); asks has
+    shown(), the shown question's shown_at, choose(ask, option) and
     dismiss(ask).
     """
 
@@ -79,6 +85,7 @@ class Bar:
         asks=None,
         pager=None,
         click=None,
+        open_page=None,
     ):
         self.config = config
         self.keys = keys  # KeyEmitter
@@ -91,6 +98,7 @@ class Bar:
         self.asks = asks
         self.pager = pager
         self.click = click or (lambda: None)
+        self.open_page = open_page or (lambda name: None)
         self.touch = {}  # slot -> Touch
         self.ask_touch = {}  # slot -> AskTouch
         self.preview = None  # the height while the grip moves
@@ -121,14 +129,14 @@ class Bar:
                         changed = True
                     continue
                 near = self.config.near_spot(t.spot, px, py, self.touch_height())
-                if (s.kind in (SHORTCUT, PAGE) or s.item.mode == "tap") and near != t.armed:
+                if (s.kind == PAGE or not s.item.hold()) and near != t.armed:
                     t.armed = near
                     changed = True
                 continue
             del self.touch[slot]
             changed = True
             lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py, self.touch_height())
-            if lifted and s.kind != GRIP and not (s.kind == BUTTON and s.item.mode == "hold"):
+            if lifted and s.kind != GRIP and not (s.item and s.item.hold()):
                 self.click()
             if s.kind == GRIP:
                 if not (kind == "end" and self.preview != self.config.height and self.resize(self.preview)):
@@ -136,18 +144,21 @@ class Bar:
             elif s.kind == PAGE:
                 if lifted:
                     self.pager.tap()
-            elif s.kind == SHORTCUT:
+            elif s.item.kind == APP:
                 if lifted and t.removing:
                     self.remove(s.index)
                 elif lifted:
-                    self.launch(s.item)
-            elif s.item.tile:
-                self.tiles.event(s.item.tile, "up", bool(lifted))
-            elif s.item.mode == "hold":
-                self._fire(s.item, press=False)
+                    self.launch(s.item.name)
+            elif s.item.kind == PAGE_ITEM:
+                if lifted:
+                    self.open_page(s.item.name)
+            elif s.item.kind == TILE:
+                self.tiles.event(s.item.name, "up", bool(lifted))
+            elif s.item.hold():
+                self.fire(s.item, press=False)
             elif lifted:
-                self._fire(s.item, press=True)
-                self._fire(s.item, press=False)
+                self.fire(s.item, press=True)
+                self.fire(s.item, press=False)
         return changed
 
     def touch_height(self):
@@ -184,17 +195,23 @@ class Bar:
             self.preview = self.config.height
             self.touch[slot] = Touch(i, self.clock(), py, self.config.height)
             return True
-        if s.kind == BUTTON and s.item.tile:
-            if not (self.tiles and self.tiles.online(s.item.tile)):
+        if s.kind != GRIP and s.item.kind == TILE:
+            if not (self.tiles and self.tiles.online(s.item.name)):
                 return False
             self.touch[slot] = Touch(i, self.clock())
-            self.tiles.event(s.item.tile, "down")
+            self.tiles.event(s.item.name, "down")
             return True
+        if s.kind != GRIP and s.item.kind == PAGE_ITEM and not self.page_open(s.item.name):
+            return False
         self.touch[slot] = Touch(i, self.clock())
-        if s.kind == BUTTON and s.item.mode == "hold":
-            self._fire(s.item, press=True)
+        if s.kind != GRIP and s.item.hold():
+            self.fire(s.item, press=True)
             self.click()
         return True
+
+    def page_open(self, name):
+        """Whether a page item can open its page now: the pages turn, and an app gives it."""
+        return bool(self.pager and self.pager.available() and self.tiles and name in self.tiles.pages)
 
     def _ask_event(self, kind, slot, px, py):
         t = self.ask_touch[slot]
@@ -217,21 +234,41 @@ class Bar:
                 self.asks.choose(t.ask, t.option)
         return True
 
+    def _app(self, t):
+        s = self.spot(t)
+        return s.item is not None and s.item.kind == APP
+
     def tick(self):
-        """Turn long-held shortcuts to "remove"; True if that changed anything."""
+        """Turn long-held apps to "remove"; True if that changed anything."""
         now, changed = self.clock(), False
         for t in self.touch.values():
-            if self.spot(t).kind == SHORTCUT and not t.removing and now >= t.start + LONG_PRESS:
+            if self._app(t) and not t.removing and now >= t.start + LONG_PRESS:
                 t.removing = True
                 changed |= t.armed
         return changed
 
     def deadline(self):
         """When tick() next has something to do, on the clock; or None."""
-        times = [t.start + LONG_PRESS for t in self.touch.values() if self.spot(t).kind == SHORTCUT and not t.removing]
+        times = [t.start + LONG_PRESS for t in self.touch.values() if self._app(t) and not t.removing]
         return min(times) if times else None
 
-    def _fire(self, b, press):
+    def act(self, item, kind):
+        """A touch on an item elsewhere (the apps page): "down" as it
+        starts, then "tap" (lifted on it) or "cancel". It does what it does
+        on the bar; a page item's page the surface opens itself."""
+        if item.kind == TILE:
+            self.tiles.event(item.name, *(("down",) if kind == "down" else ("up", kind == "tap")))
+        elif item.kind == APP:
+            if kind == "tap":
+                self.launch(item.name)
+        elif item.hold():
+            self.fire(item, press=kind == "down")
+        elif kind == "tap":
+            self.fire(item, press=True)
+            self.fire(item, press=False)
+
+    def fire(self, b, press):
+        """A key or command item's press (press) or release."""
         if b.keys:
             (self.keys.press if press else self.keys.release)(b.keys)
         elif press and b.command:
@@ -264,17 +301,18 @@ class Bar:
     def _end(self, slot):
         t = self.touch.pop(slot)
         s = self.spot(t)
-        if s.kind == BUTTON and s.item.tile:
-            self.tiles.event(s.item.tile, "up", False)
-        elif s.kind == BUTTON and s.item.mode == "hold":
-            self._fire(s.item, press=False)
+        if s.item is not None and s.item.kind == TILE:
+            self.tiles.event(s.item.name, "up", False)
+        elif s.item is not None and s.item.hold():
+            self.fire(s.item, press=False)
 
     def set_config(self, config):
-        """Take a reloaded config. Buttons held through it stay held if the
-        same button is still in the same spot; every other touch ends."""
+        """Take a reloaded config. Keys, commands and tiles held through it
+        stay held if the same item is still in the same spot; every other
+        touch ends."""
         for slot, t in list(self.touch.items()):
             s, n = self.spot(t), config.spots[t.spot]
-            if not (s.kind == BUTTON and n.kind == BUTTON and n.item and n.item.action() == s.item.action()):
+            if not (s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()):
                 self._end(slot)
         self.config = config
         self.preview = None
@@ -283,7 +321,7 @@ class Bar:
         """An app stopped providing a tile: touches on it end, unannounced."""
         for slot, t in list(self.touch.items()):
             s = self.spot(t)
-            if s.kind == BUTTON and s.item.tile == name:
+            if s.item is not None and s.item.kind == TILE and s.item.name == name:
                 del self.touch[slot]
 
     def release_all(self):

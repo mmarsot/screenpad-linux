@@ -234,7 +234,7 @@ class DaemonCardTests(unittest.TestCase):
             daemon.publish()
             with open(state_path()) as f:
                 state = json.load(f)
-            self.assertEqual((state["height"], state["strut"], state["tiles"][0]["id"]), (160, 160, "button-0"))
+            self.assertEqual((state["height"], state["strut"], state["tiles"][0]["id"]), (160, 160, "item-0"))
             # The finger lifts: the bar grows; the strut stays the bar's own.
             for ev in lift(0) + [(EV_SYN, SYN_REPORT, 0)]:
                 sp.feed(*ev)

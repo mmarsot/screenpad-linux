@@ -44,6 +44,7 @@ export function surfaceWidgets(surface) {
             height: w.height,
             classes: Array.isArray(w.classes) ? w.classes.filter(c => CLASS_NAME.test(c)) : [],
             icon: text(w.icon),
+            app: text(w.app),
             title: text(w.title),
             label: text(w.label),
             text: text(w.text),
@@ -86,7 +87,8 @@ export function widgetBox(widget, panel, monitor) {
 }
 
 // What a widget shows, top to bottom, with its sizes in px for a box of
-// box's size at scale (logical pixels per panel pixel): an icon, a title
+// box's size at scale (logical pixels per panel pixel): an icon (or an
+// app's icon, a desktop file id, when it has no icon), a title
 // (to the left) or a label (centered), a text that wraps, fixed-width
 // lines (fitted under the title or label; give a widget with lines no icon
 // or text), and a badge. Type shrinks to fit a small widget, never below
@@ -110,16 +112,18 @@ export function widgetParts(widget, box, scale) {
         : null;
     return {
         icon: widget.icon,
-        iconSize: widget.icon
-            ? Math.max(
-                  Math.min(
-                      Math.round(MAX_WIDGET_ICON * scale),
-                      Math.round(box.height * (first ? 0.4 : 0.6)),
-                      Math.round(box.width * 0.5),
-                  ),
-                  8,
-              )
-            : null,
+        app: widget.icon ? null : widget.app,
+        iconSize:
+            widget.icon || widget.app
+                ? Math.max(
+                      Math.min(
+                          Math.round(MAX_WIDGET_ICON * scale),
+                          Math.round(box.height * (first ? 0.4 : 0.6)),
+                          Math.round(box.width * 0.5),
+                      ),
+                      8,
+                  )
+                : null,
         first,
         start: Boolean(widget.title) || Boolean(lines),
         firstSize,

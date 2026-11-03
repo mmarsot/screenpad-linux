@@ -23,9 +23,10 @@ from screenpad_touchbar.common import (
     ConfigError,
 )
 from screenpad_touchbar.config import NotifyPolicy
-from screenpad_touchbar.config_edit import edit_config, migrate_config
+from screenpad_touchbar.config_edit import add_app, edit_config
 from screenpad_touchbar.defaults import EXAMPLE_CONFIG
 from screenpad_touchbar.keys import KeyEmitter
+from screenpad_touchbar.migrate import migrate_config
 from screenpad_touchbar.notify import mirror_refusal, parse_notify
 from screenpad_touchbar.protocol import ProtocolError
 from screenpad_touchbar.scene import ask_tiles
@@ -252,9 +253,11 @@ class NotifyConfigTests(unittest.TestCase):
                 self.assertEqual(main(["check"]), 0)
             self.assertIn("bar: 160 of 1080 px high (10.0 mm); 456 px while a card shows", out.getvalue())
             self.assertIn("notifications: mirrored for 20 s, never a.desktop", out.getvalue())
-            # Adding a shortcut keeps the table (and appends after it).
-            c = edit_config(lambda c: (c.height, c.shortcuts + ["web.desktop"]))
-            self.assertEqual((c.shortcuts, c.notifications.deny), (["files.desktop", "web.desktop"], ["a.desktop"]))
+            # Adding an app keeps the table.
+            c = edit_config(lambda c: {"bar": add_app(c.bar, "web.desktop")})
+            self.assertEqual(
+                ([i.name for i in c.bar], c.notifications.deny), ([None, "files.desktop", "web.desktop"], ["a.desktop"])
+            )
 
     def test_migrate_the_default_before_notifications(self):
         with open(os.path.join(REPO, "tests", "touchbar-v4-default.toml")) as f:

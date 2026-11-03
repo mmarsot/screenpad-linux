@@ -338,7 +338,7 @@ class DaemonSceneTests(unittest.TestCase):
             with open(state_path()) as f:
                 state = json.load(f)
             self.assertEqual(state["version"], SCENE_VERSION)
-            self.assertEqual([x["id"] for x in state["tiles"]][:2], ["button-0", "button-1"])
+            self.assertEqual([x["id"] for x in state["tiles"]][:2], ["item-0", "item-1"])
             # The version 1 fields, for an extension loaded before tiles.
             self.assertEqual(len(state["spots"]), 7)
             self.assertEqual((state["pressed"], state["removing"]), ([], []))

@@ -120,15 +120,15 @@ class FakeClient:
 
 
 TILE_CONFIG = """
-[[button]]
+[[bar]]
 icon = "audio-input-microphone-symbolic"
 label = "PTT"
 mode = "hold"
 key = "F14"
-[[button]]
+[[bar]]
 label = "Agents"
 tile = "agents"
-[[shortcut]]
+[[bar]]
 app = "files.desktop"
 """
 
@@ -170,15 +170,15 @@ class Conn:
         raise AssertionError("no reply")
 
 
-# Buttons at x 0, 272, 544; shortcuts at 856, 1128, 1400; the page button at
-# 1672; the grip at 1816. The
-# bar is 160 px high (device rows 0..320); a card makes it 456 (0..912).
+# The spots at x 0, 272, 544, 856, 1128, 1400 (PTT and files in the first
+# two); the page button at 1672; the grip at 1816. The bar is 160 px high
+# (device rows 0..320); a card makes it 456 (0..912).
 CONFIG = """
-[[button]]
+[[bar]]
 label = "PTT"
 mode = "hold"
 key = "F14"
-[[shortcut]]
+[[bar]]
 app = "files.desktop"
 """
 
@@ -215,24 +215,25 @@ def js(module, expr, **values):
     return json.loads(run.stdout)
 
 
-# The bar tests' config. Spots: buttons at x 0, 272, 544; shortcuts at 856,
-# 1128, 1400; the page button at 1672; the grip at 1816.
+# The bar tests' config. Spots at x 0, 272, 544, 856, 1128, 1400 (the files
+# and web apps in the fourth and fifth); the page button at 1672; the grip
+# at 1816.
 BAR_CONFIG = """
-[[button]]
+[[bar]]
 label = "PTT"
 mode = "hold"
 key = "F14"
-[[button]]
+[[bar]]
 label = "Mute"
 key = "micmute"
-[[button]]
+[[bar]]
 label = "Term"
 mode = "hold"
 command = "a"
 release_command = "b"
-[[shortcut]]
+[[bar]]
 app = "files.desktop"
-[[shortcut]]
+[[bar]]
 app = "web.desktop"
 """
 

@@ -37,12 +37,12 @@ from .common import (
     state_path,
 )
 from .config import config_path, load_config
-from .config_edit import edit_config
+from .config_edit import edit_config, remove_app
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
 from .pager import Pager
-from .scene import DIVIDER_X, ask_tiles, spot_tiles
+from .scene import ask_tiles, page_look, spot_tiles
 from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
 from .surface import Surface
 
@@ -96,6 +96,8 @@ class Daemon:
             cover=lambda: self.bar.touch_height() if self.bar else self.config.height,
             can_draw=lambda: self.renderer_protocol() >= WIDGETS_PROTOCOL,
             click=self._click,
+            items=lambda: self.config.apps,
+            act=self.item_act,
         )
         self.page_button_shown = False
         # Presses the bar and the surface accepted since the daemon started:
@@ -145,7 +147,9 @@ class Daemon:
         pressed = self.bar.pressed() if self.bar else []
         removing = self.bar.removing() if self.bar else []
         page_to = self.pager.target() if self.pager.available() else None
-        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to)
+        # Page items open their page only while the apps page can show.
+        pages = {n: page_look(p) for n, p in self.apps.pages.items()} if page_to is not None else {}
+        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to, pages)
         ask = self.apps.asks.shown()
         if ask is not None:
             tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
@@ -167,7 +171,8 @@ class Daemon:
             "height": self.bar.height() if self.bar else self.config.height,
             "strut": self.bar.base_height() if self.bar else self.config.height,
             "tiles": self.scene(),
-            "divider": DIVIDER_X,
+            # No line between groups of spots: any item goes in any spot.
+            "divider": None,
             "apps": self.apps.names(),
             # The page shown, black below the bar on the touchpad page (and
             # whether with a clock), and what the apps page shows there.
@@ -221,13 +226,16 @@ class Daemon:
         return True
 
     def remove_shortcut(self, index):
-        def change(c):
-            return c.height, c.shortcuts[:index] + c.shortcuts[index + 1 :]
-
-        return self.edit(change, "remove the shortcut")
+        """Remove the app in the bar's spot index (a long press on it)."""
+        return self.edit(lambda c: {"bar": remove_app(c.bar, index)}, "remove the app")
 
     def resize(self, height):
-        return self.edit(lambda c: (height, c.shortcuts), "resize the bar")
+        return self.edit(lambda c: {"height": height}, "resize the bar")
+
+    def item_act(self, item, kind):
+        """A touch on an item of the apps page (Bar.act())."""
+        if self.bar is not None:
+            self.bar.act(item, kind)
 
     def new_bar(self, keys):
         return Bar(
@@ -241,6 +249,7 @@ class Daemon:
             asks=self.apps.asks,
             pager=self.pager,
             click=self._click,
+            open_page=self.surface.open_page,
         )
 
     def reap(self):
@@ -276,19 +285,8 @@ class Daemon:
         self.splitter = Splitter(source.axes(), source.nslots, self._zone, source.abs[ABS_MT_SLOT][0])
         self.bar = self.new_bar(KeyEmitter(lambda ev: write_events(self.keys_fd, ev)))
         log(
-            "grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; bar %d px high, "
-            "%d button(s), %d shortcut(s)"
-            % (
-                path,
-                source.name,
-                source.nslots,
-                x[2],
-                y[2],
-                x[5],
-                self.config.height,
-                len(self.config.buttons),
-                len(self.config.shortcuts),
-            )
+            "grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; %s"
+            % (path, source.name, source.nslots, x[2], y[2], x[5], self.config.describe())
         )
         return True
 
@@ -385,10 +383,7 @@ class Daemon:
         self.pager.configure(config.pages)
         if self.bar:
             self.bar.set_config(config)
-        log(
-            "loaded %s: bar %d px high, %d button(s), %d shortcut(s)"
-            % (path or "the built-in default", config.height, len(config.buttons), len(config.shortcuts))
-        )
+        log("loaded %s: %s" % (path or "the built-in default", config.describe()))
         self.publish()
 
     def loop(self):

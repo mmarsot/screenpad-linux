@@ -244,7 +244,7 @@ class BarTests(unittest.TestCase):
         self.assertEqual(self.ran[-1], ["/bin/sh", "-c", "b"])
 
     def test_gaps_and_empty_spots_do_nothing(self):
-        for x in (830, 1500):  # the gap; the third shortcut spot, empty
+        for x in (830, 1500):  # the gap; the sixth spot, empty
             self.assertFalse(self.bar.handle([("begin", 0, x, 50), ("end", 0, x, 50)]))
         self.assertEqual((self.frames, self.ran, self.launched), ([], [], []))
 
@@ -265,7 +265,8 @@ class BarTests(unittest.TestCase):
         self.assertIsNone(self.bar.deadline())
         self.assertFalse(self.bar.tick())
         self.bar.handle([("end", 0, 1300, 50)])
-        self.assertEqual((self.launched, self.removed), ([], [1]))
+        # The app's index among the bar's items.
+        self.assertEqual((self.launched, self.removed), ([], [4]))
 
     def test_shortcut_slide_away_cancels(self):
         self.bar.handle([("begin", 0, 1000, 50)])
@@ -295,7 +296,7 @@ class BarTests(unittest.TestCase):
         self.assertEqual(self.resized, [240])
         # It shows the new height until the reloaded config has it.
         self.assertEqual(self.bar.height(), 240)
-        taller = self.CONFIG.replace("[[button]]", "height = 240\n[[button]]", 1)
+        taller = self.CONFIG.replace("[[bar]]", "height = 240\n[[bar]]", 1)
         self.bar.set_config(config(taller))
         self.assertEqual(self.bar.height(), 240)
         self.assertEqual(self.frames + self.ran, [])

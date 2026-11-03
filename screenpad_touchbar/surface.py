@@ -1,7 +1,8 @@
 """The apps surface: what the apps page shows below the bar, and what its touches do.
 
-The apps page shows either the home page, a list of the apps' pages, or one
-app's page of widgets (widgets.py). Every contact that starts below the bar
+The apps page shows either the home page, a list of the config's [[apps]]
+items and then the apps' pages no item places, or one app's page of widgets
+(widgets.py). Every contact that starts below the bar
 on the apps page is the surface's, and acts on the widget under it:
 
 - a touch that starts within ASK_ARM of that widget appearing, moving or
@@ -12,7 +13,8 @@ on the apps page is the surface's, and acts on the widget under it:
   Sliding away and lifting cancels. A widget that changes or goes while a
   finger is on it cancels that press: the finger chooses nothing;
 - the app gets "down", then "tap", "long" or "cancel" (Apps.press). The
-  surface's own widgets (Home, the home page's list) open pages instead.
+  surface's own widgets (Home, the home page's pages) open pages instead,
+  and the home page's items do what they do on the bar (act()).
 A touch keeps what it started on, like the bar's: one that started on a
 widget stays that widget's (or nothing) until it lifts.
 """
@@ -21,6 +23,7 @@ import json
 import time
 
 from .common import (
+    APP,
     APPS,
     ASK_ARM,
     HEADER_H,
@@ -28,15 +31,21 @@ from .common import (
     HOME_ROWS,
     HOME_W,
     LONG_PRESS,
+    PAGE_ITEM,
     PANEL_H,
     PANEL_W,
     TAP_SLOP,
+    TILE,
     TONES,
 )
+from .items import Item
+from .scene import page_look
 
-# The surface's own widgets: Home, and a page in the home page's list.
+# The surface's own widgets: Home, a page in the home page's list, and an
+# item there.
 HOME_WIDGET = "home"
 OPEN = "open:"
+ITEM = "item:"
 # How to go back, under the apps page's title.
 BACK_HINT = (
     "Tap the touchpad button, swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
@@ -49,15 +58,19 @@ WIDGET_CLASSES = ("inert", "long", "held") + tuple("tone-" + tone for tone in TO
 class Spot:
     """A widget as drawn: where (panel pixels), what, and whose."""
 
-    __slots__ = ("client", "h", "look", "page", "touch", "w", "wid", "x", "y")
+    __slots__ = ("client", "h", "item", "look", "page", "touch", "w", "wid", "x", "y")
 
-    def __init__(self, page, wid, x, y, w, h, look, touch, client=None):
-        # page and client are None for the surface's own widgets
+    def __init__(self, page, wid, x, y, w, h, look, touch, client=None, item=None):
+        # page and client are None for the surface's own widgets; item is
+        # the config's item a home page widget shows
         self.page, self.wid, self.x, self.y, self.w, self.h = page, wid, x, y, w, h
-        self.look, self.touch, self.client = look, touch, client
+        self.look, self.touch, self.client, self.item = look, touch, client, item
 
     def key(self):
-        return json.dumps([self.page, self.wid, self.x, self.y, self.w, self.h, self.touch, self.look], sort_keys=True)
+        action = self.item.action() if self.item else None
+        return json.dumps(
+            [self.page, self.wid, self.x, self.y, self.w, self.h, self.touch, self.look, action], sort_keys=True
+        )
 
     def near(self, px, py):
         return (
@@ -89,19 +102,25 @@ def grid(x0, y0, width, height, columns, rows, col, row, cols, nrows):
 class Surface:
     """The apps page's widgets and contacts.
 
-    apps has pages (name -> widgets.Page) and press(client, page, widget,
-    kind);
+    apps has pages (name -> widgets.Page), provided() (the tiles apps give
+    now and their looks) and press(client, page, widget, kind); items() is
+    the config's [[apps]] items, and act(item, kind) does what a touch on
+    one does: "down" as it starts, then "tap" or "cancel" (the daemon's
+    item_act());
     pager says which page shows (page, return_after); top() is the bar's
     own height (where the surface starts), cover() the height the bar
     covers now (taller while a card shows); can_draw() whether the renderer
     draws widgets (WIDGETS_PROTOCOL): without it the page shows only its
     text, and touches on it do nothing. click() is called for each tap or
-    long press, as the finger lifts on the widget; never for a cancel.
+    long press, as the finger lifts on the widget, and as it goes down on
+    a hold item; never for a cancel.
     """
 
-    def __init__(self, apps, pager, top, cover, can_draw, clock=time.monotonic, click=None):
+    def __init__(self, apps, pager, top, cover, can_draw, clock=time.monotonic, click=None, items=None, act=None):
         self.apps, self.pager, self.clock = apps, pager, clock
         self.click = click or (lambda: None)
+        self.items = items or list
+        self.act = act or (lambda item, kind: None)
         self.top, self.cover, self.can_draw = top, cover, can_draw
         self.open = None  # the app page shown, or None for the home page
         self.presses = {}  # slot -> Press
@@ -157,17 +176,50 @@ class Surface:
                 "none",
             )
         ]
-        pages = list(self.apps.pages.values())
-        if not pages:
-            look = {"label": "No apps here yet", "text": "Programs that use the touch bar show their pages here."}
+        cells = self.home_cells()
+        if not cells:
+            look = {
+                "label": "No apps here yet",
+                "text": "Items from touchbar.toml's [[apps]] blocks show here, then the pages programs give.",
+            }
             spots.append(Spot(None, "empty", 0, y0, PANEL_W, height, look, "none"))
-        for i, p in enumerate(pages):
-            x, y, wd, h = grid(
-                0, y0, PANEL_W, height, HOME_COLUMNS, HOME_ROWS, i % HOME_COLUMNS, i // HOME_COLUMNS, 1, 1
-            )
-            look = {"label": p.title(), **{k: v for k, v in p.look.items() if k != "title"}}
-            spots.append(Spot(None, OPEN + p.name, x, y, wd, h, look, "tap"))
+        rows = max(HOME_ROWS, -(-len(cells) // HOME_COLUMNS))
+        for i, (wid, look, touch, item) in enumerate(cells):
+            x, y, wd, h = grid(0, y0, PANEL_W, height, HOME_COLUMNS, rows, i % HOME_COLUMNS, i // HOME_COLUMNS, 1, 1)
+            spots.append(Spot(None, wid, x, y, wd, h, look, touch, item=item))
         return spots
+
+    def home_cells(self):
+        """The home page's list: (widget id, look, touch, item) for each
+        [[apps]] item, then each app's page that no item places."""
+        cells: list[tuple[str, dict, str, Item | None]] = []
+        items: list[Item] = self.items()
+        provided = self.apps.provided()
+        for n, item in enumerate(items):
+            if item.kind == PAGE_ITEM:
+                page = self.apps.pages.get(item.name)
+                if page is None:
+                    cells.append((ITEM + str(n), item.looks() or {"label": item.name}, "none", None))
+                else:
+                    cells.append((OPEN + item.name, page_look(page), "tap", None))
+            elif item.kind == TILE:
+                look = provided.get(item.name)
+                if look is None:
+                    cells.append((ITEM + str(n), item.looks() or {"label": item.name}, "none", item))
+                else:
+                    shown = {k: look[k] for k in ("icon", "label", "text", "badge", "tone") if look.get(k)}
+                    if "icon" not in shown and "label" not in shown:
+                        shown.update(item.looks())
+                    cells.append((ITEM + str(n), shown, "tap", item))
+            elif item.kind == APP:
+                cells.append((ITEM + str(n), {"app": item.name, **item.looks()}, "tap", item))
+            else:
+                cells.append((ITEM + str(n), item.looks(), "tap", item))
+        placed = {i.name for i in items if i.kind == PAGE_ITEM}
+        for p in self.apps.pages.values():
+            if p.name not in placed:
+                cells.append((OPEN + p.name, page_look(p), "tap", None))
+        return cells
 
     def refresh(self):
         """Note what appeared or changed since the last look, which arms it
@@ -189,9 +241,17 @@ class Surface:
                 ended = True
         return ended
 
+    def open_page(self, name):
+        """A page item's tap on the bar: the apps page, on that app's page."""
+        if self.pager.available() and name in self.apps.pages:
+            self.open = name
+            self.pager.turn(APPS)
+
     def _send(self, spot, kind):
         if spot.page is not None:
             self.apps.press(spot.client, spot.page, spot.wid, kind)
+        elif spot.item is not None:
+            self.act(spot.item, kind)
 
     def _cancel(self, p):
         if p.spot is not None:
@@ -209,6 +269,9 @@ class Surface:
                 self.presses[slot] = Press(spot, now)
                 if spot is not None:
                     self._send(spot, "down")
+                    if spot.item is not None and spot.item.hold():
+                        # A hold item acts as the finger goes down.
+                        self.click()
                     changed = True
                 continue
             p = self.presses.get(slot)
@@ -231,9 +294,12 @@ class Surface:
 
     def _lifted(self, p):
         spot = p.spot
-        self.click()
+        if not (spot.item is not None and spot.item.hold()):
+            self.click()
         if spot.page is not None:
             self._send(spot, "long" if p.held else "tap")
+        elif spot.item is not None:
+            self._send(spot, "tap")
         elif spot.wid == HOME_WIDGET:
             self.open = None
         elif spot.wid.startswith(OPEN):

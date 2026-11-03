@@ -33,7 +33,7 @@ from screenpad_touchbar.common import (
     runtime_file,
     state_path,
 )
-from screenpad_touchbar.config_edit import edit_config, migrate_config
+from screenpad_touchbar.config_edit import add_app, edit_config
 from screenpad_touchbar.daemon import Daemon
 from screenpad_touchbar.defaults import (
     DOTS_LAYOUT_DOC,
@@ -44,6 +44,7 @@ from screenpad_touchbar.defaults import (
     PAGES_DOC,
 )
 from screenpad_touchbar.keys import KeyEmitter
+from screenpad_touchbar.migrate import migrate_config
 from screenpad_touchbar.pager import Pager
 from screenpad_touchbar.splitter import Splitter
 
@@ -400,9 +401,9 @@ class ConfigTests(unittest.TestCase):
             self.assertIn(
                 "pages: screensaver black with a clock; apps page back to the touchpad after 5 s", out.getvalue()
             )
-            self.assertIn("page     1  x 1672..1816 tap to go to the other page, or swipe the bar", out.getvalue())
-            # Adding a shortcut keeps the table.
-            c = edit_config(lambda c: (c.height, c.shortcuts + ["web.desktop"]))
+            self.assertIn("  page  1  x 1672..1816 tap to go to the other page, or swipe the bar", out.getvalue())
+            # Adding an app keeps the table.
+            c = edit_config(lambda c: {"bar": add_app(c.bar, "web.desktop")})
             self.assertEqual(c.pages.return_after, 5)
 
     def test_migrate_the_default_before_the_pages(self):

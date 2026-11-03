@@ -5,7 +5,6 @@ import ast
 import json
 import os
 import select
-import shlex
 import signal
 import socket
 import subprocess
@@ -14,14 +13,16 @@ from . import __doc__ as PACKAGE_DOC
 from .codes import INPUT_EVENT
 from .common import (
     ACTIVE_FLAG,
+    APP,
     ASK_TIMEOUT,
+    BAR_ITEMS,
     CARD_HEIGHT,
     GRIP,
+    ITEM,
+    MAX_APPS_ITEMS,
     MAX_OPTIONS,
-    MAX_SHORTCUTS,
     PAGE,
     PANEL_H,
-    SHORTCUT,
     SOCKET_NAME,
     SYS_INPUT,
     TONES,
@@ -33,11 +34,13 @@ from .common import (
     runtime_file,
     state_path,
 )
-from .config import app_id, config_path, load_config
-from .config_edit import add_shortcut, edit_config, migrate_config
+from .config import config_path, load_config
+from .config_edit import add_app, edit_config, remove_app
 from .daemon import Daemon
 from .defaults import EXAMPLE_CONFIG
 from .devices import Source, find_source
+from .items import app_id
+from .migrate import migrate_config
 from .splitter import BAR, PAD, Splitter
 
 
@@ -66,26 +69,24 @@ def cmd_check(args):
     print("notifications: %s" % config.notifications.describe())
     print("pages: %s" % config.pages.describe())
     for s in sorted(config.spots, key=lambda s: s.x):
-        where = "  %-8s %d  x %4d..%-4d " % (s.kind, s.index + 1, s.x, s.x + s.width)
+        where = "  %-5s %d  x %4d..%-4d " % (
+            "spot" if s.kind == ITEM else s.kind,
+            s.index + 1,
+            s.x,
+            s.x + s.width,
+        )
         if s.kind == GRIP:
             print(where + "drag to resize")
         elif s.kind == PAGE:
             print(where + "tap to go to the other page, or swipe the bar")
-        elif s.item is None:
-            print(where + "empty")
-        elif s.kind == SHORTCUT:
-            print(where + s.item)
         else:
-            b = s.item
-            if b.tile:
-                print(where + "%s, icon %s, tile %s (an app draws it)" % (b.label or "-", b.icon or "none", b.tile))
-                continue
-            action = (
-                "key %s (codes %s)" % (b.key, "+".join(str(k) for k in b.keys))
-                if b.keys
-                else "command %s" % shlex.join(b.command)
-            )
-            print(where + "%s, icon %s, %s %s" % (b.label or "-", b.icon or "none", b.mode, action))
+            print(where + (s.item.describe() if s.item else "empty"))
+    print(
+        "apps page: %s"
+        % ("its apps' pages" if not config.apps else "%d item(s), then its apps' pages" % len(config.apps))
+    )
+    for n, item in enumerate(config.apps, 1):
+        print("  item  %d  %s" % (n, item.describe()))
     return 0
 
 
@@ -136,10 +137,7 @@ def cmd_off(args):
 def cmd_status(args):
     try:
         config, path = load_config(args.config)
-        print(
-            "config: %s, bar %d px, %d button(s), shortcuts: %s"
-            % (path or "built-in default", config.height, len(config.buttons), ", ".join(config.shortcuts) or "none")
-        )
+        print("config: %s, %s" % (path or "built-in default", config.describe()))
     except (OSError, ConfigError) as e:
         print("config: %s" % e)
     source = find_source()
@@ -227,7 +225,9 @@ def cmd_probe(args):
                                     c.x,
                                     c.y,
                                     c.kind,
-                                    "" if spot is None else ", %s %d" % (spot.kind, spot.index + 1),
+                                    ""
+                                    if spot is None
+                                    else ", %s %d" % ("spot" if spot.kind == ITEM else spot.kind, spot.index + 1),
                                 )
                             )
                         seen[s] = (c.id, (px, py))
@@ -253,35 +253,38 @@ def poke_daemon():
 
 
 def cmd_shortcut(args):
-    """List, add or remove the bar's shortcuts (the extension adds by drag and drop)."""
+    """List, add or remove the apps among the bar's items, or the apps page's
+    with --apps (the extension adds to the bar by drag and drop)."""
+    where = "apps" if args.apps else "bar"
+    limit = MAX_APPS_ITEMS if args.apps else BAR_ITEMS
     try:
         migrate_config(args.config)
         if args.action == "list":
             config, _path = load_config(args.config)
-            for i in range(MAX_SHORTCUTS):
-                print("%d  %s" % (i + 1, config.shortcuts[i] if i < len(config.shortcuts) else "(empty)"))
+            items = config.items(where)
+            for i in range(limit):
+                print("%d  %s" % (i + 1, items[i].describe() if i < len(items) else "(empty)"))
             return 0
         if args.action == "add":
             app = app_id(args.app)
             spot = None if args.spot is None else args.spot - 1
 
             def change(c):
-                return c.height, add_shortcut(c.shortcuts, app, spot)
+                return {where: add_app(c.items(where), app, spot, limit)}
         else:
-            if not 1 <= args.spot <= MAX_SHORTCUTS:
-                raise ConfigError("spot must be 1 to %d" % MAX_SHORTCUTS)
+            if not 1 <= args.spot <= limit:
+                raise ConfigError("spot must be 1 to %d" % limit)
 
             def change(c):
-                if args.spot > len(c.shortcuts):
-                    raise ConfigError("shortcut spot %d is empty" % args.spot)
-                return c.height, c.shortcuts[: args.spot - 1] + c.shortcuts[args.spot :]
+                return {where: remove_app(c.items(where), args.spot - 1)}
 
         config = edit_config(change, args.config)
     except ConfigError as e:
         log(str(e))
         return 2
     poke_daemon()
-    print("shortcuts: %s" % (", ".join(config.shortcuts) or "none"))
+    apps = [i.name for i in config.items(where) if i.kind == APP]
+    print("%s apps: %s" % ("the apps page's" if args.apps else "the bar's", ", ".join(apps) or "none"))
     return 0
 
 
@@ -370,16 +373,24 @@ def parse_args(argv):
     status = sub.add_parser("status", help="show the config, the touchpad and the daemon")
     check = sub.add_parser("check", help="validate the config")
     probe = sub.add_parser("probe", help="print where touches land, without grabbing")
-    shortcut = sub.add_parser("shortcut", help="list, add or remove the bar's app shortcuts")
+    shortcut = sub.add_parser("shortcut", help="list, add or remove apps on the bar or the apps page")
     actions = shortcut.add_subparsers(dest="action", required=True)
-    actions.add_parser("list", help="the shortcut spots and their apps")
+    listing = actions.add_parser("list", help="the spots and their items")
     add = actions.add_parser(
-        "add", help="add an app, at a spot or in the first free one; on a full bar, an app added at a spot replaces it"
+        "add",
+        help="add an app at a spot, moving the items after it along, or in the first free one; "
+        "in a full place, an app added at an app's spot replaces it",
     )
     add.add_argument("app", help="desktop file id, such as org.gnome.Nautilus.desktop")
-    add.add_argument("--spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
-    remove = actions.add_parser("remove", help="remove the shortcut in a spot")
-    remove.add_argument("spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
+    add.add_argument(
+        "--spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
+    )
+    remove = actions.add_parser("remove", help="remove the app in a spot")
+    remove.add_argument(
+        "spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
+    )
+    for a in (listing, add, remove):
+        a.add_argument("--apps", action="store_true", help="the apps page's items ([[apps]]) instead of the bar's")
     ask = sub.add_parser(
         "ask",
         help="ask a question in the bar and print the chosen answer's "
