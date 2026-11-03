@@ -70,7 +70,7 @@ def cmd_check(args):
         if s.kind == GRIP:
             print(where + "drag to resize")
         elif s.kind == DOTS:
-            print(where + ("tap or swipe the bar to turn the page" if config.pages.pager else "off"))
+            print(where + "tap or swipe the bar to turn the page")
         elif s.item is None:
             print(where + "empty")
         elif s.kind == SHORTCUT:

@@ -32,12 +32,11 @@ class Pager:
       after return_after seconds with none, tick() goes back to the
       touchpad page. It also does when the apps page can no longer be shown.
     can_show() says whether the apps page can be shown now (grabbed, and
-    drawn by an extension that knows the pages); enabled is [pager]'s.
+    drawn by an extension that knows the pages).
     """
 
-    def __init__(self, clock=time.monotonic, enabled=True, return_after=RETURN_AFTER, can_show=None):
+    def __init__(self, clock=time.monotonic, return_after=RETURN_AFTER, can_show=None):
         self.clock = clock
-        self.enabled = enabled
         self.return_after = return_after
         self.can_show = can_show or (lambda: True)
         self.page = HOME
@@ -47,11 +46,11 @@ class Pager:
 
     def available(self):
         """Whether the dots show and the pages turn."""
-        return self.enabled and self.can_show()
+        return self.can_show()
 
     def configure(self, pages):
         """Take a reloaded config's Pages."""
-        self.enabled, self.return_after = pages.pager, pages.return_after
+        self.return_after = pages.return_after
         self.tick()
 
     def name(self):

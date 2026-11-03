@@ -111,12 +111,12 @@ class SwipeTests(unittest.TestCase):
         self.assertEqual(self.pager.watch([("cancel", 0, 900, 80)]), [("cancel", 0, 900, 80)])
         self.assertEqual(self.pager.page, HOME)
 
-    def test_off_or_not_drawn(self):
-        for pager in (Pager(clock=self.clock, enabled=False), Pager(clock=self.clock, can_show=lambda: False)):
-            out = stroke(pager, self.clock, 1400, 80, 900, 80)
-            self.assertEqual((pager.page, out[-1][0]), (HOME, "end"))
-            pager.tap()
-            self.assertEqual(pager.page, HOME)
+    def test_not_drawn(self):
+        pager = Pager(clock=self.clock, can_show=lambda: False)
+        out = stroke(pager, self.clock, 1400, 80, 900, 80)
+        self.assertEqual((pager.page, out[-1][0]), (HOME, "end"))
+        pager.tap()
+        self.assertEqual(pager.page, HOME)
 
 
 class BarTests(unittest.TestCase):
@@ -151,8 +151,8 @@ class BarTests(unittest.TestCase):
         self.handle(("begin", 0, 1700, 80), ("move", 0, 1500, 80), ("end", 0, 1500, 80))
         self.assertEqual(self.pager.page, HOME)
 
-    def test_dots_without_the_pager_are_nothing(self):
-        self.pager.enabled = False
+    def test_dots_not_drawn_are_nothing(self):
+        self.pager.can_show = lambda: False
         self.assertFalse(self.handle(("begin", 0, 1700, 80)))
         self.handle(("end", 0, 1700, 80))
         self.assertEqual((self.pager.page, self.bar.pressed()), (HOME, []))
@@ -336,9 +336,6 @@ class PublishTests(unittest.TestCase):
         state = self.published(BAR_CONFIG + "[screensaver]\nclock = false\n[pager]\nreturn_after = 3\n", APPS)
         self.assertEqual(state["screensaver"], {"clock": False})
         self.assertIn("3 s", state["surface"]["hint"])
-        state = self.published(BAR_CONFIG + "[screensaver]\nenabled = false\n[pager]\nenabled = false\n")
-        self.assertIsNone(state["screensaver"])
-        self.assertNotIn("dots", [t["style"] for t in state["tiles"]])
 
     def test_the_pages_need_an_extension_that_draws_them(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d):
@@ -359,12 +356,10 @@ class ConfigTests(unittest.TestCase):
 
     def test_defaults_and_settings(self):
         p = config().pages
-        self.assertEqual((p.screensaver, p.clock, p.pager, p.return_after), (True, True, True, RETURN_AFTER))
-        p = config(
-            "[screensaver]\nenabled = false\nclock = false\n[pager]\nenabled = false\nreturn_after = 3600\n"
-        ).pages
-        self.assertEqual((p.screensaver, p.clock, p.pager, p.return_after), (False, False, False, 3600))
-        self.assertEqual(p.describe(), "screensaver off; apps page off")
+        self.assertEqual((p.clock, p.return_after), (True, RETURN_AFTER))
+        p = config("[screensaver]\nclock = false\n[pager]\nreturn_after = 3600\n").pages
+        self.assertEqual((p.clock, p.return_after), (False, 3600))
+        self.assertEqual(p.describe(), "screensaver black; apps page back to the touchpad after 3600 s")
         self.assertEqual(
             config().pages.describe(), "screensaver black with a clock; apps page back to the touchpad after 8 s"
         )
@@ -374,7 +369,8 @@ class ConfigTests(unittest.TestCase):
             ("[screensaver]\nclock = 1\n", "screensaver: clock must be true or false"),
             ("[screensaver]\nblack = true\n", "screensaver: unknown setting(s): black"),
             ("screensaver = true\n", "screensaver: must be a [screensaver] table"),
-            ('[pager]\nenabled = "yes"\n', "pager: enabled must be true or false"),
+            ("[screensaver]\nenabled = false\n", "screensaver: unknown setting(s): enabled"),
+            ("[pager]\nenabled = false\n", "pager: unknown setting(s): enabled"),
             ("[pager]\nreturn_after = 0\n", "return_after must be a whole number of seconds, 1 to 3600"),
             ("[pager]\nreturn_after = 3601\n", "return_after must be"),
             ("[pager]\nreturn_after = 2.5\n", "return_after must be"),

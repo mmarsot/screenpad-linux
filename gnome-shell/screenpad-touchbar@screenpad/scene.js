@@ -210,9 +210,9 @@ export function dropArgs(tiles, index, px) {
 }
 
 // What the pages draw below the bar, from the scene: the touchpad page's
-// black screensaver (null when it is off), with or without a clock, and
-// the apps page's surface (null on the touchpad page), with its title,
-// text and the hint on how to go back.
+// black screensaver (null when the scene has none), with or without a
+// clock, and the apps page's surface (null on the touchpad page), with its
+// title, text and the hint on how to go back.
 export function pagesFrom(state) {
     const text = value => (typeof value === 'string' ? value : '');
     const saver = state?.screensaver;

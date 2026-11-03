@@ -119,7 +119,7 @@ mirror = false
 
 ## Pages
 
-The bar's page dots show two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A swipe along the bar or a tap on the dots turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). Two tables change that (after the `[[button]]` and `[[shortcut]]` blocks):
+The bar's page dots show two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A swipe along the bar or a tap on the dots turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock and the wait (after the `[[button]]` and `[[shortcut]]` blocks):
 
 ```toml
 [screensaver]
@@ -131,9 +131,7 @@ return_after = 15
 
 | Setting | Meaning |
 |---|---|
-| `[screensaver]` `enabled` | `false`: below the bar, the touchpad page shows GNOME's desktop background as before, not black. Default `true` |
 | `[screensaver]` `clock` | `false`: no clock on the black. Default `true` |
-| `[pager]` `enabled` | `false`: no page dots, no swipe, no apps page; the panel is always the touchpad page. Default `true` |
 | `[pager]` `return_after` | how many seconds without a touch on the panel the apps page waits before going back to the touchpad, 1 to 3600. Default 8 |
 
 `screenpad-touchbar check` prints what applies (`pages:`).

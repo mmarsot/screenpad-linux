@@ -77,7 +77,6 @@ class Daemon:
         # The apps page shows only while the bar is on screen, drawn by an
         # extension that knows the pages.
         self.pager = Pager(
-            enabled=config.pages.pager,
             return_after=config.pages.return_after,
             can_show=lambda: self.grabbed() and self.renderer_protocol() >= PAGES_PROTOCOL,
         )
@@ -159,7 +158,7 @@ class Daemon:
             # The page shown, black below the bar on the touchpad page (and
             # whether with a clock), and what the apps page shows there.
             "page": self.pager.name(),
-            "screensaver": {"clock": self.config.pages.clock} if self.config.pages.screensaver else None,
+            "screensaver": {"clock": self.config.pages.clock},
             "surface": self.pager.surface(),
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension

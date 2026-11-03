@@ -90,16 +90,15 @@ class NotifyPolicy:
 class Pages:
     """The pages' settings: [screensaver] and [pager]."""
 
-    def __init__(self, screensaver=True, clock=True, pager=True, return_after=RETURN_AFTER):
-        self.screensaver = screensaver  # black below the bar on the touchpad page
-        self.clock = clock  # a faint clock on it
-        self.pager = pager  # the page dots, the swipe and the apps page
+    def __init__(self, clock=True, return_after=RETURN_AFTER):
+        self.clock = clock  # a faint clock on the black below the bar
         self.return_after = return_after
 
     def describe(self):
-        saver = "black" + (" with a clock" if self.clock else "") if self.screensaver else "off"
-        pager = "back to the touchpad after %d s" % self.return_after if self.pager else "off"
-        return "screensaver %s; apps page %s" % (saver, pager)
+        return "screensaver black%s; apps page back to the touchpad after %d s" % (
+            " with a clock" if self.clock else "",
+            self.return_after,
+        )
 
 
 class Config:
@@ -330,17 +329,12 @@ def _bool(table, name, key):
 
 
 def _pages(data):
-    saver = _table(data, "screensaver", {"enabled", "clock"})
-    pager = _table(data, "pager", {"enabled", "return_after"})
+    saver = _table(data, "screensaver", {"clock"})
+    pager = _table(data, "pager", {"return_after"})
     after = pager.get("return_after", RETURN_AFTER)
     if isinstance(after, bool) or not isinstance(after, int) or not 1 <= after <= MAX_RETURN_AFTER:
         raise ConfigError("pager: return_after must be a whole number of seconds, 1 to %d" % MAX_RETURN_AFTER)
-    return Pages(
-        _bool(saver, "screensaver", "enabled"),
-        _bool(saver, "screensaver", "clock"),
-        _bool(pager, "pager", "enabled"),
-        after,
-    )
+    return Pages(_bool(saver, "screensaver", "clock"), after)
 
 
 def config_path():

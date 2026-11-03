@@ -127,10 +127,8 @@ key = "printscreen"
 # the pointer. A swipe to the right, a tap on the dots, or %(return_after)d seconds
 # without a touch bring the touchpad back. To change that:
 # [screensaver]
-# enabled = false                            # no black, GNOME's background
 # clock = false                              # black, without the clock
 # [pager]
-# enabled = false                            # no dots and no apps page
 # return_after = %(return_after)d                           # seconds before the touchpad
 """ % {
     "layout": LAYOUT_DOC,

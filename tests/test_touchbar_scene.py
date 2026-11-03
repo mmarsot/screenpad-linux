@@ -81,7 +81,7 @@ class SceneTests(unittest.TestCase):
                 "label": "Page 2 of 2, apps",
             },
         )
-        # Without the pager (turned off, or an extension that cannot draw
+        # Without the pager (an extension that cannot draw
         # the pages), no dots.
         self.assertNotIn("dots", [t["style"] for t in spot_tiles(c)])
 

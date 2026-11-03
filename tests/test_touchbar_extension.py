@@ -4,8 +4,7 @@ contract.js against the daemon's constants and its renderer.json check, and
 scene.js on scenes the daemon publishes: what is rebuilt, where tiles, the
 grip, text and badges go, drops and launches. The stylesheet is checked
 against every style and class a tile can carry. Only names that cross from
-the daemon or GNOME Shell into extension.js and pages.js are read from
-their source.
+the daemon or GNOME Shell into extension.js are read from its source.
 
 Run with: python3 -m unittest discover -s tests
 """
@@ -116,13 +115,9 @@ class ContractTests(unittest.TestCase):
         self.assertLessEqual(set(self.c["BAR_CHROME"]), CHROME_OPTIONS)
         self.assertEqual(self.c["STRUT_CHROME"], {"affectsStruts": True})
         # Source check of the names crossing into GNOME Shell: every chrome
-        # call passes one of those two (the bar and its strut; the apps page).
-        calls = [
-            call
-            for name in ("extension.js", "pages.js")
-            for call in re.findall(r"(?:add|addTop|track)Chrome\(([^;]*?)\);", read(name))
-        ]
-        self.assertEqual(sorted(a.split(",")[-1].strip() for a in calls), ["BAR_CHROME", "BAR_CHROME", "STRUT_CHROME"])
+        # call passes one of those two.
+        calls = re.findall(r"(?:add|addTop|track)Chrome\(([^;]*?)\);", read("extension.js"))
+        self.assertEqual(sorted(a.split(",")[-1].strip() for a in calls), ["BAR_CHROME", "STRUT_CHROME"])
 
     def test_renderer_json_is_what_the_daemon_reads(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d):
@@ -269,7 +264,7 @@ class SceneTests(unittest.TestCase):
 
     def test_the_pages(self):
         home, apps = published(), published(page=APPS)
-        off = published(TILE_CONFIG + "[screensaver]\nenabled = false\n")
+        off = published(TILE_CONFIG + "[screensaver]\nclock = false\n")
         out = js(
             "scene.js",
             "[v.home, v.apps, v.off, null, {surface: {title: 3}}].map(m.pagesFrom)",
@@ -280,7 +275,7 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(out[0], {"screensaver": {"clock": True}, "surface": None})
         self.assertEqual(out[1]["surface"], apps["surface"])
         self.assertEqual(set(out[1]["surface"]), {"title", "text", "hint"})
-        self.assertEqual(out[2], {"screensaver": None, "surface": None})
+        self.assertEqual(out[2], {"screensaver": {"clock": False}, "surface": None})
         self.assertEqual(out[3], {"screensaver": None, "surface": None})
         self.assertEqual(out[4]["surface"], {"title": "", "text": "", "hint": ""})
         # The dots tile changes with the page, which rebuilds the bar.
