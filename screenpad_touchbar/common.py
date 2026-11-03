@@ -70,6 +70,17 @@ PAGES_PROTOCOL = 3
 WIDGETS_PROTOCOL = 4
 RENDERER_NAME = "renderer.json"
 SOCKET_NAME = "touchbar.sock"
+# The app protocol on that socket (docs/app-api.md#the-protocol-version): an
+# app's hello says the version it speaks, and the daemon accepts every one
+# from MIN_APP_PROTOCOL to APP_PROTOCOL, so an app from before keeps working
+# and one built for a newer bar gets a typed "unsupported-protocol" error
+# instead of misbehaving. A hello without "protocol" is version 1, the
+# protocol from before it was versioned; version 2 added the version itself.
+# Bump APP_PROTOCOL when an app could otherwise not tell that the bar lacks
+# something it relies on (a new op or field it sends, a changed meaning); a
+# new field in what the daemon sends needs no bump, apps ignore those.
+APP_PROTOCOL = 2
+MIN_APP_PROTOCOL = 1
 MAX_APPS = 16
 # Bytes: a longer line, or a client that does not read its replies, is cut off.
 MAX_LINE = 16384

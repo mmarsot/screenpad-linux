@@ -31,7 +31,7 @@ class AppTests(unittest.TestCase):
 
     def test_hello_page_and_tiles(self):
         rig = self.rig()
-        self.assertEqual(rig.handled[0], {"op": "hello", "app": "agents", "tiles": ["agents", "calls"]})
+        self.assertEqual(rig.handled[0], {"op": "hello", "app": "agents", "tiles": ["agents", "calls"], "protocol": 2})
         self.assertEqual(rig.apps.provided()["agents"]["badge"], "1")
         self.assertEqual(rig.apps.pages["agents"].widgets[1].look["label"], "fix-api")
         self.assertEqual(rig.logged, [])
@@ -127,7 +127,7 @@ class AppTests(unittest.TestCase):
     def test_the_touch_bar_going_and_coming_back(self):
         rig = self.rig()
         rig.close_server()
-        rig.until(lambda: rig.app.touchbar is None)
+        rig.until(lambda: not rig.app.link.connected)
         self.assertIn("lost the touch bar", rig.logged[-1])
         rig.turn(5)
         rig.serve()

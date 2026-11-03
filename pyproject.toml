@@ -1,12 +1,25 @@
-# Development tooling only. The programs themselves are Python 3
-# scripts using only the standard library; nothing here is installed with
-# them (install.sh copies the files).
+# The client library for touch bar apps, and the development tooling. The
+# programs themselves are Python 3 scripts using only the standard library,
+# which install.sh copies; nothing here is installed with them.
+#
+# Built as a package, this repository is only the client library
+# screenpad_app (docs/app-api.md#the-python-client-library), so an app in its
+# own repository can depend on it:
+#   pip install "screenpad-app @ git+https://github.com/mmarsot/screenpad-linux"
+# uv never builds it (package = false below): the dev group is the tooling.
 [project]
-name = "screenpad-linux"
-version = "0"
-description = "ASUS ScreenPad display support and touch bar for Ubuntu/GNOME"
+name = "screenpad-app"
+version = "2.0.0"
+description = "Client library for ScreenPad touch bar apps (app protocol 2), from screenpad-linux"
 requires-python = ">=3.11"
 dependencies = []
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["screenpad_app"]
 
 [dependency-groups]
 dev = ["mypy==2.4.1", "ruff==0.17.3"]
@@ -38,11 +51,20 @@ ignore = [
 section-order = ["future", "standard-library", "third-party", "test-support", "first-party", "local-folder"]
 
 [tool.ruff.lint.isort.sections]
-test-support = ["agents_support", "screenpad_support", "touchbar_support"]
+test-support = ["agents_support", "app_support", "screenpad_support", "touchbar_support"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["screenpad.py", "touchbar.py", "agents.py", "screenpad_display", "screenpad_touchbar", "screenpad_agents", "tests"]
+files = [
+    "screenpad.py",
+    "touchbar.py",
+    "agents.py",
+    "screenpad_display",
+    "screenpad_touchbar",
+    "screenpad_app",
+    "screenpad_agents",
+    "tests",
+]
 mypy_path = ["$MYPY_CONFIG_FILE_DIR", "$MYPY_CONFIG_FILE_DIR/tests"]
 check_untyped_defs = true
 warn_unused_ignores = true
@@ -53,12 +75,15 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = [
     "agents_support",
+    "app_support",
     "screenpad_support",
     "test_agents_app",
     "test_agents_board",
     "test_agents_config",
     "test_agents_fleet",
     "test_agents_sources",
+    "test_app_fake",
+    "test_app_protocol",
     "test_install",
     "test_screenpad",
     "test_screenpad_grub",

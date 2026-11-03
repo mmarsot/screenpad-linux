@@ -47,13 +47,35 @@ When questions cannot show, a new question is answered `unavailable` at once, an
 
 ## The protocol
 
-Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB per line). A client that sends a longer line, or does not read its replies (256 KiB pending), is disconnected. At most 16 apps can be connected at once.
+Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB per line). A client that sends a longer line, or does not read its replies (256 KiB pending), is disconnected. At most 16 apps can be connected at once. An app ignores fields it does not know in what the daemon sends: new ones are added without a new protocol version.
+
+### The protocol version
+
+The app protocol has a version, so an app and a touch bar from different releases fail clearly instead of misbehaving. This version is **2**. An app's `hello` says the version it speaks (`"protocol": 2`), and the daemon's `welcome` says the version the connection speaks.
+
+- **The daemon speaks every version from 1 to its own** (today 1 to 2). Version 1 is the protocol from before it had a version: a `hello` without `protocol` is version 1, so an app written before keeps working, and so does the extension's notification mirror, which says none.
+- **A version the daemon does not speak** is refused with a typed error, and the app is not connected (it may say `hello` again, with another version):
+
+  ```json
+  {"op": "error", "request": "hello", "code": "unsupported-protocol",
+   "message": "app protocol 3 is not supported: this touch bar speaks 1 to 2; update screenpad-linux",
+   "protocol": 3, "supported": {"min": 1, "max": 2}}
+  ```
+
+  An app should stop there and show the message: `protocol` above `supported.max` means the touch bar is older than the app (update screenpad-linux), below `supported.min` that the app is older than the touch bar still supports (update the app).
+- **A touch bar from before the version** answers a `hello` that says one with `{"op": "error", "request": "hello", "message": "unknown field(s): protocol"}`: it speaks only version 1. An app that needs nothing newer can say no version and be welcome there.
+- **When the version goes up:** when an app could otherwise not tell that the bar lacks something it relies on: a new op or field an app sends, or a message whose meaning changes. A new field in what the daemon sends, or a new optional feature an app can do without, needs no new version. The daemon keeps speaking the older versions for as long as it can, as it does for the extension's renderer `protocol` (see [When questions show](#when-questions-show)) and the scene's `version` (see [What the extension draws](#what-the-extension-draws)).
+
+| Version | What it added |
+|---|---|
+| 1 | everything below, before the protocol had a version (a `hello` without `protocol`) |
+| 2 | `protocol` in `hello` and `welcome`, and the `unsupported-protocol` error |
 
 ### From an app
 
 | Message | Meaning |
 |---|---|
-| `{"op": "hello", "app": "fleet", "tiles": ["agents"]}` | Say who you are (`app`: lower case letters, digits, `.`, `_`, `-`, at most 32), and which tiles you draw (at most 8 names, same rules). Required first. A tile belongs to the first app that provides it, until that app disconnects |
+| `{"op": "hello", "app": "fleet", "tiles": ["agents"], "protocol": 2}` | Say who you are (`app`: lower case letters, digits, `.`, `_`, `-`, at most 32), which tiles you draw (at most 8 names, same rules), and the [protocol version](#the-protocol-version) you speak (none is version 1). Required first. A tile belongs to the first app that provides it, until that app disconnects |
 | `{"op": "set", "tile": "agents", "label": "1 blocked", "tone": "warning", "badge": "2"}` | What one of your tiles shows. Fields: `icon` (an icon name from the theme, or an absolute image path), `label` (at most 32 characters), `text` (a second line, at most 48), `badge` (a short count in the corner, at most 4), `tone` (as for answers). Each `set` replaces the previous one. The extension draws the icon if there is one, otherwise the label and text. A tile you have not `set` yet shows the config's `icon` or `label` |
 | `{"op": "ask", "id": "q1", "title": "Run npm test?", "text": "in ~/api", "options": [{"id": "no", "label": "Deny", "tone": "reject"}, {"id": "yes", "label": "Allow once", "tone": "accept"}], "timeout": 45}` | Ask a question. `id` names it in the answer and in `cancel`; it must be unique among your waiting questions. The limits are the `ask` command's |
 | `{"op": "cancel", "id": "q1"}` | Withdraw a waiting question; it is answered `cancelled` |
@@ -65,12 +87,12 @@ Each side sends one JSON object per line (UTF-8, `\n`-terminated, at most 16 KiB
 
 | Message | Meaning |
 |---|---|
-| `{"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": [], "taken": []}` | The answer to `hello`: your tiles that have a spot in the config (`placed`), those that do not (`unplaced`: nothing shows them until the config gives them one), and those another app already provides (`taken`) |
+| `{"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": [], "taken": [], "protocol": 2}` | The answer to `hello`: your tiles that have a spot in the config (`placed`), those that do not (`unplaced`: nothing shows them until the config gives them one), those another app already provides (`taken`), and the protocol version spoken |
 | `{"op": "event", "tile": "agents", "type": "down"}` | A finger went down on your tile |
 | `{"op": "event", "tile": "agents", "type": "up", "inside": true}` | It lifted: `inside` is true when it lifted on the tile (or within 60 px of it), which is a tap; false when it slid away, or the touch was cancelled. Hold-style behavior is yours to build from `down` and `up` |
 | `{"op": "event", "page": "agents", "widget": "allow", "type": "tap"}` | A touch on a widget of your page: `down`, then one of `tap`, `long` or `cancel`; see [Pages on the apps page](#pages-on-the-apps-page) |
 | `{"op": "answer", "id": "q1", "option": "yes", "reason": "chosen"}` | The answer to a question. `option` is `null` when there is none, with `reason` `dismissed` (the user closed the card), `timeout`, `unavailable` or `cancelled` |
-| `{"op": "error", "request": "set", "message": "..."}` | A message was refused; `id` is added when the message had one. The connection stays open |
+| `{"op": "error", "request": "set", "message": "..."}` | A message was refused; `id` is added when the message had one. The connection stays open. `code` names an error an app is expected to act on: only `unsupported-protocol` so far, see [The protocol version](#the-protocol-version) |
 
 When an app disconnects, its tiles go back to the config's dimmed look, its pages leave the apps page and its waiting questions are dropped unanswered.
 
@@ -167,15 +189,75 @@ def send(msg):
     f.write(json.dumps(msg) + "\n")
     f.flush()
 
-send({"op": "hello", "app": "counter", "tiles": ["agents"]})
+send({"op": "hello", "app": "counter", "tiles": ["agents"], "protocol": 2})
 count = 0
 send({"op": "set", "tile": "agents", "label": "0"})
 for line in f:
     msg = json.loads(line)
+    if msg["op"] == "error" and msg.get("request") == "hello":
+        raise SystemExit(msg["message"])
     if msg["op"] == "event" and msg["type"] == "up" and msg.get("inside"):
         count += 1
         send({"op": "set", "tile": "agents", "label": str(count)})
 ```
+
+## The Python client library
+
+`screenpad_app` is the same thing as a small Python package, standard library only, that an app in its own repository can depend on instead of copying the code above. It is in this repository; the repository's `pyproject.toml` builds only it, so pip installs it from the git URL:
+
+```sh
+pip install "screenpad-app @ git+https://github.com/mmarsot/screenpad-linux"
+```
+
+(or that line in an app's own `dependencies`; add `@<tag or commit>` to the URL to pin it). The [agent app](agents.md) here uses it.
+
+```python
+import select
+from screenpad_app import Touchbar, ProtocolMismatch, TouchbarError, socket_path
+
+bar = Touchbar(socket_path(), "counter", ["agents"])
+try:
+    bar.handshake()            # the welcome; ProtocolMismatch if the versions do not meet
+except TouchbarError as e:     # ProtocolMismatch, HelloRefused, TouchbarGone
+    raise SystemExit(str(e))   # says which side to update
+count = 0
+bar.tile("agents", label="0")
+while True:
+    select.select([bar], [], [])
+    for msg in bar.receive():
+        if msg["op"] == "event" and msg["type"] == "up" and msg.get("inside"):
+            count += 1
+            bar.tile("agents", label=str(count))
+```
+
+| Name | What it is |
+|---|---|
+| `PROTOCOL` | the protocol version the library speaks (2) |
+| `socket_path(environ=None)` | the socket's path; `TouchbarGone` when `XDG_RUNTIME_DIR` is not set |
+| `Touchbar(path, app, tiles=(), protocol=PROTOCOL, timeout=2.0)` | one connection: it connects (an `OSError` when no daemon listens) and says `hello`. `send(msg)` sends any message; `show(messages)` sends each `set` and `page` only when it differs from the last one sent for that tile or page; `tile(name, **look)`, `unpage(page)`, `ask(id, title, options, text=None, timeout=None)` (options as `(id, label)` or `(id, label, tone)`), `cancel(id)`. `receive()` returns the messages that arrived (call it when the connection is readable; it is a file descriptor for `select`), the welcome among them, and sets `welcome` and `protocol`. `handshake(timeout=2.0)` waits for the welcome instead |
+| `Link(path, app, tiles=(), retry=5.0, log=None)` | a connection kept up, for an app's loop: `connect()` on every turn connects when due and returns True for a new connection, after which the app shows everything again; `show`, `send` and `receive` do nothing while there is none; a lost connection or a refused `hello` is logged once and retried every `retry` seconds (the refusal is in `refused`) |
+| `TouchbarError` | any reason the connection cannot be used: `TouchbarGone` (no daemon, or it closed), `HelloRefused` (its `message` says why) and its kind `ProtocolMismatch`, with `speaks` (the app's version) and `supported` (the daemon's `(min, max)`, or `None` for a daemon from before the version) |
+| `clip(text, limit)` and `screenpad_app.common` | the limits above as constants (`MAX_LABEL`, `MAX_TEXT`, `MAX_LINES`, ...), and text cut to one with an ellipsis |
+
+The library sends `"protocol": 2`, so against a touch bar from before the version it fails with `ProtocolMismatch` (`supported` `None`); `Touchbar(..., protocol=1)` says no version, for an app that wants to run there.
+
+### Testing an app
+
+`screenpad_app.testing.FakeBar` stands in for the daemon's socket in an app's tests, so an app's repository never needs the touch bar's code. It runs in its own thread, in a temporary directory laid out like `$XDG_RUNTIME_DIR` (`environ` holds that variable), answers `hello` as the daemon does (`min_protocol` and `max_protocol` set the versions it speaks, `legacy=True` makes it a daemon from before the version), and keeps what the apps sent: `tiles` (each tile's last look), `pages`, `asks` (the waiting questions), `apps` and `received` (every message). The test drives the touches with `press(tile)`, `tap(page, widget, kind="tap")`, `answer(id, option, reason="chosen")`, `send(app, msg)` and `drop()` (a daemon restarting), and `wait(check)` waits for what the app does.
+
+```python
+from screenpad_app import Touchbar, socket_path
+from screenpad_app.testing import FakeBar
+
+with FakeBar(placed=["agents"]) as bar:
+    app = Touchbar(socket_path(bar.environ), "counter", ["agents"])
+    app.handshake()
+    bar.press("agents")
+    ...  # the app handles the tap
+    bar.wait(lambda: bar.tiles["agents"].get("label") == "1")
+```
+
+It checks the handshake, unknown ops, a message before `hello` and someone else's tile or page, and nothing else: the limits and the touch rules (arming, cancels) are the daemon's, as this page gives them.
 
 ## What the extension draws
 

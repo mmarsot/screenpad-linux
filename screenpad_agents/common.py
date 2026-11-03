@@ -1,7 +1,12 @@
-"""Names, paths, timings and the errors of the agent app."""
+"""Names, paths, timings and the errors of the agent app.
+
+The touch bar's own limits, its socket's path and clip() are the client
+library's (screenpad_app), as for any app.
+"""
 
 import os
-import re
+
+import screenpad_app
 
 # Who the app is on the touch bar's socket, and what it gives it.
 APP = "agents"
@@ -9,9 +14,6 @@ FLEET_TILE = "agents"
 CALLS_TILE = "calls"
 PAGE = "agents"
 
-# The touch bar's socket, as docs/app-api.md gives it. The app finds it the
-# way any app does; it imports nothing of the daemon.
-SOCKET = ("screenpad", "touchbar.sock")
 CONFIG = ("screenpad", "agents.toml")
 
 # How often Herdr is asked (seconds), and the bounds a config may set.
@@ -31,17 +33,10 @@ RECONNECT = 5.0
 STATES = ("working", "blocked", "idle", "done", "unknown")
 STATE_TONES = {"working": "accept", "blocked": "warning"}
 
-# The touch bar's limits this app writes within (docs/app-api.md).
-MAX_LABEL = 32
-MAX_TEXT = 200
-MAX_TILE_TEXT = 48
-MAX_BADGE = 4
-WIDGET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
+# The Agents page's grid: COLUMNS wide, MIN_ROWS rows or more as agents
+# need, up to the touch bar's own limit (screenpad_app.MAX_ROWS).
 COLUMNS = 4
-MIN_ROWS, MAX_ROWS = 2, 4
-# A widget's fixed-width lines: at most 16, each at most 120 characters.
-MAX_LINES = 16
-MAX_LINE_CHARS = 120
+MIN_ROWS = 2
 # firstmate's interrupt (bin/fm-control.sh <task> interrupt) waits for the
 # harness to acknowledge, about 5 s; past this it is reported failed.
 CONTROL_TIMEOUT = 60.0
@@ -62,23 +57,14 @@ class ConfigError(AgentsError):
     pass
 
 
-def runtime_dir():
-    path = os.environ.get("XDG_RUNTIME_DIR")
-    if not path:
-        raise AgentsError("XDG_RUNTIME_DIR is not set; run it in your graphical session")
-    return path
-
-
 def socket_path():
-    return os.path.join(runtime_dir(), *SOCKET)
+    """The touch bar's socket, found the way any app finds it."""
+    try:
+        return screenpad_app.socket_path()
+    except screenpad_app.TouchbarError as e:
+        raise AgentsError(str(e))
 
 
 def config_path():
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(base, *CONFIG)
-
-
-def clip(text, limit):
-    """text cut to limit characters, with an ellipsis when it was longer."""
-    text = " ".join(str(text).split())
-    return text if len(text) <= limit else text[: limit - 1] + "…"

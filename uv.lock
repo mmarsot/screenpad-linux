@@ -290,8 +290,8 @@ wheels = [
 ]
 
 [[package]]
-name = "screenpad-linux"
-version = "0"
+name = "screenpad-app"
+version = "2.0.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

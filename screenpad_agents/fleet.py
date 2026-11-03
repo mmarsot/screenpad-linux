@@ -13,22 +13,12 @@ the grid, until Back, an answer sent, or the agent leaving Herdr's list.
 import hashlib
 import os
 
+from screenpad_app import clip
+from screenpad_app.common import ID as WIDGET_ID
+from screenpad_app.common import MAX_BADGE, MAX_LABEL, MAX_ROWS, MAX_TEXT, MAX_TILE_TEXT
+
 from . import card as cards
-from .common import (
-    CALLS_TILE,
-    COLUMNS,
-    FLEET_TILE,
-    MAX_BADGE,
-    MAX_LABEL,
-    MAX_ROWS,
-    MAX_TEXT,
-    MAX_TILE_TEXT,
-    MIN_ROWS,
-    PAGE,
-    STATE_TONES,
-    WIDGET_ID,
-    clip,
-)
+from .common import CALLS_TILE, COLUMNS, FLEET_TILE, MIN_ROWS, PAGE, STATE_TONES
 from .keymap import interrupt_keys
 
 CALLS_WIDGET = "calls"

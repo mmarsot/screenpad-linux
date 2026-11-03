@@ -5,7 +5,7 @@ description: Load before changing the agent app - agents.py and the screenpad_ag
 
 # Agent app
 
-Owning files: `screenpad_agents/` (`common`, `config`, `herdr`, `keymap`, `screen`, `firstmate`, `card`, `fleet`, `client`, `app`, `cli`, imported in that order, one way) and `agents.py`, the launcher that runs its `cli.main()`. Installed as `/usr/local/lib/screenpad/` next to the other programs, with `/usr/local/bin/screenpad-agents` a link and `systemd/screenpad-agents.service` its user unit (see the [install](../install/SKILL.md) skill).
+Owning files: `screenpad_agents/` (`common`, `config`, `herdr`, `keymap`, `screen`, `firstmate`, `card`, `fleet`, `app`, `cli`, imported in that order, one way) and `agents.py`, the launcher that runs its `cli.main()`. Installed as `/usr/local/lib/screenpad/` next to the other programs, with `/usr/local/bin/screenpad-agents` a link and `systemd/screenpad-agents.service` its user unit (see the [install](../install/SKILL.md) skill).
 
 Read first:
 
@@ -14,7 +14,7 @@ Read first:
 
 ## Rules
 
-- **An app like any other.** It talks to the touch bar only through the socket and **imports nothing of `screenpad_touchbar`** (`test_imports_nothing_of_the_daemon`). It finds the socket and writes within the limits as docs/app-api.md gives them (`common.py`); a protocol change is the [touchbar](../touchbar/SKILL.md) skill's, then this app follows. Standard library only, shebang `python3 -I`, like the other programs.
+- **An app like any other.** It talks to the touch bar only through the socket, with the client library `screenpad_app` (its `Link`, the socket's path, the limits and `clip`), and **imports nothing of `screenpad_touchbar`** (`test_imports_nothing_of_the_daemon`); it is to move to its own repository, so it keeps to what any app can do. A protocol or library change is the [touchbar](../touchbar/SKILL.md) skill's, then this app follows. Standard library only, shebang `python3 -I`, like the other programs.
 - **Off until configured.** Without `agents.toml` (or `--config`) every command exits 2 before touching anything; install never enables the unit, and the unit has `ConditionPathExists`. Nothing defaults to a firstmate home or checkout: without `[firstmate]` nothing of firstmate is read. The config is strict (unknown keys and bad values are `ConfigError`); a new setting needs parsing, its error, docs/agents.md and tests.
 - **Herdr is the authority** on which agents run and their state; the app shows `agent list` as it is, in Herdr's order, and never infers state. **Every Herdr call passes `--session <configured session>`**; none relies on the ambient session.
 - **firstmate through its own commands only**: the reader `FM_HOME=<home> <code>/bin/fm-bearings-snapshot.sh --json --fields endpoints`, at most every `[firstmate] poll` (60 s or more) plus on demand when Captain's Call is tapped, and `FM_HOME=<home> <code>/bin/fm-control.sh <task id> interrupt` on Interrupt for a task (`firstmate.py`), each with no other `FM_*` variable passed on. Never parse firstmate's files. The count is `len(decisions_open) + len(contributions.captain)`; the join is the endpoint target `<session>:<pane id>`, and `fm-bearings-board.sh path` finds the board (below).

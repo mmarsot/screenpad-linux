@@ -59,7 +59,7 @@ install_programs() {
     for prog in screenpad touchbar agents; do
         install -D -m 0755 "$here/$prog.py" "$R$LIB/$prog.py"
     done
-    for pkg in screenpad_display screenpad_touchbar screenpad_agents; do
+    for pkg in screenpad_display screenpad_touchbar screenpad_app screenpad_agents; do
         rm -rf "$R$LIB/$pkg"
         for f in "$here/$pkg"/*.py; do
             install -D -m 0644 "$f" "$R$LIB/$pkg/$(basename "$f")"

@@ -20,7 +20,7 @@ from .common import (
 )
 from .config import NotifyPolicy
 from .notify import mirror_refusal, notification_ask, parse_notify
-from .protocol import ProtocolError, known_fields, parse_ask
+from .protocol import ProtocolError, known_fields, parse_ask, protocol_field
 from .widgets import look_fields, parse_page
 
 
@@ -53,7 +53,7 @@ class Apps:
         if len(self.clients) >= MAX_APPS:
             client.send({"op": "error", "message": "too many apps (%d)" % MAX_APPS})
             return False
-        client.name = None
+        client.name, client.protocol = None, None
         self.clients.append(client)
         return True
 
@@ -126,15 +126,16 @@ class Apps:
             else:
                 raise ProtocolError("unknown op %r" % op)
         except ProtocolError as e:
-            reply = {"op": "error", "request": op if isinstance(op, str) else None, "message": str(e)}
+            reply = {"op": "error", "request": op if isinstance(op, str) else None, "message": str(e), **e.fields}
             if isinstance(msg, dict) and isinstance(msg.get("id"), str):
                 reply["id"] = msg["id"]
             client.send(reply)
 
     def _hello(self, client, msg):
-        known_fields(msg, {"app", "tiles"})
+        known_fields(msg, {"app", "tiles", "protocol"})
         if client.name is not None:
             raise ProtocolError("hello was already said")
+        protocol = protocol_field(msg.get("protocol"))
         name = msg.get("app")
         if not isinstance(name, str) or not TILE_NAME.fullmatch(name):
             raise ProtocolError('app must be a name like "agents" (lower case, at most 32)')
@@ -145,7 +146,7 @@ class Apps:
             or not all(isinstance(t, str) and TILE_NAME.fullmatch(t) for t in tiles)
         ):
             raise ProtocolError("tiles must be a list of at most 8 tile names")
-        client.name = name
+        client.name, client.protocol = name, protocol
         taken = []
         for tile in dict.fromkeys(tiles):
             if tile in self.owner:
@@ -162,6 +163,7 @@ class Apps:
                 "placed": [t for t in mine if t in self.placed],
                 "unplaced": [t for t in mine if t not in self.placed],
                 "taken": taken,
+                "protocol": protocol,
             }
         )
 
@@ -234,6 +236,7 @@ class AppClient:
         self.rbuf = b""
         self.wbuf = b""
         self.name = None
+        self.protocol = None  # the app protocol version its hello said
         # Set when it must be cut off: a too long line, or replies piling up.
         self.broken = False
 

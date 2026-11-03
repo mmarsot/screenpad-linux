@@ -18,7 +18,8 @@ not used: it does not change when a dialog does (docs/agents.md).
 
 import hashlib
 
-from .common import MAX_LINE_CHARS, MAX_LINES
+from screenpad_app.common import MAX_LINE_CHARS, MAX_LINES
+
 from .herdr import HerdrError
 
 # Box drawing a TUI frames its dialog with: stripped from line ends, and a
