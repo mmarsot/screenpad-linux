@@ -94,7 +94,7 @@ def log(msg):
 
 
 def block_checksum(block):
-    return (-sum(block[:EDID_BLOCK - 1])) & 0xFF
+    return (-sum(block[: EDID_BLOCK - 1])) & 0xFF
 
 
 def edid_blocks(edid):
@@ -103,20 +103,18 @@ def edid_blocks(edid):
         raise ScreenpadError("not an EDID (bad header or shorter than 128 bytes)")
     count = 1 + edid[126]
     if len(edid) < count * EDID_BLOCK:
-        raise ScreenpadError(
-            "EDID announces %d extension(s) but has only %d bytes" % (count - 1, len(edid))
-        )
+        raise ScreenpadError("EDID announces %d extension(s) but has only %d bytes" % (count - 1, len(edid)))
     return count
 
 
 def fix_checksums(edid):
     """Return (fixed EDID trimmed to its blocks, [(block, stored, correct)] for each fix)."""
     count = edid_blocks(edid)
-    fixed = bytearray(edid[:count * EDID_BLOCK])
+    fixed = bytearray(edid[: count * EDID_BLOCK])
     changes = []
     for n in range(count):
         start = n * EDID_BLOCK
-        correct = block_checksum(fixed[start:start + EDID_BLOCK])
+        correct = block_checksum(fixed[start : start + EDID_BLOCK])
         stored = fixed[start + EDID_BLOCK - 1]
         if stored != correct:
             fixed[start + EDID_BLOCK - 1] = correct
@@ -152,13 +150,13 @@ def detailed_timing(edid):
 
 def has_hdmi_vsdb(edid):
     for n in range(1, edid_blocks(edid)):
-        block = edid[n * EDID_BLOCK:(n + 1) * EDID_BLOCK]
+        block = edid[n * EDID_BLOCK : (n + 1) * EDID_BLOCK]
         if block[0] != 0x02:
             continue
         pos, end = 4, block[2]
         while pos < end and pos < EDID_BLOCK - 1:
             tag, length = block[pos] >> 5, block[pos] & 0x1F
-            if tag == 3 and block[pos + 1:pos + 4] == HDMI_OUI:
+            if tag == 3 and block[pos + 1 : pos + 4] == HDMI_OUI:
                 return True
             pos += 1 + length
     return False
@@ -197,9 +195,7 @@ def read_edid_i2c(dev):
             return edid
         extensions = edid[126]
         if extensions > 1:
-            raise ScreenpadError(
-                "%s: EDID announces %d extensions; only 1 is supported" % (dev, extensions)
-            )
+            raise ScreenpadError("%s: EDID announces %d extensions; only 1 is supported" % (dev, extensions))
         if extensions:
             edid += block(EDID_BLOCK)
         return edid
@@ -210,8 +206,9 @@ def read_edid_i2c(dev):
 class Env:
     """Filesystem root and side effects, replaceable in tests."""
 
-    def __init__(self, root="/", sleep=time.sleep, euid=os.geteuid,
-                 i2c_read=read_edid_i2c, clock=time.monotonic, run=None):
+    def __init__(
+        self, root="/", sleep=time.sleep, euid=os.geteuid, i2c_read=read_edid_i2c, clock=time.monotonic, run=None
+    ):
         self.root = root
         self.sleep = sleep
         self.euid = euid
@@ -266,9 +263,7 @@ def check_dmi(env):
     vendor = read_text(env.path(DMI_ID, "sys_vendor")) or "?"
     product = read_text(env.path(DMI_ID, "product_name")) or "?"
     if (vendor, product) not in SUPPORTED_DMI:
-        raise Unsupported(
-            "unsupported machine %r %r; this tool only knows the ZenBook UX480FD" % (vendor, product)
-        )
+        raise Unsupported("unsupported machine %r %r; this tool only knows the ZenBook UX480FD" % (vendor, product))
     return vendor, product
 
 
@@ -298,7 +293,8 @@ def cmdline_params(text):
     part. value is None for a bare flag.
     """
     params = []
-    word, quoted = [], False
+    word: list[str] = []
+    quoted = False
     for ch in text + " ":
         if ch == '"':
             quoted = not quoted
@@ -366,20 +362,25 @@ def set_runtime_firmware(env, connector):
     """Make the live drm edid_firmware give the connector our file. True if it changed."""
     current = runtime_edid_firmware(env)
     if current is None:
-        raise ScreenpadError("%s missing: this kernel cannot load an EDID from firmware "
-                             "(CONFIG_DRM_LOAD_EDID_FIRMWARE)" % env.path(DRM_EDID_FIRMWARE))
+        raise ScreenpadError(
+            "%s missing: this kernel cannot load an EDID from firmware "
+            "(CONFIG_DRM_LOAD_EDID_FIRMWARE)" % env.path(DRM_EDID_FIRMWARE)
+        )
     if firmware_for_connector(current, connector) == FIRMWARE_NAME:
         return False
     # Ours goes first, so it wins over any entry whose name is a prefix of
     # ours. Entries giving our file to another connector go: connector numbers
     # follow driver load order, so a boot parameter can name the wrong one.
-    others = [e for e in current.split(",")
-              if e and not e.startswith(connector + ":") and not e.endswith(":" + FIRMWARE_NAME)]
+    others = [
+        e for e in current.split(",") if e and not e.startswith(connector + ":") and not e.endswith(":" + FIRMWARE_NAME)
+    ]
     try:
         write_attr(env.path(DRM_EDID_FIRMWARE), ",".join([firmware_entry(connector)] + others))
     except OSError as e:
-        raise ScreenpadError("cannot set drm edid_firmware at runtime (%s); add the boot "
-                             "parameter with 'screenpad grub apply' and reboot" % e)
+        raise ScreenpadError(
+            "cannot set drm edid_firmware at runtime (%s); add the boot "
+            "parameter with 'screenpad grub apply' and reboot" % e
+        )
     return True
 
 
@@ -415,12 +416,12 @@ class Target:
     """The NVIDIA card, its HDMI connector, DDC buses and debugfs directory."""
 
     def __init__(self, card, pci, device, connector, buses, debugfs):
-        self.card = card            # "card0"
-        self.pci = pci              # "0000:02:00.0"
-        self.device = device        # real path of the PCI device
+        self.card = card  # "card0"
+        self.pci = pci  # "0000:02:00.0"
+        self.device = device  # real path of the PCI device
         self.connector = connector  # "card0-HDMI-A-2"
-        self.buses = buses          # [9, 10]
-        self.debugfs = debugfs      # ".../dri/0000:02:00.0/HDMI-A-2" or None
+        self.buses = buses  # [9, 10]
+        self.debugfs = debugfs  # ".../dri/0000:02:00.0/HDMI-A-2" or None
 
     @property
     def short_connector(self):
@@ -458,9 +459,7 @@ def find_connector(env, card, wanted=None):
         full = wanted if wanted.startswith(card + "-") else "%s-%s" % (card, wanted)
         return full if full in names else None
     if len(hdmi) > 1:
-        raise ScreenpadError(
-            "several NVIDIA HDMI connectors (%s); pick one with --connector" % ", ".join(hdmi)
-        )
+        raise ScreenpadError("several NVIDIA HDMI connectors (%s); pick one with --connector" % ", ".join(hdmi))
     return hdmi[0] if hdmi else None
 
 
@@ -471,7 +470,7 @@ def short_pci(pci):
 
 
 def find_ddc_buses(env, pci, device):
-    buses = []
+    buses: list[int] = []
     root = env.path(I2C_DEVICES)
     try:
         names = os.listdir(root)
@@ -485,8 +484,7 @@ def find_ddc_buses(env, pci, device):
         adapter = os.path.join(root, name)
         adapter_name = read_text(os.path.join(adapter, "name")) or ""
         parent = os.path.dirname(os.path.realpath(adapter))
-        if parent == device or (adapter_name.startswith(NVIDIA_I2C_NAME)
-                                and adapter_name.endswith(suffix)):
+        if parent == device or (adapter_name.startswith(NVIDIA_I2C_NAME) and adapter_name.endswith(suffix)):
             buses.append(int(m.group(1)))
     return sorted(buses)
 
@@ -505,7 +503,7 @@ def find_debugfs_dir(env, card, pci):
         name = read_text(os.path.join(dri, entry, "name")) or ""
         if re.search(r"\bdev=%s\b" % re.escape(pci), name):
             return os.path.join(dri, entry)
-    minor = card[len("card"):]
+    minor = card[len("card") :]
     if minor in entries:
         return os.path.join(dri, minor)
     return None
@@ -534,8 +532,7 @@ def wait_for_target(env, timeout, connector=None, need_debugfs=True):
     deadline = env.clock() + timeout
     while True:
         target = discover(env, connector)
-        ready = (target and (target.debugfs or not need_debugfs)
-                 and os.path.isdir(env.path(BACKLIGHT)))
+        ready = target and (target.debugfs or not need_debugfs) and os.path.isdir(env.path(BACKLIGHT))
         if ready:
             return target
         if env.clock() >= deadline:
@@ -544,10 +541,10 @@ def wait_for_target(env, timeout, connector=None, need_debugfs=True):
     if not os.path.isdir(env.path(BACKLIGHT)):
         raise ScreenpadError("no %s (is asus_nb_wmi loaded?)" % env.path(BACKLIGHT))
     if not target:
-        raise ScreenpadError("no nvidia-drm card with an HDMI connector "
-                             "(is nvidia-drm loaded with modeset=1?)")
-    raise ScreenpadError("no debugfs edid_override for %s (is debugfs mounted at %s?)"
-                         % (target.connector, env.path("sys/kernel/debug")))
+        raise ScreenpadError("no nvidia-drm card with an HDMI connector (is nvidia-drm loaded with modeset=1?)")
+    raise ScreenpadError(
+        "no debugfs edid_override for %s (is debugfs mounted at %s?)" % (target.connector, env.path("sys/kernel/debug"))
+    )
 
 
 # --- actions -----------------------------------------------------------------
@@ -594,8 +591,7 @@ def wait_for_enabled(env, target, deadline):
         if read_text(path) == "enabled":
             return True
         if env.clock() >= deadline:
-            log("%s is still not enabled by a compositor; lighting the panel anyway"
-                % target.connector)
+            log("%s is still not enabled by a compositor; lighting the panel anyway" % target.connector)
             return False
         env.sleep(0.5)
 
@@ -604,11 +600,13 @@ def capture_edid(env, target):
     """Read the bridge EDID over the NVIDIA DDC buses and return it checksum-fixed."""
     if not target.buses:
         raise ScreenpadError("no NVIDIA DDC i2c adapters found")
-    errors = []
+    errors: list[str] = []
     for attempt in range(EDID_READ_TRIES):
         if attempt == 1:
-            log("no EDID over DDC yet (%s); retrying for up to %d s"
-                % ("; ".join(errors), (EDID_READ_TRIES - 1) * DDC_RETRY_DELAY))
+            log(
+                "no EDID over DDC yet (%s); retrying for up to %d s"
+                % ("; ".join(errors), (EDID_READ_TRIES - 1) * DDC_RETRY_DELAY)
+            )
         if attempt:
             env.sleep(DDC_RETRY_DELAY)
         for bus in target.buses:
@@ -632,7 +630,8 @@ def capture_edid(env, target):
     raise ScreenpadError(
         "could not read an EDID after %d attempts%s: %s; take it from a file instead "
         "with 'capture-edid --from ux580-tsb-fixed.bin' (see docs/install.md)"
-        % (EDID_READ_TRIES, hint, "; ".join(errors[-len(target.buses):])))
+        % (EDID_READ_TRIES, hint, "; ".join(errors[-len(target.buses) :]))
+    )
 
 
 def save_edid(env, edid):
@@ -683,34 +682,37 @@ def provide_firmware_edid(env, target, edid):
         if firmware_for_connector(cmdline_edid_firmware(env), short) == FIRMWARE_NAME:
             log("re-set %s for this boot" % boot_param(short))
         else:
-            log("%s is not on the kernel command line yet; set it for this boot through %s. "
-                "'screenpad grub apply' makes it permanent"
-                % (boot_param(short), env.path(DRM_EDID_FIRMWARE)))
+            log(
+                "%s is not on the kernel command line yet; set it for this boot through %s. "
+                "'screenpad grub apply' makes it permanent" % (boot_param(short), env.path(DRM_EDID_FIRMWARE))
+            )
 
 
 def check_connector_edid(env, target, edid):
     """Lockdown path: fail clearly when the forced connector got no EDID."""
     got = read_bytes(env.path(DRM_CLASS, target.connector, "edid")) or b""
     if got:
-        if got[:len(edid)] != edid:
-            log("warning: %s reports an EDID that differs from %s"
-                % (target.connector, firmware_path(env)))
+        if got[: len(edid)] != edid:
+            log("warning: %s reports an EDID that differs from %s" % (target.connector, firmware_path(env)))
         return
     try:
         set_connector(env, target, "detect")
     except (OSError, ScreenpadError):
         pass
     if firmware_for_connector(cmdline_edid_firmware(env), target.short_connector) != FIRMWARE_NAME:
-        why = ("The boot parameter is not applied yet, only the runtime value: run "
-               "'screenpad grub apply', reboot and try again. If it still has no EDID, "
-               "nvidia-drm does not use %s" % EDID_FIRMWARE_PARAM)
+        why = (
+            "The boot parameter is not applied yet, only the runtime value: run "
+            "'screenpad grub apply', reboot and try again. If it still has no EDID, "
+            "nvidia-drm does not use %s" % EDID_FIRMWARE_PARAM
+        )
     else:
         why = "The boot parameter is applied, so nvidia-drm did not take the EDID from it"
     raise ScreenpadError(
         "%s has no EDID after forcing it on, so it is set back to detect. %s. "
         "Check 'journalctl -k -b | grep -i edid' (a 'Requesting EDID firmware' error means "
         "%s is missing) and 'If nvidia-drm does not take it' in docs/display.md"
-        % (target.connector, why, firmware_path(env)))
+        % (target.connector, why, firmware_path(env))
+    )
 
 
 def set_active(env, active):
@@ -736,8 +738,7 @@ def cmd_on(env, args):
     target = wait_for_target(env, args.wait, args.connector, need_debugfs=not locked)
     edid = edid_for(env, target, args.relight_gap)
     if locked:
-        log("kernel lockdown (%s): debugfs is closed, using %s"
-            % (lockdown_state(env), EDID_FIRMWARE_PARAM))
+        log("kernel lockdown (%s): debugfs is closed, using %s" % (lockdown_state(env), EDID_FIRMWARE_PARAM))
         provide_firmware_edid(env, target, edid)
         # Writing "on" only re-probes when the force state changes.
         set_connector(env, target, "detect")
@@ -750,8 +751,10 @@ def cmd_on(env, args):
     wait_for_enabled(env, target, deadline)
     light(env, args.relight_gap)
     set_active(env, True)
-    log("%s forced on and lit; status %s" % (
-        target.connector, read_text(env.path(DRM_CLASS, target.connector, "status"))))
+    log(
+        "%s forced on and lit; status %s"
+        % (target.connector, read_text(env.path(DRM_CLASS, target.connector, "status")))
+    )
     return 0
 
 
@@ -799,8 +802,7 @@ def cmd_off(env, args):
         try:
             # For this boot only; a boot parameter comes back at the next boot.
             if clear_runtime_firmware(env, target.short_connector):
-                log("removed %s from %s" % (firmware_entry(target.short_connector),
-                                            env.path(DRM_EDID_FIRMWARE)))
+                log("removed %s from %s" % (firmware_entry(target.short_connector), env.path(DRM_EDID_FIRMWARE)))
         except (OSError, ScreenpadError) as e:
             failed.append("edid_firmware: %s" % e)
         try:
@@ -827,8 +829,7 @@ def cmd_capture_edid(env, args):
             log("%s: block %d checksum %#04x fixed to %#04x" % (args.source, block, stored, correct))
         log("EDID from %s: %s" % (args.source, describe_edid(edid)))
     else:
-        target = wait_for_target(env, args.wait, args.connector,
-                                 need_debugfs=not locked_down(env))
+        target = wait_for_target(env, args.wait, args.connector, need_debugfs=not locked_down(env))
         # The bridge probably answers DDC only while the panel is lit.
         light(env, args.relight_gap)
         env.sleep(POWER_SETTLE)
@@ -844,8 +845,10 @@ def cmd_status(env, args):
     out.append("machine:    %s %s" % (vendor, product))
     bl = env.path(BACKLIGHT)
     if os.path.isdir(bl):
-        out.append("backlight:  bl_power=%s brightness=%s/%s" % tuple(
-            read_text(os.path.join(bl, f)) for f in ("bl_power", "brightness", "max_brightness")))
+        out.append(
+            "backlight:  bl_power=%s brightness=%s/%s"
+            % tuple(read_text(os.path.join(bl, f)) for f in ("bl_power", "brightness", "max_brightness"))
+        )
     else:
         out.append("backlight:  missing (%s)" % bl)
     try:
@@ -857,10 +860,16 @@ def cmd_status(env, args):
         conn = env.path(DRM_CLASS, target.connector)
         modes = (read_text(os.path.join(conn, "modes")) or "").split()
         out.append("card:       %s (%s)" % (target.card, target.pci))
-        out.append("connector:  %s status=%s enabled=%s modes=%s edid=%d bytes" % (
-            target.connector, read_text(os.path.join(conn, "status")),
-            read_text(os.path.join(conn, "enabled")), ",".join(modes) or "none",
-            len(read_bytes(os.path.join(conn, "edid")) or b"")))
+        out.append(
+            "connector:  %s status=%s enabled=%s modes=%s edid=%d bytes"
+            % (
+                target.connector,
+                read_text(os.path.join(conn, "status")),
+                read_text(os.path.join(conn, "enabled")),
+                ",".join(modes) or "none",
+                len(read_bytes(os.path.join(conn, "edid")) or b""),
+            )
+        )
         out.append("ddc buses:  %s" % (" ".join("i2c-%d" % b for b in target.buses) or "none"))
         if lock not in (None, "none"):
             debugfs = "%s closed by kernel lockdown" % (target.debugfs or "")
@@ -966,8 +975,7 @@ GRUB_TOKEN = re.compile(r"%s=[^\s:]*:%s" % (re.escape(EDID_FIRMWARE_PARAM), re.e
 
 
 def grub_has_ours(text):
-    return any(GRUB_TOKEN.fullmatch(w)
-               for _, m in grub_assignments(text.splitlines()) for w in m.group(3).split())
+    return any(GRUB_TOKEN.fullmatch(w) for _, m in grub_assignments(text.splitlines()) for w in m.group(3).split())
 
 
 def grub_remove(text):
@@ -995,8 +1003,7 @@ def grub_overrides(env):
     found = []
     for name in names:
         for line in (read_text(os.path.join(d, name)) or "").splitlines():
-            if (re.match(r"\s*%s=" % GRUB_VAR, line)
-                    and not re.search(r"\$\{?%s\b" % GRUB_VAR, line)):
+            if re.match(r"\s*%s=" % GRUB_VAR, line) and not re.search(r"\$\{?%s\b" % GRUB_VAR, line):
                 found.append(os.path.join(d, name))
                 break
     return found
@@ -1050,8 +1057,10 @@ def cmd_grub(env, args):
     require_root(env)
     if args.action == "apply":
         if not os.path.exists(firmware_path(env)):
-            raise ScreenpadError("%s missing, so the kernel would have nothing to load; "
-                                 "run capture-edid or install.sh first" % firmware_path(env))
+            raise ScreenpadError(
+                "%s missing, so the kernel would have nothing to load; "
+                "run capture-edid or install.sh first" % firmware_path(env)
+            )
         new = grub_add(text, token)
         if new == text:
             log("%s already has %s" % (path, token))
@@ -1086,21 +1095,30 @@ def parse_args(argv):
     p.add_argument("--connector", help="NVIDIA connector, e.g. HDMI-A-2 (default: the only one)")
     sub = p.add_subparsers(dest="command", required=True)
     on = sub.add_parser("on", help="load the fixed EDID, force the connector on, light the panel")
-    off = sub.add_parser("off", help="reset the EDID override, re-detect, darken the panel")
+    sub.add_parser("off", help="reset the EDID override, re-detect, darken the panel")
     replug = sub.add_parser("replug", help="re-plug the connector with the EDID and relight the panel")
-    replug.add_argument("--if-active", action="store_true",
-                        help="do nothing unless 'on' ran since boot (for the resume hook)")
+    replug.add_argument(
+        "--if-active", action="store_true", help="do nothing unless 'on' ran since boot (for the resume hook)"
+    )
     sub.add_parser("status", help="show what was found; needs no root")
     cap = sub.add_parser("capture-edid", help="read the EDID over DDC, fix checksums, save it")
-    cap.add_argument("--from", dest="source", metavar="FILE",
-                     help="take the EDID from FILE instead of DDC")
+    cap.add_argument("--from", dest="source", metavar="FILE", help="take the EDID from FILE instead of DDC")
     for s in (on, replug, cap):
-        s.add_argument("--wait", type=float, default=10, metavar="SECONDS",
-                       help="how long to wait for the card and backlight and, for on and "
-                            "replug, a compositor to enable the connector (default 10)")
-        s.add_argument("--relight-gap", type=seconds, default=RELIGHT_GAP, metavar="SECONDS",
-                       help="pause between the two bl_power writes that light the panel "
-                            "(default %g)" % RELIGHT_GAP)
+        s.add_argument(
+            "--wait",
+            type=float,
+            default=10,
+            metavar="SECONDS",
+            help="how long to wait for the card and backlight and, for on and "
+            "replug, a compositor to enable the connector (default 10)",
+        )
+        s.add_argument(
+            "--relight-gap",
+            type=seconds,
+            default=RELIGHT_GAP,
+            metavar="SECONDS",
+            help="pause between the two bl_power writes that light the panel (default %g)" % RELIGHT_GAP,
+        )
     grub = sub.add_parser("grub", help="show, apply or remove the drm.edid_firmware boot parameter")
     grub.add_argument("action", nargs="?", choices=("show", "apply", "remove"), default="show")
     return p.parse_args(argv)

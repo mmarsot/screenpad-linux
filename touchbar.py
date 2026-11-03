@@ -71,9 +71,13 @@ UNIT = "screenpad-touchbar.service"
 # app if it is already open, else with gtk-launch.
 DBUS_PATH = "/org/screenpad/Touchbar"
 DBUS_IFACE = "org.screenpad.Touchbar"
-LAUNCH = ["/bin/sh", "-c",
-          'gdbus call --session --dest org.gnome.Shell --object-path %s --method %s.Launch "$1"'
-          ' >/dev/null 2>&1 || exec gtk-launch "$1"' % (DBUS_PATH, DBUS_IFACE), "sh"]
+LAUNCH = [
+    "/bin/sh",
+    "-c",
+    'gdbus call --session --dest org.gnome.Shell --object-path %s --method %s.Launch "$1"'
+    ' >/dev/null 2>&1 || exec gtk-launch "$1"' % (DBUS_PATH, DBUS_IFACE),
+    "sh",
+]
 ACTIVE_FLAG = "/run/screenpad/active"
 DEFAULT_CONFIG = "/usr/local/share/screenpad/touchbar.toml"
 # The EDID 'screenpad on' hands the kernel for the ScreenPad's connector.
@@ -149,8 +153,7 @@ KEY_CNT = 0x300
 MT_TOOL_PALM = 2
 BUS_VIRTUAL = 0x06
 # BTN_TOOL_* for 1..5 fingers, as input_mt_report_finger_count() sends them.
-FINGER_TOOLS = (BTN_TOOL_FINGER, BTN_TOOL_DOUBLETAP, BTN_TOOL_TRIPLETAP,
-                BTN_TOOL_QUADTAP, BTN_TOOL_QUINTTAP)
+FINGER_TOOLS = (BTN_TOOL_FINGER, BTN_TOOL_DOUBLETAP, BTN_TOOL_TRIPLETAP, BTN_TOOL_QUADTAP, BTN_TOOL_QUINTTAP)
 # The key device can send every code below the BTN_* range.
 MAX_KEY = 0xFF
 
@@ -220,28 +223,89 @@ def _key_names():
     names["f11"], names["f12"] = 87, 88
     for i in range(13, 25):
         names["f%d" % i] = 170 + i
-    names.update({
-        "esc": 1, "minus": 12, "equal": 13, "backspace": 14, "tab": 15,
-        "leftbrace": 26, "rightbrace": 27, "enter": 28, "leftctrl": 29,
-        "semicolon": 39, "apostrophe": 40, "grave": 41, "leftshift": 42,
-        "backslash": 43, "comma": 51, "dot": 52, "slash": 53, "rightshift": 54,
-        "leftalt": 56, "space": 57, "capslock": 58, "numlock": 69,
-        "scrolllock": 70, "rightctrl": 97, "sysrq": 99, "rightalt": 100,
-        "home": 102, "up": 103, "pageup": 104, "left": 105, "right": 106,
-        "end": 107, "down": 108, "pagedown": 109, "insert": 110, "delete": 111,
-        "mute": 113, "volumedown": 114, "volumeup": 115, "pause": 119,
-        "leftmeta": 125, "rightmeta": 126, "compose": 127, "menu": 139,
-        "calc": 140, "sleep": 142, "nextsong": 163, "playpause": 164,
-        "previoussong": 165, "stopcd": 166, "record": 167, "print": 210,
-        "camera": 212, "search": 217, "brightnessdown": 224,
-        "brightnessup": 225, "micmute": 248,
-    })
-    names.update({
-        "ctrl": 29, "control": 29, "shift": 42, "alt": 56, "altgr": 100,
-        "super": 125, "meta": 125, "win": 125, "escape": 1, "return": 28,
-        "del": 111, "pgup": 104, "pgdn": 109, "printscreen": 99,
-        "playpause": 164, "next": 163, "previous": 165, "prev": 165,
-    })
+    names.update(
+        {
+            "esc": 1,
+            "minus": 12,
+            "equal": 13,
+            "backspace": 14,
+            "tab": 15,
+            "leftbrace": 26,
+            "rightbrace": 27,
+            "enter": 28,
+            "leftctrl": 29,
+            "semicolon": 39,
+            "apostrophe": 40,
+            "grave": 41,
+            "leftshift": 42,
+            "backslash": 43,
+            "comma": 51,
+            "dot": 52,
+            "slash": 53,
+            "rightshift": 54,
+            "leftalt": 56,
+            "space": 57,
+            "capslock": 58,
+            "numlock": 69,
+            "scrolllock": 70,
+            "rightctrl": 97,
+            "sysrq": 99,
+            "rightalt": 100,
+            "home": 102,
+            "up": 103,
+            "pageup": 104,
+            "left": 105,
+            "right": 106,
+            "end": 107,
+            "down": 108,
+            "pagedown": 109,
+            "insert": 110,
+            "delete": 111,
+            "mute": 113,
+            "volumedown": 114,
+            "volumeup": 115,
+            "pause": 119,
+            "leftmeta": 125,
+            "rightmeta": 126,
+            "compose": 127,
+            "menu": 139,
+            "calc": 140,
+            "sleep": 142,
+            "nextsong": 163,
+            "playpause": 164,
+            "previoussong": 165,
+            "stopcd": 166,
+            "record": 167,
+            "print": 210,
+            "camera": 212,
+            "search": 217,
+            "brightnessdown": 224,
+            "brightnessup": 225,
+            "micmute": 248,
+        }
+    )
+    names.update(
+        {
+            "ctrl": 29,
+            "control": 29,
+            "shift": 42,
+            "alt": 56,
+            "altgr": 100,
+            "super": 125,
+            "meta": 125,
+            "win": 125,
+            "escape": 1,
+            "return": 28,
+            "del": 111,
+            "pgup": 104,
+            "pgdn": 109,
+            "printscreen": 99,
+            "playpause": 164,
+            "next": 163,
+            "previous": 165,
+            "prev": 165,
+        }
+    )
     return names
 
 
@@ -251,7 +315,7 @@ KEY_NAMES = _key_names()
 def parse_key(spec):
     """'ctrl+alt+t' -> (29, 56, 20). Names are evdev key names, KEY_ optional."""
     if not isinstance(spec, str) or not spec.strip():
-        raise ConfigError("key must be a non-empty string like \"alt+k\" or \"ctrl+alt+t\"")
+        raise ConfigError('key must be a non-empty string like "alt+k" or "ctrl+alt+t"')
     codes = []
     for token in spec.split("+"):
         name = token.strip().lower()
@@ -334,8 +398,7 @@ BUTTON, SHORTCUT, GRIP = "button", "shortcut", "grip"
 
 
 class Button:
-    def __init__(self, label, mode, keys=None, command=None, release_command=None,
-                 key=None, icon=None, tile=None):
+    def __init__(self, label, mode, keys=None, command=None, release_command=None, key=None, icon=None, tile=None):
         self.label = label
         self.icon = icon
         self.key = key
@@ -354,7 +417,7 @@ class Button:
 
 
 class Spot:
-    __slots__ = ("kind", "index", "x", "width", "item")
+    __slots__ = ("index", "item", "kind", "width", "x")
 
     def __init__(self, kind, index, x, width, item=None):
         self.kind, self.index, self.x, self.width, self.item = kind, index, x, width, item
@@ -362,8 +425,7 @@ class Spot:
     def public(self):
         out = {"kind": self.kind, "x": self.x, "width": self.width}
         if self.kind == BUTTON:
-            out.update(self.item.public() if self.item else {"label": None, "icon": None,
-                                                              "mode": None})
+            out.update(self.item.public() if self.item else {"label": None, "icon": None, "mode": None})
         elif self.kind == SHORTCUT:
             out["app"] = self.item
         return out
@@ -396,12 +458,22 @@ class Config:
         self.shortcuts = list(shortcuts)
         self.notifications = notifications or NotifyPolicy()
         self.spots = (
-            [Spot(BUTTON, i, i * SPOT_W, SPOT_W, self.buttons[i] if i < len(self.buttons) else None)
-             for i in range(MAX_BUTTONS)]
-            + [Spot(SHORTCUT, i, SHORTCUTS_X + i * SPOT_W, SPOT_W,
-                    self.shortcuts[i] if i < len(self.shortcuts) else None)
-               for i in range(MAX_SHORTCUTS)]
-            + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)])
+            [
+                Spot(BUTTON, i, i * SPOT_W, SPOT_W, self.buttons[i] if i < len(self.buttons) else None)
+                for i in range(MAX_BUTTONS)
+            ]
+            + [
+                Spot(
+                    SHORTCUT,
+                    i,
+                    SHORTCUTS_X + i * SPOT_W,
+                    SPOT_W,
+                    self.shortcuts[i] if i < len(self.shortcuts) else None,
+                )
+                for i in range(MAX_SHORTCUTS)
+            ]
+            + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)]
+        )
 
     def spot_at(self, px, py, height=None):
         """The index in spots of what is under a bar touch, or None.
@@ -426,8 +498,7 @@ class Config:
 
 def near(x, width, height, px, py):
     """Whether a touch at px, py is on, or within TAP_SLOP of, a bar rectangle."""
-    return (x - TAP_SLOP <= px < x + width + TAP_SLOP
-            and -TAP_SLOP <= py < height + TAP_SLOP)
+    return x - TAP_SLOP <= px < x + width + TAP_SLOP and -TAP_SLOP <= py < height + TAP_SLOP
 
 
 # The push-to-talk button's block in the default config.
@@ -536,8 +607,14 @@ key = "printscreen"
 # deny = ["org.gnome.Evolution.desktop"]     # never these apps
 # allow = ["org.gnome.Calendar.desktop"]     # only these apps
 # timeout = %(notify_timeout)d                               # seconds a card shows
-""" % {"height": DEFAULT_HEIGHT, "min": MIN_HEIGHT, "max": MAX_HEIGHT, "ptt": PTT_BLOCK,
-       "tile": TILE_DOC, "notify_timeout": NOTIFY_TIMEOUT}
+""" % {
+    "height": DEFAULT_HEIGHT,
+    "min": MIN_HEIGHT,
+    "max": MAX_HEIGHT,
+    "ptt": PTT_BLOCK,
+    "tile": TILE_DOC,
+    "notify_timeout": NOTIFY_TIMEOUT,
+}
 
 # sha256 of the defaults earlier versions wrote. A file still exactly one of
 # them is replaced by the current default (see migrate_config()).
@@ -554,22 +631,24 @@ OLD_DEFAULTS = {
 # the rest (see migrate_config()).
 OLD_BLOCKS = (
     (OLD_PTT_BLOCK, PTT_BLOCK),
-    ('''\
+    (
+        """\
 #   key              a key or combo: "F14", "ctrl+alt+t", "super+space",
 #                    "micmute", "playpause" (evdev names, KEY_ optional)
-''', '''\
+""",
+        """\
 #   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
 #                    "micmute", "playpause" (evdev names, KEY_ optional;
 #                    "meta" and "super" are the Super key, not Alt)
-'''),
+""",
+    ),
     # The blank line after it marks the block without 'tile' yet, so this
     # applies once.
     (COMMAND_DOC + "\n", COMMAND_DOC + TILE_DOC + "\n"),
 )
 
 # x and width placed buttons in the first version; the spots do it now.
-BUTTON_KEYS = {"label", "icon", "mode", "key", "command", "release_command", "tile", "x",
-               "width"}
+BUTTON_KEYS = {"label", "icon", "mode", "key", "command", "release_command", "tile", "x", "width"}
 SHORTCUT_KEYS = {"app"}
 APP_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*\.desktop")
 
@@ -583,8 +662,7 @@ def _int(value, what):
 def _command(value, what):
     if isinstance(value, str) and value.strip():
         return ["/bin/sh", "-c", value]
-    if (isinstance(value, list) and value
-            and all(isinstance(a, str) for a in value) and value[0]):
+    if isinstance(value, list) and value and all(isinstance(a, str) for a in value) and value[0]:
         return list(value)
     raise ConfigError("%s must be a string or a non-empty list of strings" % what)
 
@@ -603,13 +681,12 @@ def _icon(value):
 def app_id(value):
     """A desktop file id, "org.gnome.Nautilus" or "org.gnome.Nautilus.desktop"."""
     if not isinstance(value, str):
-        raise ConfigError("app must be a desktop file id like \"org.gnome.Nautilus.desktop\"")
+        raise ConfigError('app must be a desktop file id like "org.gnome.Nautilus.desktop"')
     value = value.strip()
     if not value.endswith(".desktop"):
         value += ".desktop"
     if not APP_ID.fullmatch(value):
-        raise ConfigError("app %r is not a desktop file id like \"org.gnome.Nautilus.desktop\""
-                          % value)
+        raise ConfigError('app %r is not a desktop file id like "org.gnome.Nautilus.desktop"' % value)
     return value
 
 
@@ -649,14 +726,15 @@ def _button(b):
     if "tile" in b:
         tile = b["tile"]
         if not isinstance(tile, str) or not TILE_NAME.fullmatch(tile):
-            raise ConfigError("tile must be a name like \"agents\" (lower case letters, digits, "
-                              "dot, dash or underscore, at most 32)")
+            raise ConfigError(
+                'tile must be a name like "agents" (lower case letters, digits, dot, dash or underscore, at most 32)'
+            )
         if "mode" in b:
             raise ConfigError("mode does not apply to a tile: the app that draws it decides")
     release = None
     if "release_command" in b:
         if mode != "hold" or command is None:
-            raise ConfigError("release_command only goes with a command in mode \"hold\"")
+            raise ConfigError('release_command only goes with a command in mode "hold"')
         release = _command(b["release_command"], "release_command")
     return Button(label, mode, keys, command, release, b.get("key"), icon, tile)
 
@@ -672,7 +750,7 @@ def parse_config(text):
     height = _int(data.get("height", DEFAULT_HEIGHT), "height")
     if not MIN_HEIGHT <= height <= MAX_HEIGHT:
         raise ConfigError("height must be between %d and %d" % (MIN_HEIGHT, MAX_HEIGHT))
-    buttons = []
+    buttons: list[Button] = []
     for where, b in _blocks(data, "button", BUTTON_KEYS, MAX_BUTTONS):
         try:
             button = _button(b)
@@ -718,8 +796,7 @@ def _notifications(table):
     allow = _apps(table["allow"], "allow") if "allow" in table else None
     deny = _apps(table.get("deny", []), "deny")
     timeout = table.get("timeout", NOTIFY_TIMEOUT)
-    if isinstance(timeout, bool) or not isinstance(timeout, int) \
-            or not 1 <= timeout <= MAX_ASK_TIMEOUT:
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= MAX_ASK_TIMEOUT:
         raise ConfigError("timeout must be a whole number of seconds, 1 to %d" % MAX_ASK_TIMEOUT)
     return NotifyPolicy(mirror, allow, deny, timeout)
 
@@ -731,7 +808,7 @@ def config_path():
 
 def load_config(path=None):
     """The user's config, else the installed default, else the built-in one."""
-    for p in ([path] if path else [config_path(), DEFAULT_CONFIG]):
+    for p in [path] if path else [config_path(), DEFAULT_CONFIG]:
         try:
             with open(p) as f:
                 text = f.read()
@@ -841,9 +918,11 @@ def edit_config(change, path=None):
         if shortcuts != old.shortcuts:
             new_text = with_shortcuts(new_text, shortcuts)
         new = parse_config(new_text)
-        if ((new.height, new.shortcuts) != (height, shortcuts)
-                or [b.public() for b in new.buttons] != [b.public() for b in old.buttons]
-                or [b.action() for b in new.buttons] != [b.action() for b in old.buttons]):
+        if (
+            (new.height, new.shortcuts) != (height, shortcuts)
+            or [b.public() for b in new.buttons] != [b.public() for b in old.buttons]
+            or [b.action() for b in new.buttons] != [b.action() for b in old.buttons]
+        ):
             raise ConfigError("%s: could not edit it safely; change it by hand" % path)
         if new_text != text or not os.path.exists(path):
             _write(path, new_text)
@@ -915,7 +994,7 @@ def edid_identity(edid):
     product = "0x%04x" % (edid[10] | edid[11] << 8)
     serial = "0x%08x" % int.from_bytes(edid[12:16], "little")
     for o in range(54, 126, 18):
-        d = edid[o:o + 18]
+        d = edid[o : o + 18]
         if d[0:3] != b"\0\0\0" or d[3] not in (0xFC, 0xFF):
             continue
         text = d[5:18].split(b"\n")[0].decode("cp437").strip()
@@ -970,8 +1049,7 @@ TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
 # Every CSS class a tile can carry besides its style. The stylesheet has a
 # rule for each but "tap", which is the plain button (tests/test_touchbar.py
 # checks it).
-TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple(
-    "tone-" + tone for tone in TONES)
+TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple("tone-" + tone for tone in TONES)
 DIVIDER_X = SHORTCUTS_X - GROUP_GAP // 2
 # A question (an attention card): its title and text over the first two
 # button spots, Dismiss in the third, its answers in the three shortcut
@@ -1053,15 +1131,28 @@ def ask_tiles(ask, pressed=(), queued=0):
         text["text"] = ask.text
     if queued:
         text["badge"] = "+%d" % queued
-    dismiss = {"id": "ask-dismiss", "x": DISMISS_X, "width": SPOT_W, "style": "option",
-               "classes": ["tone-neutral"], "icon": "window-close-symbolic", "icon_scale": 0.6,
-               "label": "Dismiss"}
+    dismiss = {
+        "id": "ask-dismiss",
+        "x": DISMISS_X,
+        "width": SPOT_W,
+        "style": "option",
+        "classes": ["tone-neutral"],
+        "icon": "window-close-symbolic",
+        "icon_scale": 0.6,
+        "label": "Dismiss",
+    }
     if DISMISS in pressed:
         dismiss["pressed"] = True
     tiles = [text, dismiss]
     for k, o in enumerate(ask.options):
-        tile = {"id": "ask-option-%d" % k, "x": ask_option_x(k), "width": SPOT_W,
-                "style": "option", "classes": ["tone-" + o["tone"]], "label": o["label"]}
+        tile = {
+            "id": "ask-option-%d" % k,
+            "x": ask_option_x(k),
+            "width": SPOT_W,
+            "style": "option",
+            "classes": ["tone-" + o["tone"]],
+            "label": o["label"],
+        }
         if k in pressed:
             tile["pressed"] = True
         tiles.append(tile)
@@ -1078,8 +1169,10 @@ class Axes:
         self.xmin, self.xmax, self.ymin, self.ymax = xmin, xmax, ymin, ymax
 
     def panel(self, x, y):
-        return ((x - self.xmin) * PANEL_W / (self.xmax - self.xmin),
-                (y - self.ymin) * PANEL_H / (self.ymax - self.ymin))
+        return (
+            (x - self.xmin) * PANEL_W / (self.xmax - self.xmin),
+            (y - self.ymin) * PANEL_H / (self.ymax - self.ymin),
+        )
 
 
 PAD, BAR, IGNORED = "pad", "bar", "ignored"
@@ -1088,14 +1181,14 @@ RESYNC = "resync"
 
 
 class Slot:
-    __slots__ = ("id", "x", "y", "tool")
+    __slots__ = ("id", "tool", "x", "y")
 
     def __init__(self):
         self.id, self.x, self.y, self.tool = -1, 0, 0, 0
 
 
 class Contact:
-    __slots__ = ("id", "kind", "x", "y", "tool", "order")
+    __slots__ = ("id", "kind", "order", "tool", "x", "y")
 
     def __init__(self, id, kind, x, y, tool, order):
         self.id, self.kind, self.x, self.y, self.tool, self.order = id, kind, x, y, tool, order
@@ -1105,9 +1198,10 @@ class Splitter:
     """Splits the source touchpad's frames between the bar and the virtual pad.
 
     feed() takes the source's events one by one. At each SYN_REPORT it returns
-    (pad, bar), or RESYNC after a SYN_DROPPED gap (then call resync()): the events for the virtual touchpad (whole frames, ending in
-    SYN_REPORT, or nothing if the pad did not change) and the bar's contact
-    events, ("begin"|"move"|"end"|"cancel", slot, px, py) in panel pixels.
+    (pad, bar), or RESYNC after a SYN_DROPPED gap (then call resync()): the
+    events for the virtual touchpad (whole frames, ending in SYN_REPORT, or
+    nothing if the pad did not change) and the bar's contact events,
+    ("begin"|"move"|"end"|"cancel", slot, px, py) in panel pixels.
     Contacts keep the kind they started with: a bar contact that slides down
     stays out of the pad, and a pad contact that slides up stays a pad contact,
     so the pointer never sees a touch appear or vanish mid-stroke.
@@ -1115,13 +1209,13 @@ class Splitter:
 
     def __init__(self, axes, nslots, in_bar, cur=0):
         self.axes = axes
-        self.in_bar = in_bar          # in_bar(px, py) -> bool
+        self.in_bar = in_bar  # in_bar(px, py) -> bool
         self.slots = [Slot() for _ in range(nslots)]
         # The kernel sends ABS_MT_SLOT only when it changes, so a reader
         # starts from the value EVIOCGABS gives at open.
         self.cur = cur
-        self.contacts = {}            # slot -> Contact
-        self.sent = {}                # slot -> (id, x, y, tool) on the virtual pad
+        self.contacts = {}  # slot -> Contact
+        self.sent = {}  # slot -> (id, x, y, tool) on the virtual pad
         self.sent_tool = None
         self.sent_left = False
         self.src_left = False
@@ -1213,8 +1307,7 @@ class Splitter:
         """Whether a touchpad contact is now between rows top and bottom:
         the band a growing bar would cover. It would stay a touchpad
         contact, but the card would be drawn under the finger."""
-        return any(top <= self.axes.panel(c.x, c.y)[1] < bottom
-                   for c in self.contacts.values() if c.kind == PAD)
+        return any(top <= self.axes.panel(c.x, c.y)[1] < bottom for c in self.contacts.values() if c.kind == PAD)
 
     def pad_frames(self, wanted=None):
         wanted = self.wanted() if wanted is None else wanted
@@ -1240,8 +1333,12 @@ class Splitter:
                 del self.sent[s]
                 continue
             if old is None or old[0] != new[0]:
-                ev += [(EV_ABS, ABS_MT_TRACKING_ID, new[0]), (EV_ABS, ABS_MT_TOOL_TYPE, new[3]),
-                       (EV_ABS, ABS_MT_POSITION_X, new[1]), (EV_ABS, ABS_MT_POSITION_Y, new[2])]
+                ev += [
+                    (EV_ABS, ABS_MT_TRACKING_ID, new[0]),
+                    (EV_ABS, ABS_MT_TOOL_TYPE, new[3]),
+                    (EV_ABS, ABS_MT_POSITION_X, new[1]),
+                    (EV_ABS, ABS_MT_POSITION_Y, new[2]),
+                ]
             else:
                 for i, code in ((1, ABS_MT_POSITION_X), (2, ABS_MT_POSITION_Y), (3, ABS_MT_TOOL_TYPE)):
                     if old[i] != new[i]:
@@ -1286,8 +1383,7 @@ class Splitter:
 
     def release_all(self):
         """End everything: the pad's frames, and cancels for the bar's contacts."""
-        bar = [("cancel", s) + self.axes.panel(c.x, c.y)
-               for s, c in sorted(self.contacts.items()) if c.kind == BAR]
+        bar = [("cancel", s) + self.axes.panel(c.x, c.y) for s, c in sorted(self.contacts.items()) if c.kind == BAR]
         for c in self.contacts.values():
             c.kind = IGNORED
         self.src_left = False
@@ -1296,7 +1392,7 @@ class Splitter:
 
 
 class Touch:
-    __slots__ = ("spot", "armed", "start", "removing", "start_y", "start_height")
+    __slots__ = ("armed", "removing", "spot", "start", "start_height", "start_y")
 
     def __init__(self, spot, start, start_y=0, start_height=0):
         self.spot, self.armed, self.start, self.removing = spot, True, start, False
@@ -1305,7 +1401,8 @@ class Touch:
 
 class AskTouch:
     """A contact on a question: on one of its answers, or inert (option None)."""
-    __slots__ = ("ask", "option", "armed")
+
+    __slots__ = ("armed", "ask", "option")
 
     def __init__(self, ask, option):
         self.ask, self.option, self.armed = ask, option, option is not None
@@ -1334,20 +1431,21 @@ class Bar:
     question's shown_at, choose(ask, option) and dismiss(ask).
     """
 
-    def __init__(self, config, keys, run, launch=None, remove=None, resize=None,
-                 clock=time.monotonic, tiles=None, asks=None):
+    def __init__(
+        self, config, keys, run, launch=None, remove=None, resize=None, clock=time.monotonic, tiles=None, asks=None
+    ):
         self.config = config
-        self.keys = keys              # KeyEmitter
-        self.run = run                # run(argv)
+        self.keys = keys  # KeyEmitter
+        self.run = run  # run(argv)
         self.launch = launch or (lambda app: None)
         self.remove = remove or (lambda index: False)
         self.resize = resize or (lambda height: False)
         self.clock = clock
         self.tiles = tiles
         self.asks = asks
-        self.touch = {}               # slot -> Touch
-        self.ask_touch = {}           # slot -> AskTouch
-        self.preview = None           # the height while the grip moves
+        self.touch = {}  # slot -> Touch
+        self.ask_touch = {}  # slot -> AskTouch
+        self.preview = None  # the height while the grip moves
 
     def spot(self, t):
         return self.config.spots[t.spot]
@@ -1383,8 +1481,7 @@ class Bar:
             changed = True
             lifted = kind == "end" and t.armed and self.config.near_spot(t.spot, px, py)
             if s.kind == GRIP:
-                if not (kind == "end" and self.preview != self.config.height
-                        and self.resize(self.preview)):
+                if not (kind == "end" and self.preview != self.config.height and self.resize(self.preview)):
                     self.preview = None
             elif s.kind == SHORTCUT:
                 if lifted and t.removing:
@@ -1464,16 +1561,14 @@ class Bar:
         """Turn long-held shortcuts to "remove"; True if that changed anything."""
         now, changed = self.clock(), False
         for t in self.touch.values():
-            if (self.spot(t).kind == SHORTCUT and not t.removing
-                    and now >= t.start + LONG_PRESS):
+            if self.spot(t).kind == SHORTCUT and not t.removing and now >= t.start + LONG_PRESS:
                 t.removing = True
                 changed |= t.armed
         return changed
 
     def deadline(self):
         """When tick() next has something to do, on the clock; or None."""
-        times = [t.start + LONG_PRESS for t in self.touch.values()
-                 if self.spot(t).kind == SHORTCUT and not t.removing]
+        times = [t.start + LONG_PRESS for t in self.touch.values() if self.spot(t).kind == SHORTCUT and not t.removing]
         return min(times) if times else None
 
     def _fire(self, b, press):
@@ -1503,8 +1598,7 @@ class Bar:
 
     def ask_pressed(self, ask):
         """The answers of this question a finger is on (DISMISS first)."""
-        on = {t.option for t in self.ask_touch.values()
-              if t.ask is ask and t.armed and t.option is not None}
+        on = {t.option for t in self.ask_touch.values() if t.ask is ask and t.armed and t.option is not None}
         return ([DISMISS] if DISMISS in on else []) + sorted(o for o in on if o != DISMISS)
 
     def _end(self, slot):
@@ -1520,8 +1614,7 @@ class Bar:
         same button is still in the same spot; every other touch ends."""
         for slot, t in list(self.touch.items()):
             s, n = self.spot(t), config.spots[t.spot]
-            if not (s.kind == BUTTON and n.kind == BUTTON and n.item
-                    and n.item.action() == s.item.action()):
+            if not (s.kind == BUTTON and n.kind == BUTTON and n.item and n.item.action() == s.item.action()):
                 self._end(slot)
         self.config = config
         self.preview = None
@@ -1570,8 +1663,7 @@ class ProtocolError(Exception):
 def _printable(value, what, limit, required=True):
     if value is None and not required:
         return None
-    if not isinstance(value, str) or not value.strip() or len(value) > limit \
-            or not value.isprintable():
+    if not isinstance(value, str) or not value.strip() or len(value) > limit or not value.isprintable():
         raise ProtocolError("%s must be printable text of 1 to %d characters" % (what, limit))
     return value.strip()
 
@@ -1593,8 +1685,8 @@ def _tone(value):
 class Ask:
     """A question from an app, with up to MAX_OPTIONS answers; or a GNOME
     notification shown the same way (notification True)."""
-    __slots__ = ("client", "id", "title", "text", "options", "deadline", "shown_at",
-                 "notification")
+
+    __slots__ = ("client", "deadline", "id", "notification", "options", "shown_at", "text", "title")
 
     def __init__(self, client, id, title, text, options, deadline, notification=False):
         self.client, self.id, self.title, self.text = client, id, title, text
@@ -1607,26 +1699,26 @@ def parse_ask(client, msg, now):
     _known(msg, {"id", "title", "text", "options", "timeout"})
     ask_id = msg.get("id")
     if not isinstance(ask_id, str) or not OPTION_ID.fullmatch(ask_id):
-        raise ProtocolError("id must be a name like \"q1\" (letters, digits, . _ -, at most 32)")
+        raise ProtocolError('id must be a name like "q1" (letters, digits, . _ -, at most 32)')
     title = _printable(msg.get("title"), "title", 80)
     text = _printable(msg.get("text"), "text", 200, required=False)
     options = msg.get("options")
     if not isinstance(options, list) or not 1 <= len(options) <= MAX_OPTIONS:
         raise ProtocolError("options must be a list of 1 to %d answers" % MAX_OPTIONS)
-    clean = []
+    clean: list[dict] = []
     for o in options:
         if not isinstance(o, dict):
             raise ProtocolError("each option is an object with id and label")
         _known(o, {"id", "label", "tone"})
         if not isinstance(o.get("id"), str) or not OPTION_ID.fullmatch(o["id"]):
-            raise ProtocolError("option id must be a name like \"allow\"")
+            raise ProtocolError('option id must be a name like "allow"')
         if o["id"] in [c["id"] for c in clean]:
             raise ProtocolError("option id %s appears twice" % o["id"])
-        clean.append({"id": o["id"], "label": _printable(o.get("label"), "option label", 24),
-                      "tone": _tone(o.get("tone"))})
+        clean.append(
+            {"id": o["id"], "label": _printable(o.get("label"), "option label", 24), "tone": _tone(o.get("tone"))}
+        )
     timeout = msg.get("timeout", ASK_TIMEOUT)
-    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) \
-            or not 1 <= timeout <= MAX_ASK_TIMEOUT:
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= MAX_ASK_TIMEOUT:
         raise ProtocolError("timeout must be 1 to %d seconds" % MAX_ASK_TIMEOUT)
     return Ask(client, ask_id, title, text, clean, now + timeout)
 
@@ -1651,7 +1743,7 @@ def clip(value, limit):
     if not isinstance(value, str):
         return ""
     text = " ".join("".join(c if c.isprintable() else " " for c in value).split())
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "\u2026"
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "\u2026"
 
 
 def mirror_refusal(card, policy):
@@ -1684,10 +1776,9 @@ def mirror_refusal(card, policy):
 
 def parse_notify(msg):
     """The normalized notification of a "notify" message."""
-    _known(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners",
-                 "dnd", "acknowledged"})
+    _known(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners", "dnd", "acknowledged"})
     if not isinstance(msg.get("id"), str) or not OPTION_ID.fullmatch(msg["id"]):
-        raise ProtocolError("id must be a name like \"n1\" (letters, digits, . _ -, at most 32)")
+        raise ProtocolError('id must be a name like "n1" (letters, digits, . _ -, at most 32)')
     app = msg.get("app")
     try:
         app = app_id(app) if app is not None else None
@@ -1703,22 +1794,28 @@ def parse_notify(msg):
         flags[key] = msg.get(key, default)
         if not isinstance(flags[key], bool):
             raise ProtocolError("%s must be true or false" % key)
-    return dict(flags, id=msg["id"], app=app, source=clip(msg.get("source"), 80),
-                title=clip(msg.get("title"), 80), text=clip(msg.get("text"), 400),
-                urgency=msg.get("urgency", "normal"),
-                actions=[clip(a, 24) or "Action" for a in actions])
+    return dict(
+        flags,
+        id=msg["id"],
+        app=app,
+        source=clip(msg.get("source"), 80),
+        title=clip(msg.get("title"), 80),
+        text=clip(msg.get("text"), 400),
+        urgency=msg.get("urgency", "normal"),
+        actions=[clip(a, 24) or "Action" for a in actions],
+    )
 
 
 def notification_ask(client, card, now, timeout):
     """The question that shows a notification: its first MAX_OPTIONS buttons
     as answers "action-0".., the title (else the app's name) and the text."""
     title = card["title"] or card["source"] or "Notification"
-    text = " \u00b7 ".join(p for p in (card["source"] if card["source"] != title else "",
-                                       card["text"]) if p)
-    options = [{"id": "action-%d" % k, "label": label, "tone": "neutral"}
-               for k, label in enumerate(card["actions"][:MAX_OPTIONS])]
-    return Ask(client, card["id"], title, clip(text, 200) or None, options, now + timeout,
-               notification=True)
+    text = " \u00b7 ".join(p for p in (card["source"] if card["source"] != title else "", card["text"]) if p)
+    options = [
+        {"id": "action-%d" % k, "label": label, "tone": "neutral"}
+        for k, label in enumerate(card["actions"][:MAX_OPTIONS])
+    ]
+    return Ask(client, card["id"], title, clip(text, 200) or None, options, now + timeout, notification=True)
 
 
 class Asks:
@@ -1870,9 +1967,9 @@ class Apps:
 
     def __init__(self, clock=time.monotonic):
         self.clients = []
-        self.owner = {}               # tile name -> client
-        self.look = {}                # tile name -> what it shows
-        self.placed = set()           # tile names the config gives a spot
+        self.owner = {}  # tile name -> client
+        self.look = {}  # tile name -> what it shows
+        self.placed = set()  # tile names the config gives a spot
         self.asks = Asks(clock)
         self.notify_policy = NotifyPolicy()
         self.on_tile_gone = lambda name: None
@@ -1946,8 +2043,7 @@ class Apps:
             else:
                 raise ProtocolError("unknown op %r" % op)
         except ProtocolError as e:
-            reply = {"op": "error", "request": op if isinstance(op, str) else None,
-                     "message": str(e)}
+            reply = {"op": "error", "request": op if isinstance(op, str) else None, "message": str(e)}
             if isinstance(msg, dict) and isinstance(msg.get("id"), str):
                 reply["id"] = msg["id"]
             client.send(reply)
@@ -1958,10 +2054,13 @@ class Apps:
             raise ProtocolError("hello was already said")
         name = msg.get("app")
         if not isinstance(name, str) or not TILE_NAME.fullmatch(name):
-            raise ProtocolError("app must be a name like \"agents\" (lower case, at most 32)")
+            raise ProtocolError('app must be a name like "agents" (lower case, at most 32)')
         tiles = msg.get("tiles", [])
-        if not isinstance(tiles, list) or len(tiles) > 8 or not all(
-                isinstance(t, str) and TILE_NAME.fullmatch(t) for t in tiles):
+        if (
+            not isinstance(tiles, list)
+            or len(tiles) > 8
+            or not all(isinstance(t, str) and TILE_NAME.fullmatch(t) for t in tiles)
+        ):
             raise ProtocolError("tiles must be a list of at most 8 tile names")
         client.name = name
         taken = []
@@ -1973,9 +2072,15 @@ class Apps:
             self.look[tile] = {}
             self.dirty = True
         mine = [t for t in dict.fromkeys(tiles) if t not in taken]
-        client.send({"op": "welcome", "app": name,
-                     "placed": [t for t in mine if t in self.placed],
-                     "unplaced": [t for t in mine if t not in self.placed], "taken": taken})
+        client.send(
+            {
+                "op": "welcome",
+                "app": name,
+                "placed": [t for t in mine if t in self.placed],
+                "unplaced": [t for t in mine if t not in self.placed],
+                "taken": taken,
+            }
+        )
 
     def _notify(self, client, msg):
         """A GNOME notification, from the extension: a card if the rules
@@ -1984,15 +2089,17 @@ class Apps:
         card = parse_notify(msg)
         old = self.asks.find(client, card["id"])
         why = mirror_refusal(card, self.notify_policy)
-        if why is None and old is None and MAX_NOTIFY_WAITING <= sum(
-                a.client is client and a.notification for a in self.asks.queue):
+        if (
+            why is None
+            and old is None
+            and MAX_NOTIFY_WAITING <= sum(a.client is client and a.notification for a in self.asks.queue)
+        ):
             why = "too many notifications waiting"
         if why is not None:
             if old is not None:
                 self.asks.cancel(client, card["id"])
                 return
-            client.send({"op": "answer", "id": card["id"], "option": None, "reason": "ignored",
-                         "why": why})
+            client.send({"op": "answer", "id": card["id"], "option": None, "reason": "ignored", "why": why})
             return
         ask = notification_ask(client, card, self.asks.clock(), self.notify_policy.timeout)
         if not self.asks.replace(ask):
@@ -2007,8 +2114,9 @@ class Apps:
         icon = msg.get("icon")
         if icon is not None:
             if not isinstance(icon, str) or not (
-                    re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", icon)
-                    or (icon.startswith("/") and len(icon) <= 4096 and icon.isprintable())):
+                re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", icon)
+                or (icon.startswith("/") and len(icon) <= 4096 and icon.isprintable())
+            ):
                 raise ProtocolError("icon must be an icon name or an absolute image path")
             look["icon"] = icon
         for key, limit in (("label", 32), ("text", 48), ("badge", 4)):
@@ -2056,20 +2164,19 @@ class AppServer:
 
     def __init__(self, path, apps):
         self.path, self.apps = path, apps
-        self.clients = {}             # fd -> AppClient
+        self.clients = {}  # fd -> AppClient
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         if os.path.exists(path):
             probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
             try:
                 probe.connect(path)
             except OSError:
-                os.unlink(path)       # left by a daemon that died
+                os.unlink(path)  # left by a daemon that died
             else:
                 raise TouchbarError("another daemon answers on %s" % path)
             finally:
                 probe.close()
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_NONBLOCK
-                                  | socket.SOCK_CLOEXEC)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_NONBLOCK | socket.SOCK_CLOEXEC)
         old = os.umask(0o177)
         try:
             self.sock.bind(path)
@@ -2203,8 +2310,13 @@ def find_source(sys_input=SYS_INPUT):
         vendor = read_sys(os.path.join(dev, "id", "vendor"))
         product = read_sys(os.path.join(dev, "id", "product"))
         dev_name = read_sys(os.path.join(dev, "name")) or ""
-        if (vendor and product and int(vendor, 16) == SOURCE_VENDOR
-                and int(product, 16) == SOURCE_PRODUCT and dev_name.endswith(SOURCE_SUFFIX)):
+        if (
+            vendor
+            and product
+            and int(vendor, 16) == SOURCE_VENDOR
+            and int(product, 16) == SOURCE_PRODUCT
+            and dev_name.endswith(SOURCE_SUFFIX)
+        ):
             return os.path.join("/dev/input", name)
     return None
 
@@ -2226,7 +2338,7 @@ class Source:
             self.id = INPUT_ID.unpack(buf)
             name = bytearray(256)
             n = fcntl.ioctl(self.fd, _ioc(2, 0x06, len(name)), name)
-            self.name = bytes(name[:max(n - 1, 0)]).decode(errors="replace")
+            self.name = bytes(name[: max(n - 1, 0)]).decode(errors="replace")
             prop = bytearray(4)
             fcntl.ioctl(self.fd, EVIOCGPROP, prop)
             self.props = [i for i in range(32) if prop[i // 8] >> (i % 8) & 1]
@@ -2283,8 +2395,9 @@ class Source:
             return []
         if not data:
             raise OSError(errno.ENODEV, "device gone")
-        return [INPUT_EVENT.unpack_from(data, o)[2:]
-                for o in range(0, len(data) - INPUT_EVENT.size + 1, INPUT_EVENT.size)]
+        return [
+            INPUT_EVENT.unpack_from(data, o)[2:] for o in range(0, len(data) - INPUT_EVENT.size + 1, INPUT_EVENT.size)
+        ]
 
     def close(self):
         os.close(self.fd)
@@ -2294,8 +2407,9 @@ def uinput_open():
     try:
         return os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except PermissionError:
-        raise TouchbarError("cannot open /dev/uinput; 'sudo ./install.sh' installs a udev rule "
-                            "that gives the desktop user access")
+        raise TouchbarError(
+            "cannot open /dev/uinput; 'sudo ./install.sh' installs a udev rule that gives the desktop user access"
+        )
 
 
 def uinput_create(fd, name, bus, vendor, product, version):
@@ -2359,29 +2473,33 @@ class Daemon:
         self.config_mtime = self._mtime()
         self.device = device
         self.flag = flag
-        self.source = self.pad = self.keys_fd = None
-        self.splitter = self.bar = None
+        self.source: Source | None = None
+        self.pad: int | None = None
+        self.keys_fd: int | None = None
+        self.splitter: Splitter | None = None
+        self.bar: Bar | None = None
         self.children = []
         self.stop = False
         self.reload = False
         self.published = None
         self.monitor = monitor_identity()
-        self.wakeup = None
+        self.wakeup: int | None = None
         self.apps = Apps()
         self.apps.set_placed(config.tiles())
         self.apps.on_tile_gone = self._tile_gone
         # Questions show only while the bar is on screen, drawn by an
         # extension that knows them; otherwise whoever asked hears
         # "unavailable".
-        self.apps.asks.can_show = lambda: (self.source is not None and self.source.grabbed
-                                           and self.renderer_ready())
+        self.apps.asks.can_show = lambda: self.source is not None and self.source.grabbed and self.renderer_ready()
         # The bar grows for a card only when no touchpad finger is in the
         # band it would cover (or after GROW_WAIT).
-        self.apps.asks.band_clear = lambda: not (
-            self.splitter and self.splitter.pad_in_band(self.config.height, CARD_HEIGHT))
+        self.apps.asks.band_clear = lambda: (
+            not (self.splitter and self.splitter.pad_in_band(self.config.height, CARD_HEIGHT))
+        )
         self.apps.notify_policy = config.notifications
         self.server = None
-        self.renderer = (None, False)  # renderer.json's mtime, and whether it is ready
+        # renderer.json's mtime, and whether it is ready
+        self.renderer: tuple[int | None, bool] = (None, False)
 
     def _mtime(self):
         p = self.config_file or config_path()
@@ -2408,8 +2526,12 @@ class Daemon:
                 with open(path) as f:
                     said = json.load(f)
                 protocol = said.get("protocol")
-                ready = (isinstance(protocol, int) and not isinstance(protocol, bool)
-                         and protocol >= RENDERER_PROTOCOL and said.get("drawn") is True)
+                ready = (
+                    isinstance(protocol, int)
+                    and not isinstance(protocol, bool)
+                    and protocol >= RENDERER_PROTOCOL
+                    and said.get("drawn") is True
+                )
             except (OSError, ValueError, AttributeError):
                 ready = False
             self.renderer = (mtime, ready)
@@ -2422,9 +2544,9 @@ class Daemon:
         tiles = spot_tiles(self.config, pressed, removing, self.apps.provided())
         ask = self.apps.asks.shown()
         if ask is not None:
-            tiles = (ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (),
-                               len(self.apps.asks.queue) - 1)
-                     + [t for t in tiles if t["style"] == GRIP])
+            tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
+                t for t in tiles if t["style"] == GRIP
+            ]
         return tiles
 
     # The state file the GNOME Shell extension draws from.
@@ -2468,8 +2590,7 @@ class Daemon:
 
     def run_command(self, argv):
         try:
-            self.children.append(subprocess.Popen(
-                argv, stdin=subprocess.DEVNULL, start_new_session=True))
+            self.children.append(subprocess.Popen(argv, stdin=subprocess.DEVNULL, start_new_session=True))
         except OSError as e:
             log("%s: %s" % (shlex.join(argv), e))
 
@@ -2487,15 +2608,24 @@ class Daemon:
 
     def remove_shortcut(self, index):
         def change(c):
-            return c.height, c.shortcuts[:index] + c.shortcuts[index + 1:]
+            return c.height, c.shortcuts[:index] + c.shortcuts[index + 1 :]
+
         return self.edit(change, "remove the shortcut")
 
     def resize(self, height):
         return self.edit(lambda c: (height, c.shortcuts), "resize the bar")
 
     def new_bar(self, keys):
-        return Bar(self.config, keys, self.run_command, self.launch, self.remove_shortcut,
-                   self.resize, tiles=self.apps, asks=self.apps.asks)
+        return Bar(
+            self.config,
+            keys,
+            self.run_command,
+            self.launch,
+            self.remove_shortcut,
+            self.resize,
+            tiles=self.apps,
+            asks=self.apps.asks,
+        )
 
     def reap(self):
         self.children = [c for c in self.children if c.poll() is None]
@@ -2526,15 +2656,28 @@ class Daemon:
         x, y = source.abs[ABS_MT_POSITION_X], source.abs[ABS_MT_POSITION_Y]
         # New contacts take the bar's height now, taller while a card
         # shows; contacts already down keep their kind.
-        self.splitter = Splitter(source.axes(), source.nslots,
-                                 lambda px, py: py < self.bar.touch_height(),
-                                 source.abs[ABS_MT_SLOT][0])
+        self.splitter = Splitter(source.axes(), source.nslots, self._in_bar, source.abs[ABS_MT_SLOT][0])
         self.bar = self.new_bar(KeyEmitter(lambda ev: write_events(self.keys_fd, ev)))
-        log("grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; bar %d px high, "
+        log(
+            "grabbed %s (%s), %d slots, x 0..%d, y 0..%d, %d units/mm; bar %d px high, "
             "%d button(s), %d shortcut(s)"
-            % (path, source.name, source.nslots, x[2], y[2], x[5], self.config.height,
-               len(self.config.buttons), len(self.config.shortcuts)))
+            % (
+                path,
+                source.name,
+                source.nslots,
+                x[2],
+                y[2],
+                x[5],
+                self.config.height,
+                len(self.config.buttons),
+                len(self.config.shortcuts),
+            )
+        )
         return True
+
+    def _in_bar(self, px, py):
+        assert self.bar is not None  # made right after the splitter, before any event
+        return py < self.bar.touch_height()
 
     def destroy_uinput(self):
         for attr in ("pad", "keys_fd"):
@@ -2550,6 +2693,7 @@ class Daemon:
         source = self.source
         if source is None:
             return
+        assert self.splitter is not None and self.bar is not None
         try:
             pad, bar = self.splitter.release_all()
             self.bar.handle(bar)
@@ -2571,6 +2715,7 @@ class Daemon:
         log("released the touchpad: %s" % why)
 
     def process(self):
+        assert self.source is not None and self.splitter is not None and self.bar is not None
         try:
             events = self.source.read()
         except OSError as e:
@@ -2605,14 +2750,15 @@ class Daemon:
         self.apps.notify_policy = config.notifications
         if self.bar:
             self.bar.set_config(config)
-        log("loaded %s: bar %d px high, %d button(s), %d shortcut(s)"
-            % (path or "the built-in default", config.height, len(config.buttons),
-               len(config.shortcuts)))
+        log(
+            "loaded %s: bar %d px high, %d button(s), %d shortcut(s)"
+            % (path or "the built-in default", config.height, len(config.buttons), len(config.shortcuts))
+        )
         self.publish()
 
     def loop(self):
         self.publish()
-        retry_at = 0
+        retry_at = 0.0
         while not self.stop:
             self.check_config()
             self.reap()
@@ -2627,26 +2773,26 @@ class Daemon:
                 if taken:
                     self.publish()
                 elif taken is False:
-                    timeout = 0.2   # a finger is down, or the pad is not there yet
+                    timeout = 0.2  # a finger is down, or the pad is not there yet
             elif self.source is not None and not self.want_active():
                 self.deactivate("%s is gone (screenpad off)" % self.flag)
                 self.publish()
             self.apps.asks.refresh()
             self.apps.asks.tick()
-            for deadline in (self.bar.deadline() if self.bar else None,
-                             self.apps.asks.deadline()):
+            for deadline in (self.bar.deadline() if self.bar else None, self.apps.asks.deadline()):
                 if deadline is not None:
                     timeout = min(timeout, max(deadline - time.monotonic(), 0))
             if self.apps.take_changed():
                 self.publish()
             if self.server:
                 self.server.flush()
-            fds = ([self.source.fd] if self.source else []) + (
-                [self.wakeup] if self.wakeup is not None else []) + (
-                self.server.rfds() if self.server else [])
-            ready, _, _ = select.select(fds, self.server.wfds() if self.server else [], [],
-                                        timeout)
-            if self.wakeup in ready:
+            fds = (
+                ([self.source.fd] if self.source else [])
+                + ([self.wakeup] if self.wakeup is not None else [])
+                + (self.server.rfds() if self.server else [])
+            )
+            ready, _, _ = select.select(fds, self.server.wfds() if self.server else [], [], timeout)
+            if self.wakeup is not None and self.wakeup in ready:
                 try:
                     os.read(self.wakeup, 64)
                 except BlockingIOError:
@@ -2715,8 +2861,10 @@ def cmd_check(args):
         log(str(e))
         return 2
     print("%s: ok" % (path or "built-in default"))
-    print("bar: %d of %d px high (%.1f mm); %d px while a card shows"
-          % (config.height, PANEL_H, config.height / 16, max(config.height, CARD_HEIGHT)))
+    print(
+        "bar: %d of %d px high (%.1f mm); %d px while a card shows"
+        % (config.height, PANEL_H, config.height / 16, max(config.height, CARD_HEIGHT))
+    )
     print("notifications: %s" % config.notifications.describe())
     for s in config.spots:
         where = "  %-8s %d  x %4d..%-4d " % (s.kind, s.index + 1, s.x, s.x + s.width)
@@ -2729,11 +2877,13 @@ def cmd_check(args):
         else:
             b = s.item
             if b.tile:
-                print(where + "%s, icon %s, tile %s (an app draws it)"
-                      % (b.label or "-", b.icon or "none", b.tile))
+                print(where + "%s, icon %s, tile %s (an app draws it)" % (b.label or "-", b.icon or "none", b.tile))
                 continue
-            action = ("key %s (codes %s)" % (b.key, "+".join(str(k) for k in b.keys)) if b.keys
-                      else "command %s" % shlex.join(b.command))
+            action = (
+                "key %s (codes %s)" % (b.key, "+".join(str(k) for k in b.keys))
+                if b.keys
+                else "command %s" % shlex.join(b.command)
+            )
             print(where + "%s, icon %s, %s %s" % (b.label or "-", b.icon or "none", b.mode, action))
     return 0
 
@@ -2746,8 +2896,7 @@ def enable_extension():
     """Enable the GNOME Shell extension; a new one loads at the next login."""
     if subprocess.run(["gnome-extensions", "enable", UUID], capture_output=True).returncode == 0:
         return True
-    r = subprocess.run(["gsettings", "get", "org.gnome.shell", "enabled-extensions"],
-                       capture_output=True, text=True)
+    r = subprocess.run(["gsettings", "get", "org.gnome.shell", "enabled-extensions"], capture_output=True, text=True)
     if r.returncode != 0:
         log("could not read the enabled GNOME Shell extensions: %s" % r.stderr.strip())
         return False
@@ -2757,8 +2906,7 @@ def enable_extension():
     enabled = ast.literal_eval(value)
     if UUID not in enabled:
         enabled.append(UUID)
-        subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions",
-                        str(enabled)], check=True)
+        subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions", str(enabled)], check=True)
     log("enabled %s; GNOME Shell loads it at your next login (log out and in once)" % UUID)
     return False
 
@@ -2787,25 +2935,30 @@ def cmd_off(args):
 def cmd_status(args):
     try:
         config, path = load_config(args.config)
-        print("config: %s, bar %d px, %d button(s), shortcuts: %s"
-              % (path or "built-in default", config.height, len(config.buttons),
-                 ", ".join(config.shortcuts) or "none"))
+        print(
+            "config: %s, bar %d px, %d button(s), shortcuts: %s"
+            % (path or "built-in default", config.height, len(config.buttons), ", ".join(config.shortcuts) or "none")
+        )
     except (OSError, ConfigError) as e:
         print("config: %s" % e)
     source = find_source()
     if source and not os.access(source, os.R_OK):
         source += " (not readable: add your user to group input and log in again)"
     print("touchpad: %s" % (source or "not found"))
-    print("screenpad: %s" % ("on (%s)" % ACTIVE_FLAG if os.path.exists(ACTIVE_FLAG)
-                             else "off; the bar waits for 'screenpad on'"))
+    print(
+        "screenpad: %s"
+        % ("on (%s)" % ACTIVE_FLAG if os.path.exists(ACTIVE_FLAG) else "off; the bar waits for 'screenpad on'")
+    )
     print("uinput: %s" % ("writable" if os.access("/dev/uinput", os.W_OK) else "not writable"))
     r = subprocess.run(["systemctl", "--user", "is-active", UNIT], capture_output=True, text=True)
     print("unit: %s %s" % (UNIT, r.stdout.strip() or "unknown"))
     try:
         with open(state_path()) as f:
             state = json.load(f)
-        print("daemon: pid %d, %s, pressed %s" % (
-            state["pid"], "touchpad grabbed" if state["active"] else "idle", state["pressed"]))
+        print(
+            "daemon: pid %d, %s, pressed %s"
+            % (state["pid"], "touchpad grabbed" if state["active"] else "idle", state["pressed"])
+        )
         print("apps: %s" % (", ".join(state.get("apps") or []) or "none"))
     except (OSError, ValueError, KeyError):
         print("daemon: not running")
@@ -2825,17 +2978,22 @@ def cmd_probe(args):
         return 2
     source = Source(path)
     splitter = Splitter(source.axes(), source.nslots, lambda px, py: py < config.height)
-    others = [p for p in (os.path.join("/dev/input", n) for n in os.listdir(SYS_INPUT)
-                          if n.startswith("event")) if p != path and _same_hid(p, path)]
+    others = [
+        p
+        for p in (os.path.join("/dev/input", n) for n in os.listdir(SYS_INPUT) if n.startswith("event"))
+        if p != path and _same_hid(p, path)
+    ]
     other_fds = {}
     for p in others:
         try:
             other_fds[os.open(p, os.O_RDONLY | os.O_NONBLOCK)] = p
         except OSError:
             pass
-    print("reading %s (%s), not grabbing; bar %d px high. Touch the panel; Ctrl+C stops."
-          % (path, source.name, config.height))
-    seen = {}   # slot -> Contact as last printed
+    print(
+        "reading %s (%s), not grabbing; bar %d px high. Touch the panel; Ctrl+C stops."
+        % (path, source.name, config.height)
+    )
+    seen: dict[int, tuple] = {}  # slot -> Contact as last printed
     try:
         while True:
             ready, _, _ = select.select([source.fd] + list(other_fds), [], [])
@@ -2857,10 +3015,18 @@ def cmd_probe(args):
                         if s not in seen:
                             i = config.spot_at(px, py) if c.kind == BAR else None
                             spot = config.spots[i] if i is not None else None
-                            print("slot %d touch  at panel %4.0f,%4.0f (device %d,%d): %s%s"
-                                  % (s, px, py, c.x, c.y, c.kind,
-                                     "" if spot is None else ", %s %d" % (spot.kind,
-                                                                          spot.index + 1)))
+                            print(
+                                "slot %d touch  at panel %4.0f,%4.0f (device %d,%d): %s%s"
+                                % (
+                                    s,
+                                    px,
+                                    py,
+                                    c.x,
+                                    c.y,
+                                    c.kind,
+                                    "" if spot is None else ", %s %d" % (spot.kind, spot.index + 1),
+                                )
+                            )
                         seen[s] = (c.id, (px, py))
     except KeyboardInterrupt:
         return 0
@@ -2888,10 +3054,9 @@ def cmd_shortcut(args):
     try:
         migrate_config(args.config)
         if args.action == "list":
-            config, path = load_config(args.config)
+            config, _path = load_config(args.config)
             for i in range(MAX_SHORTCUTS):
-                print("%d  %s" % (i + 1, config.shortcuts[i] if i < len(config.shortcuts)
-                                  else "(empty)"))
+                print("%d  %s" % (i + 1, config.shortcuts[i] if i < len(config.shortcuts) else "(empty)"))
             return 0
         if args.action == "add":
             app = app_id(args.app)
@@ -2906,7 +3071,8 @@ def cmd_shortcut(args):
             def change(c):
                 if args.spot > len(c.shortcuts):
                     raise ConfigError("shortcut spot %d is empty" % args.spot)
-                return c.height, c.shortcuts[:args.spot - 1] + c.shortcuts[args.spot:]
+                return c.height, c.shortcuts[: args.spot - 1] + c.shortcuts[args.spot :]
+
         config = edit_config(change, args.config)
     except ConfigError as e:
         log(str(e))
@@ -2928,14 +3094,13 @@ def cmd_ask(args):
     for spec in args.option:
         key, sep, label = spec.partition("=")
         if not sep:
-            log("--option takes ID=LABEL, such as allow=\"Allow once\"")
+            log('--option takes ID=LABEL, such as allow="Allow once"')
             return 2
         option = {"id": key, "label": label}
         if key in tones:
             option["tone"] = tones[key]
         options.append(option)
-    request = {"op": "ask", "id": "ask", "title": args.title, "options": options,
-               "timeout": args.timeout}
+    request = {"op": "ask", "id": "ask", "title": args.title, "options": options, "timeout": args.timeout}
     if args.text:
         request["text"] = args.text
     path = runtime_file(SOCKET_NAME)
@@ -2974,6 +3139,7 @@ def cmd_ask(args):
 def _same_hid(a, b):
     def parent(p):
         return os.path.realpath(os.path.join(SYS_INPUT, os.path.basename(p), "device", "..", ".."))
+
     return parent(a) == parent(b)
 
 
@@ -2993,8 +3159,10 @@ def parse_args(argv):
     p = argparse.ArgumentParser(prog="screenpad-touchbar", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="the daemon (the systemd user unit runs this)")
-    sub.add_parser("on", help="write the default config if there is none, enable and start the "
-                              "user unit and the GNOME Shell extension")
+    sub.add_parser(
+        "on",
+        help="write the default config if there is none, enable and start the user unit and the GNOME Shell extension",
+    )
     sub.add_parser("off", help="stop and disable the user unit; the plain touchpad comes back")
     status = sub.add_parser("status", help="show the config, the touchpad and the daemon")
     check = sub.add_parser("check", help="validate the config")
@@ -3002,27 +3170,41 @@ def parse_args(argv):
     shortcut = sub.add_parser("shortcut", help="list, add or remove the bar's app shortcuts")
     actions = shortcut.add_subparsers(dest="action", required=True)
     actions.add_parser("list", help="the shortcut spots and their apps")
-    add = actions.add_parser("add", help="add an app, at a spot or in the first free one; on a "
-                                         "full bar, an app added at a spot replaces it")
+    add = actions.add_parser(
+        "add", help="add an app, at a spot or in the first free one; on a full bar, an app added at a spot replaces it"
+    )
     add.add_argument("app", help="desktop file id, such as org.gnome.Nautilus.desktop")
     add.add_argument("--spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
     remove = actions.add_parser("remove", help="remove the shortcut in a spot")
     remove.add_argument("spot", type=int, metavar="N", help="shortcut spot 1 to %d" % MAX_SHORTCUTS)
-    ask = sub.add_parser("ask", help="ask a question in the bar and print the chosen answer's "
-                                     "id; exits 1 without an answer (a timeout, or the bar "
-                                     "cannot show it)")
+    ask = sub.add_parser(
+        "ask",
+        help="ask a question in the bar and print the chosen answer's "
+        "id; exits 1 without an answer (a timeout, or the bar "
+        "cannot show it)",
+    )
     ask.add_argument("title", help="the question, at most 80 characters")
     ask.add_argument("--text", help="a second line, at most 200 characters")
-    ask.add_argument("--option", action="append", default=[], metavar="ID=LABEL", required=True,
-                     help="an answer, up to %d: its id (printed when chosen) and label"
-                          % MAX_OPTIONS)
-    ask.add_argument("--tone", action="append", default=[], metavar="ID=TONE",
-                     help="an answer's color: %s" % ", ".join(TONES))
-    ask.add_argument("--timeout", type=float, default=ASK_TIMEOUT, metavar="SECONDS",
-                     help="give up after this long (default %d)" % ASK_TIMEOUT)
+    ask.add_argument(
+        "--option",
+        action="append",
+        default=[],
+        metavar="ID=LABEL",
+        required=True,
+        help="an answer, up to %d: its id (printed when chosen) and label" % MAX_OPTIONS,
+    )
+    ask.add_argument(
+        "--tone", action="append", default=[], metavar="ID=TONE", help="an answer's color: %s" % ", ".join(TONES)
+    )
+    ask.add_argument(
+        "--timeout",
+        type=float,
+        default=ASK_TIMEOUT,
+        metavar="SECONDS",
+        help="give up after this long (default %d)" % ASK_TIMEOUT,
+    )
     for s in (run, status, check, probe, shortcut):
-        s.add_argument("--config", metavar="FILE",
-                       help="config file (default ~/.config/screenpad/touchbar.toml)")
+        s.add_argument("--config", metavar="FILE", help="config file (default ~/.config/screenpad/touchbar.toml)")
     for s in (run, probe):
         s.add_argument("--device", metavar="PATH", help="touchpad evdev node (default: find it)")
     run.add_argument("--flag", default=ACTIVE_FLAG, help=argparse.SUPPRESS)

@@ -27,8 +27,7 @@ const MAX_PENDING = 64;
 
 // A notification's body as plain text (fdo bodies may carry markup).
 function plain(text, markup) {
-    if (!text || !markup)
-        return text ?? null;
+    if (!text || !markup) return text ?? null;
     try {
         return Pango.parse_markup(text, -1, '')[2];
     } catch {
@@ -49,7 +48,7 @@ export class NotificationMirror {
         // id -> {notification, actions}: cards the daemon may show now,
         // with the buttons as they were when sent.
         this._cards = new Map();
-        this._ids = new Map();          // notification -> id
+        this._ids = new Map(); // notification -> id
         // notification -> whether it was acknowledged when added. GNOME's
         // own banner handler runs before ours and may acknowledge it (it
         // is on screen), so this keeps what GNOME decided on.
@@ -57,8 +56,12 @@ export class NotificationMirror {
         this._next = 0;
         this._settings = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
         Main.messageTray.connectObject(
-            'source-added', (_tray, source) => this._watch(source),
-            'source-removed', (_tray, source) => source.disconnectObject(this), this);
+            'source-added',
+            (_tray, source) => this._watch(source),
+            'source-removed',
+            (_tray, source) => source.disconnectObject(this),
+            this,
+        );
         Main.messageTray.getSources().forEach(source => this._watch(source));
     }
 
@@ -77,61 +80,75 @@ export class NotificationMirror {
     // Connect to the daemon if not connected (the extension calls this
     // whenever touchbar.json changes, so a restarted daemon is found).
     wake() {
-        if (this._conn || this._connecting || this._cancellable.is_cancelled())
-            return;
+        if (this._conn || this._connecting || this._cancellable.is_cancelled()) return;
         this._connecting = true;
         const client = new Gio.SocketClient();
-        client.connect_async(Gio.UnixSocketAddress.new(this._path), this._cancellable,
+        client.connect_async(
+            Gio.UnixSocketAddress.new(this._path),
+            this._cancellable,
             (c, result) => {
                 this._connecting = false;
                 let conn;
                 try {
                     conn = c.connect_finish(result);
                 } catch {
-                    return;             // no daemon, or disabled meanwhile
+                    return; // no daemon, or disabled meanwhile
                 }
                 this._conn = conn;
                 this._in = new Gio.DataInputStream({base_stream: conn.get_input_stream()});
                 this._out = conn.get_output_stream();
                 this._send({op: 'hello', app: APP});
                 this._read(this._in);
-            });
+            },
+        );
     }
 
     _watch(source) {
         source.connectObject(
-            'notification-added', (_source, notification) =>
-                this._added.set(notification, notification.acknowledged),
-            'notification-request-banner', (_source, notification) => {
+            'notification-added',
+            (_source, notification) => this._added.set(notification, notification.acknowledged),
+            'notification-request-banner',
+            (_source, notification) => {
                 // A new one as it was added; asked again later, it was
                 // just made unacknowledged.
                 this._forward(notification, this._added.get(notification) ?? false);
                 this._added.delete(notification);
-            }, this);
+            },
+            this,
+        );
     }
 
     // GNOME wants a banner for this notification: tell the daemon.
     _forward(notification, acknowledged = false) {
-        if (!this._out)
-            return;
+        if (!this._out) return;
         let id = this._ids.get(notification);
         if (!id) {
             id = `n${++this._next}`;
             this._ids.set(notification, id);
             const changed = () => this._changed(notification);
             notification.connectObject(
-                'destroy', () => this._gone(notification),
-                'action-added', changed, 'action-removed', changed,
-                'notify::title', changed, 'notify::body', changed, this);
+                'destroy',
+                () => this._gone(notification),
+                'action-added',
+                changed,
+                'action-removed',
+                changed,
+                'notify::title',
+                changed,
+                'notify::body',
+                changed,
+                this,
+            );
         }
         const source = notification.source;
         // Only an app's own policy names the app (the generic one is "generic").
         const policy = source?.policy;
-        const appId = policy instanceof MessageTray.NotificationApplicationPolicy
-            ? policy.id : null;
+        const appId =
+            policy instanceof MessageTray.NotificationApplicationPolicy ? policy.id : null;
         this._cards.set(id, {notification, actions: [...notification.actions]});
         this._send({
-            op: 'notify', id,
+            op: 'notify',
+            id,
             app: appId ? `${appId}.desktop` : null,
             source: source?.title ?? null,
             title: notification.title ?? null,
@@ -148,11 +165,9 @@ export class NotificationMirror {
     // once, after the update's other changes.
     _changed(notification) {
         const id = this._ids.get(notification);
-        if (!this._cards.has(id) || this._cards.get(id).idle)
-            return;
+        if (!this._cards.has(id) || this._cards.get(id).idle) return;
         this._cards.get(id).idle = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (this._cards.get(id)?.notification === notification)
-                this._forward(notification);
+            if (this._cards.get(id)?.notification === notification) this._forward(notification);
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -162,16 +177,13 @@ export class NotificationMirror {
         this._ids.delete(notification);
         this._added.delete(notification);
         notification.disconnectObject(this);
-        if (this._forget(id))
-            this._send({op: 'cancel', id});
+        if (this._forget(id)) this._send({op: 'cancel', id});
     }
 
     _forget(id) {
         const card = this._cards.get(id);
-        if (!card)
-            return false;
-        if (card.idle)
-            GLib.source_remove(card.idle);
+        if (!card) return false;
+        if (card.idle) GLib.source_remove(card.idle);
         this._cards.delete(id);
         return true;
     }
@@ -181,15 +193,12 @@ export class NotificationMirror {
     // update replaced since is never pressed in its place.
     _answer(msg) {
         const card = this._cards.get(msg.id);
-        if (!card)
-            return;
+        if (!card) return;
         this._forget(msg.id);
-        if (msg.reason !== 'chosen' || typeof msg.option !== 'string')
-            return;
+        if (msg.reason !== 'chosen' || typeof msg.option !== 'string') return;
         const match = ACTION.exec(msg.option);
         const action = match ? card.actions[Number(match[1])] : null;
-        if (action && card.notification.actions.includes(action))
-            action.activate();
+        if (action && card.notification.actions.includes(action)) action.activate();
     }
 
     _read(input) {
@@ -200,8 +209,7 @@ export class NotificationMirror {
             } catch {
                 // Cancelled, or the daemon went away.
             }
-            if (input !== this._in)
-                return;
+            if (input !== this._in) return;
             if (line === null) {
                 this._close();
                 return;
@@ -212,15 +220,13 @@ export class NotificationMirror {
             } catch {
                 // Not for us.
             }
-            if (msg?.op === 'answer' && typeof msg.id === 'string')
-                this._answer(msg);
+            if (msg?.op === 'answer' && typeof msg.id === 'string') this._answer(msg);
             this._read(input);
         });
     }
 
     _send(msg) {
-        if (!this._out)
-            return;
+        if (!this._out) return;
         if (this._pending.length >= MAX_PENDING) {
             this._close();
             return;
@@ -230,15 +236,16 @@ export class NotificationMirror {
     }
 
     _flush() {
-        if (this._writing || !this._out || this._pending.length === 0)
-            return;
+        if (this._writing || !this._out || this._pending.length === 0) return;
         const out = this._out;
         const data = this._pending.shift();
         this._writing = true;
-        out.write_bytes_async(new GLib.Bytes(data), GLib.PRIORITY_DEFAULT, this._cancellable,
+        out.write_bytes_async(
+            new GLib.Bytes(data),
+            GLib.PRIORITY_DEFAULT,
+            this._cancellable,
             (stream, result) => {
-                if (out !== this._out)
-                    return;
+                if (out !== this._out) return;
                 this._writing = false;
                 let written;
                 try {
@@ -247,10 +254,10 @@ export class NotificationMirror {
                     this._close();
                     return;
                 }
-                if (written < data.length)
-                    this._pending.unshift(data.slice(written));
+                if (written < data.length) this._pending.unshift(data.slice(written));
                 this._flush();
-            });
+            },
+        );
     }
 
     // The connection is gone: the daemon dropped its cards with it.

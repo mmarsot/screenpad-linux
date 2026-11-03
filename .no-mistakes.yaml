@@ -1,0 +1,6 @@
+# Commands the no-mistakes review pipeline runs (see docs/development.md).
+commands:
+  prepare: npm ci
+  format: make format
+  lint: make format-check lint typecheck
+  test: make test

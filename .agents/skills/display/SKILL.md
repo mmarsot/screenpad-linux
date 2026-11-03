@@ -1,0 +1,28 @@
+---
+name: display
+description: Load before changing the display CLI - screenpad.py (the EDID checksum fix and capture, NVIDIA card, connector, DDC and debugfs discovery, the asus_screenpad backlight light/darken sequence, kernel lockdown and drm.edid_firmware, the active flag, status, the grub subcommand) or tests/test_screenpad.py.
+---
+
+# Display CLI
+
+Owning file: `screenpad.py`, installed as `/usr/local/sbin/screenpad` and run as root by `screenpad.service` (`on --wait 30` at boot, `off` at stop) and the resume hook `systemd/screenpad-sleep` (`replug --if-active`); see the [install](../install/SKILL.md) skill. It is organized in sections (`# --- EDID`, `environment`, `lockdown and drm.edid_firmware`, `discovery`, `actions`, `commands`, `GRUB`).
+
+Read first:
+
+- [docs/display.md](../../../docs/display.md): how the panel is lit, every command, Secure Boot, the manual rollback. It owns the explanation; keep it in step with the code.
+- [README.md](../../../README.md#supported-hardware-and-what-was-tested): what was tested on the hardware and what only by unit tests.
+
+## Rules
+
+- **One machine only**: every command starts with `check_dmi` against `SUPPORTED_DMI` (the UX480FD). Adding a model means its DMI id plus checking the connector, the EDID and the WMI calls on that hardware; `install.sh` has its own `PRODUCT` check to change with it.
+- **All filesystem access and side effects go through `Env`** (`env.path()` under `root`, `sleep`, `euid`, `i2c_read`, `clock`, `run`), so the tests can run on a fake sysfs, debugfs, procfs and `/etc` tree. Never read or write an absolute path directly.
+- **The panel's WMI calls are inverted on this unit**: `light()` darkens first (a `LIGHT` write), waits, then writes `bl_power` 4 (`SCREENPAD_POWER=0`, the picture); any later `brightness` write darkens it. The comments above `darken()` and [docs/display.md](../../../docs/display.md#how-it-works) explain why; a change to the sequence needs the panel tests for all four starting states.
+- **Lockdown changes the EDID path**: without lockdown the EDID goes through debugfs `edid_override`; in lockdown (Secure Boot) through `drm.edid_firmware` and `/lib/firmware/screenpad/edid.bin`. Both paths are tested; only the lockdown one was checked on the hardware.
+- **`on` and `replug` end lit, `off` ends dark**, and `on`/`off` create and remove `/run/screenpad/active`, which the touch bar daemon watches.
+- **GRUB is edited only by `screenpad grub apply|remove`**, never by `install.sh`; `remove` after `apply` gives back the original file, and `show` prints the change without making it.
+- Errors are one-line messages: raise `ScreenpadError` (`Unsupported` for a refused machine); `main()` prints them and exits 1, or 2 for `Unsupported`.
+
+## Tests
+
+- `tests/test_screenpad.py` covers checksums, DMI refusal, discovery, the exact writes `on`, `off` and `replug` make on unlocked and locked-down kernels, the panel through a fake asus-wmi and compositor, lockdown and the command line, the DDC retry, `grub`, and `install.sh` against a fake root. No root or hardware; the `install.sh` tests are skipped when run as root.
+- [docs/development.md](../../../docs/development.md#tests) lists what they cover; keep it in step.

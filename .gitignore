@@ -1,2 +1,7 @@
 __pycache__/
-.claude/
+.claude/*
+!.claude/skills
+node_modules/
+.venv/
+.ruff_cache/
+.mypy_cache/

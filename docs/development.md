@@ -13,16 +13,39 @@
 | `install.sh` | installs, uninstalls and purges (run as root) |
 | `tests/` | unit tests; `touchbar-v1-default.toml` to `touchbar-v4-default.toml` are configs earlier versions wrote, for the migration tests |
 | `docs/` | this documentation; `docs/images/` holds the screenshots |
+| `AGENTS.md`, `.agents/skills/` | the guide for contributors and coding agents: an index and one skill per area (`.claude/skills` links to it; `CLAUDE.md` imports `AGENTS.md`) |
+| `Makefile`, `pyproject.toml`, `uv.lock`, `package.json`, `package-lock.json`, `eslint.config.js`, `.prettierrc.json` | the development checks and their pinned tools; nothing here is installed |
+| `.github/workflows/ci.yml` | CI: the same checks on every push and pull request |
+| `.no-mistakes.yaml` | the commands the no-mistakes review pipeline runs |
 
 Both programs are single-file Python 3 (3.11 or newer, standard library only), so they can be run from the checkout: `./screenpad.py status`, `./touchbar.py check`.
+
+## Checks
+
+```sh
+make check
+```
+
+runs, in order, everything CI runs; each step is also a target of its own:
+
+| Command | What it checks | Tools |
+|---|---|---|
+| `make format-check` | formatting; `make format` applies it | ruff format (Python), Prettier (the extension's JavaScript) |
+| `make lint` | likely mistakes | ruff check, ESLint |
+| `make typecheck` | types | mypy, with `check_untyped_defs`, on the programs and the tests |
+| `make test` | the unit tests below | `python3 -m unittest`, standard library only |
+
+The Python tools run through [uv](https://docs.astral.sh/uv/) (versions pinned in `pyproject.toml` and `uv.lock`), the JavaScript ones through npm (`package.json`, `package-lock.json`; `make` runs `npm ci` the first time). Only `make test` works without them. CI (`.github/workflows/ci.yml`) runs the format check, lint and typecheck once and the tests on Python 3.11 and 3.14.
+
+Changes go through the [no-mistakes](https://github.com/kunchenguid/no-mistakes) review pipeline before they reach GitHub; the rules for contributors and agents are in [AGENTS.md](../AGENTS.md) and its skills.
 
 ## Tests
 
 ```sh
-python3 -m unittest discover -s tests
+make test   # or: python3 -m unittest discover -s tests
 ```
 
-They need no root and no hardware. `tests/test_screenpad.py` covers the display CLI and `install.sh`, `tests/test_touchbar.py` the touch bar and `tests/test_touchbar_cards.py` its attention cards (the elastic bar and notifications). The display tests build a fake sysfs/debugfs/procfs/`/etc` tree in a temporary directory and replace the i2c reads and `update-grub`. They cover:
+They need no root and no hardware. `tests/test_screenpad.py` covers the display CLI and `install.sh`, `tests/test_touchbar.py` the touch bar, `tests/test_touchbar_cards.py` its attention cards (the elastic bar and notifications) and `tests/test_skills.py` the skills (their front matter, the index in `AGENTS.md`, the `.claude/skills` link, and that their links and repository paths resolve). The display tests build a fake sysfs/debugfs/procfs/`/etc` tree in a temporary directory and replace the i2c reads and `update-grub`. They cover:
 
 - checksum fixing: a synthetic EDID with a wrong CTA checksum, and the known single-byte `0x3e` → `0x6f` case;
 - DMI refusal;
