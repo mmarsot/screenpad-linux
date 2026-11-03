@@ -1,4 +1,4 @@
-# Development tooling only. The programs themselves are single-file Python 3
+# Development tooling only. The programs themselves are Python 3
 # scripts using only the standard library; nothing here is installed with
 # them (install.sh copies the files).
 [project]
@@ -28,9 +28,13 @@ ignore = [
     "B904", # errors are turned into one-line messages on purpose
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The tests import the programs after putting the checkout on sys.path.
+"tests/*" = ["E402"]
+
 [tool.mypy]
 python_version = "3.11"
-files = ["screenpad.py", "touchbar.py", "tests"]
+files = ["screenpad.py", "touchbar.py", "screenpad_display", "screenpad_touchbar", "tests"]
 mypy_path = ["$MYPY_CONFIG_FILE_DIR", "$MYPY_CONFIG_FILE_DIR/tests"]
 check_untyped_defs = true
 warn_unused_ignores = true

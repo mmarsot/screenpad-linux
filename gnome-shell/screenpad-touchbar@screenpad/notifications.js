@@ -2,8 +2,9 @@
 //
 // For each notification the message tray asks a banner for, this sends the
 // daemon a normalized "notify" message over the bar's socket. The daemon
-// decides what shows (touchbar.py mirror_refusal: buttons or urgent, Do Not
-// Disturb, the config) and grows the bar into a card for it. When a button
+// decides what shows (mirror_refusal in screenpad_touchbar/notify.py:
+// buttons or urgent, Do Not Disturb, the config) and grows the bar into a
+// card for it. When a button
 // on the card is tapped, the daemon answers with its index, and this presses
 // that notification's own button, only if the notification and that very
 // button still exist. Dismiss, a timeout, the notification going away or the

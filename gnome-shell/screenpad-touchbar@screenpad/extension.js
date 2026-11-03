@@ -36,8 +36,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {NotificationMirror} from './notifications.js';
 
 const STATE_NAME = 'touchbar.json';
-// The handshake: the daemon reads it (touchbar.py RENDERER_NAME and
-// RENDERER_PROTOCOL must match).
+// The handshake: the daemon reads it (RENDERER_NAME and RENDERER_PROTOCOL
+// in screenpad_touchbar/common.py must match).
 const RENDERER_NAME = 'renderer.json';
 const RENDERER_PROTOCOL = 2;
 const SOCKET_NAME = 'touchbar.sock';

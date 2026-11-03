@@ -11,7 +11,35 @@ import re
 import tempfile
 import unittest
 
-from test_touchbar import AXES, REPO, ConfigHome, FakeClient, codes, config, lift, t, touch
+from test_touchbar import AXES, REPO, ConfigHome, FakeClient, codes, config, lift, touch
+
+from screenpad_touchbar.apps import Apps
+from screenpad_touchbar.asks import Asks
+from screenpad_touchbar.bar import Bar
+from screenpad_touchbar.cli import main
+from screenpad_touchbar.codes import ABS_MT_POSITION_Y, ABS_MT_TRACKING_ID, EV_ABS, EV_KEY, EV_SYN, SYN_REPORT
+from screenpad_touchbar.common import (
+    ASK_ARM,
+    CARD_HEIGHT,
+    GROW_WAIT,
+    MAX_NOTIFY_WAITING,
+    MAX_OPTIONS,
+    NOTIFY_TIMEOUT,
+    SOCKET_NAME,
+    TILE_NAME,
+    URGENCIES,
+    ConfigError,
+    state_path,
+)
+from screenpad_touchbar.config import NotifyPolicy
+from screenpad_touchbar.config_edit import edit_config, migrate_config
+from screenpad_touchbar.daemon import Daemon
+from screenpad_touchbar.defaults import EXAMPLE_CONFIG
+from screenpad_touchbar.keys import KeyEmitter
+from screenpad_touchbar.notify import mirror_refusal, parse_notify
+from screenpad_touchbar.protocol import ProtocolError, parse_ask
+from screenpad_touchbar.scene import ask_tiles
+from screenpad_touchbar.splitter import Splitter
 
 # Buttons at x 0, 296, 592; shortcuts at 928, 1224, 1520; grip 1816. The
 # bar is 160 px high (device rows 0..320); a card makes it 456 (0..912).
@@ -39,18 +67,18 @@ class Card:
         self.now = 100.0
         self.frames = []
         self.clear = True
-        self.asks = t.Asks(clock=lambda: self.now)
+        self.asks = Asks(clock=lambda: self.now)
         self.asks.band_clear = lambda: self.clear
         self.asks.set_available(True)
-        self.bar = t.Bar(
-            config(text), t.KeyEmitter(self.frames.append), lambda a: None, clock=lambda: self.now, asks=self.asks
+        self.bar = Bar(
+            config(text), KeyEmitter(self.frames.append), lambda a: None, clock=lambda: self.now, asks=self.asks
         )
         self.app = FakeClient()
 
     def ask(self, ask_id="q", n=2, timeout=60):
         options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
         self.asks.add(
-            t.parse_ask(self.app, {"id": ask_id, "title": "T", "options": options, "timeout": timeout}, self.now)
+            parse_ask(self.app, {"id": ask_id, "title": "T", "options": options, "timeout": timeout}, self.now)
         )
 
     def tap(self, slot, px, py):
@@ -66,7 +94,7 @@ class ElasticBarTests(unittest.TestCase):
         self.assertEqual((c.bar.height(), c.bar.touch_height()), (160, 160))
         c.ask()
         self.assertEqual((c.bar.height(), c.bar.touch_height(), c.bar.base_height()), (456, 456, 160))
-        c.now += t.ASK_ARM
+        c.now += ASK_ARM
         # On the second answer, in the area the card added.
         c.tap(0, 1300, 400)
         self.assertEqual(c.answers(), [("q", "o1", "chosen")])
@@ -75,7 +103,7 @@ class ElasticBarTests(unittest.TestCase):
     def test_shrinks_after_dismiss_and_after_a_timeout(self):
         c = Card()
         c.ask("a")
-        c.now += t.ASK_ARM
+        c.now += ASK_ARM
         c.tap(0, 700, 300)
         self.assertEqual(c.answers(), [("a", None, "dismissed")])
         self.assertEqual(c.bar.height(), 160)
@@ -90,12 +118,12 @@ class ElasticBarTests(unittest.TestCase):
         c = Card()
         c.ask("first")
         c.ask("second")
-        c.now += t.ASK_ARM
+        c.now += ASK_ARM
         c.tap(0, 1000, 300)
         self.assertEqual((c.asks.shown().id, c.bar.height()), ("second", 456))
         c.tap(0, 1000, 300)  # too soon for the second
         self.assertEqual(len(c.answers()), 1)
-        c.now += t.ASK_ARM
+        c.now += ASK_ARM
         c.tap(0, 1000, 300)
         self.assertEqual([a[0] for a in c.answers()], ["first", "second"])
         self.assertEqual(c.bar.height(), 160)
@@ -107,7 +135,7 @@ class ElasticBarTests(unittest.TestCase):
         # Not shown, not grown; the loop wakes when the wait ends.
         self.assertIsNone(c.asks.shown())
         self.assertEqual((c.bar.height(), c.bar.touch_height()), (160, 160))
-        self.assertEqual(c.asks.deadline(), c.now + t.GROW_WAIT)
+        self.assertEqual(c.asks.deadline(), c.now + GROW_WAIT)
         c.tap(0, 1000, 50)  # the bar's own spots, not a card
         self.assertEqual(c.answers(), [])
         c.now += 0.1
@@ -117,10 +145,10 @@ class ElasticBarTests(unittest.TestCase):
         # The arming delay counts from the growth, not from the ask: taps
         # on the area that just appeared are ignored for ASK_ARM.
         grew = c.now
-        c.now = grew + t.ASK_ARM - 0.01
+        c.now = grew + ASK_ARM - 0.01
         c.tap(0, 1000, 400)
         self.assertEqual(c.answers(), [])
-        c.now = grew + t.ASK_ARM
+        c.now = grew + ASK_ARM
         c.tap(0, 1000, 400)
         self.assertEqual(c.answers(), [("q", "o0", "chosen")])
 
@@ -128,7 +156,7 @@ class ElasticBarTests(unittest.TestCase):
         c = Card()
         c.clear = False
         c.ask()
-        c.now += t.GROW_WAIT - 0.01
+        c.now += GROW_WAIT - 0.01
         c.asks.tick()
         self.assertFalse(c.asks.raised)
         c.now += 0.01
@@ -159,7 +187,7 @@ class ElasticBarTests(unittest.TestCase):
         c.bar.handle([("begin", 0, 100, 50)])
         c.ask()
         c.bar.handle([("move", 0, 100, 300), ("end", 0, 100, 300)])
-        self.assertEqual([f[0] for f in c.frames], [(t.EV_KEY, 184, 1), (t.EV_KEY, 184, 0)])
+        self.assertEqual([f[0] for f in c.frames], [(EV_KEY, 184, 1), (EV_KEY, 184, 0)])
 
 
 class ElasticSplitTests(unittest.TestCase):
@@ -167,46 +195,46 @@ class ElasticSplitTests(unittest.TestCase):
 
     def setUp(self):
         self.height = 160
-        self.s = t.Splitter(AXES, 5, lambda px, py: py < self.height)
+        self.s = Splitter(AXES, 5, lambda px, py: py < self.height)
 
     def frame(self, *groups):
         out = None
-        for e in [e for g in groups for e in g] + [(t.EV_SYN, t.SYN_REPORT, 0)]:
+        for e in [e for g in groups for e in g] + [(EV_SYN, SYN_REPORT, 0)]:
             out = self.s.feed(*e)
         return out
 
     def test_contacts_keep_their_kind_and_new_ones_take_the_new_height(self):
         # A touchpad finger at panel row 300, in the band a card would cover.
         pad, bar = self.frame(touch(0, 1, 2000, 600))
-        self.assertEqual((codes(pad, t.EV_ABS, t.ABS_MT_TRACKING_ID), bar), ([1], []))
-        self.assertTrue(self.s.pad_in_band(160, t.CARD_HEIGHT))
-        self.height = t.CARD_HEIGHT
+        self.assertEqual((codes(pad, EV_ABS, ABS_MT_TRACKING_ID), bar), ([1], []))
+        self.assertTrue(self.s.pad_in_band(160, CARD_HEIGHT))
+        self.height = CARD_HEIGHT
         # It stays a touchpad contact, at its full device coordinates.
         pad, bar = self.frame(touch(0, None, 2010, 620))
-        self.assertEqual((codes(pad, t.EV_ABS, t.ABS_MT_POSITION_Y), bar), ([620], []))
+        self.assertEqual((codes(pad, EV_ABS, ABS_MT_POSITION_Y), bar), ([620], []))
         # A new contact in the band is the bar's now.
         pad, bar = self.frame(touch(1, 2, 1000, 600))
         self.assertEqual((pad, bar), ([], [("begin", 1, 500.0, 300.0)]))
         self.height = 160
         # It stays the bar's after the bar shrank, to its end.
         pad, bar = self.frame(touch(1, None, 1000, 700), lift(0))
-        self.assertEqual(codes(pad, t.EV_ABS, t.ABS_MT_TRACKING_ID), [-1])
+        self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [-1])
         self.assertEqual(bar, [("move", 1, 500.0, 350.0)])
         pad, bar = self.frame(lift(1))
         self.assertEqual((pad, bar), ([], [("end", 1, 500.0, 350.0)]))
         # A new contact in the band is the touchpad's again.
         pad, bar = self.frame(touch(2, 3, 1000, 600))
-        self.assertEqual((codes(pad, t.EV_ABS, t.ABS_MT_TRACKING_ID), bar), ([3], []))
+        self.assertEqual((codes(pad, EV_ABS, ABS_MT_TRACKING_ID), bar), ([3], []))
 
     def test_band_check(self):
         self.frame(touch(0, 1, 2000, 1200))  # row 600: below any card
-        self.assertFalse(self.s.pad_in_band(160, t.CARD_HEIGHT))
+        self.assertFalse(self.s.pad_in_band(160, CARD_HEIGHT))
         self.frame(touch(1, 2, 2000, 200))  # row 100: in the bar
-        self.assertFalse(self.s.pad_in_band(160, t.CARD_HEIGHT))
+        self.assertFalse(self.s.pad_in_band(160, CARD_HEIGHT))
         self.frame(touch(0, None, 2000, 900))  # row 450: in the band
-        self.assertTrue(self.s.pad_in_band(160, t.CARD_HEIGHT))
+        self.assertTrue(self.s.pad_in_band(160, CARD_HEIGHT))
         self.frame(lift(0))
-        self.assertFalse(self.s.pad_in_band(160, t.CARD_HEIGHT))
+        self.assertFalse(self.s.pad_in_band(160, CARD_HEIGHT))
 
 
 class DaemonCardTests(unittest.TestCase):
@@ -215,40 +243,40 @@ class DaemonCardTests(unittest.TestCase):
     def test_growth_waits_for_the_finger_end_to_end(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d):
             now = [10.0]
-            daemon = t.Daemon(config(CONFIG), None)
+            daemon = Daemon(config(CONFIG), None)
             daemon.apps.asks.clock = lambda: now[0]
             daemon.apps.asks.can_show = lambda: True
-            daemon.bar = daemon.new_bar(t.KeyEmitter(lambda ev: None))
+            daemon.bar = daemon.new_bar(KeyEmitter(lambda ev: None))
             daemon.bar.clock = lambda: now[0]
-            daemon.splitter = t.Splitter(AXES, 5, lambda px, py: py < daemon.bar.touch_height())
+            daemon.splitter = Splitter(AXES, 5, lambda px, py: py < daemon.bar.touch_height())
             app = FakeClient()
             daemon.apps.connect(app)
             daemon.apps.handle(app, {"op": "hello", "app": "fleet"})
             sp = daemon.splitter
             # A pointer stroke in the band; then a question.
-            for ev in touch(0, 1, 2000, 600) + [(t.EV_SYN, t.SYN_REPORT, 0)]:
+            for ev in touch(0, 1, 2000, 600) + [(EV_SYN, SYN_REPORT, 0)]:
                 sp.feed(*ev)
             daemon.apps.handle(
                 app, {"op": "ask", "id": "q", "title": "Run it?", "options": [{"id": "y", "label": "Yes"}]}
             )
             self.assertFalse(daemon.apps.asks.raised)
             daemon.publish()
-            with open(t.state_path()) as f:
+            with open(state_path()) as f:
                 state = json.load(f)
             self.assertEqual((state["height"], state["strut"], state["tiles"][0]["id"]), (160, 160, "button-0"))
             # The finger lifts: the bar grows; the strut stays the bar's own.
-            for ev in lift(0) + [(t.EV_SYN, t.SYN_REPORT, 0)]:
+            for ev in lift(0) + [(EV_SYN, SYN_REPORT, 0)]:
                 sp.feed(*ev)
             daemon.apps.asks.tick()
             daemon.publish()
-            with open(t.state_path()) as f:
+            with open(state_path()) as f:
                 state = json.load(f)
             self.assertEqual((state["height"], state["strut"], state["tiles"][0]["id"]), (456, 160, "ask-text"))
             # After ASK_ARM, a tap in the new area answers; the pad sees nothing.
-            now[0] += t.ASK_ARM
+            now[0] += ASK_ARM
             for groups in (touch(1, 2, 2000, 600), lift(1)):
                 out = None
-                for ev in groups + [(t.EV_SYN, t.SYN_REPORT, 0)]:
+                for ev in groups + [(EV_SYN, SYN_REPORT, 0)]:
                     out = sp.feed(*ev)
                 assert out is not None
                 pad, bar = out
@@ -278,7 +306,7 @@ def notify(**kw):
 
 class MirrorRuleTests(unittest.TestCase):
     def refusal(self, policy=None, **kw):
-        return t.mirror_refusal(t.parse_notify(notify(**kw)), policy or t.NotifyPolicy())
+        return mirror_refusal(parse_notify(notify(**kw)), policy or NotifyPolicy())
 
     def test_rules(self):
         cases: list[tuple[dict, str | None]] = [
@@ -299,16 +327,16 @@ class MirrorRuleTests(unittest.TestCase):
 
     def test_config(self):
         cal = "org.gnome.Calendar.desktop"
-        self.assertEqual(self.refusal(t.NotifyPolicy(mirror=False)), "mirroring is off in the config")
-        self.assertEqual(self.refusal(t.NotifyPolicy(deny=[cal])), "the config denies " + cal)
-        self.assertIsNone(self.refusal(t.NotifyPolicy(allow=[cal])))
-        self.assertIn("not in the config's allow list", self.refusal(t.NotifyPolicy(allow=["x.desktop"])))
-        self.assertIn("an app with no id", self.refusal(t.NotifyPolicy(allow=[cal]), app=None))
+        self.assertEqual(self.refusal(NotifyPolicy(mirror=False)), "mirroring is off in the config")
+        self.assertEqual(self.refusal(NotifyPolicy(deny=[cal])), "the config denies " + cal)
+        self.assertIsNone(self.refusal(NotifyPolicy(allow=[cal])))
+        self.assertIn("not in the config's allow list", self.refusal(NotifyPolicy(allow=["x.desktop"])))
+        self.assertIn("an app with no id", self.refusal(NotifyPolicy(allow=[cal]), app=None))
         # The config's say comes first: a denied app's critical card too.
-        self.assertIsNotNone(self.refusal(t.NotifyPolicy(deny=[cal]), urgency="critical"))
+        self.assertIsNotNone(self.refusal(NotifyPolicy(deny=[cal]), urgency="critical"))
 
     def test_normalized(self):
-        card = t.parse_notify(
+        card = parse_notify(
             notify(
                 app="org.gnome.Calendar", title="a\nb\tc " * 40, actions=["Join the meeting right now please", "\x07"]
             )
@@ -318,7 +346,7 @@ class MirrorRuleTests(unittest.TestCase):
         self.assertTrue(card["title"].startswith("a b c a b c"))
         self.assertTrue(card["title"].endswith("\u2026"))
         self.assertEqual(card["actions"], ["Join the meeting right\u2026", "Action"])
-        self.assertIsNone(t.parse_notify(notify(app="not an id!"))["app"])
+        self.assertIsNone(parse_notify(notify(app="not an id!"))["app"])
         for bad in (
             {"urgency": "urgent"},
             {"id": "-x"},
@@ -327,8 +355,8 @@ class MirrorRuleTests(unittest.TestCase):
             {"dnd": "yes"},
             {"extra": 1},
         ):
-            with self.assertRaises(t.ProtocolError, msg=bad):
-                t.parse_notify(notify(**bad))
+            with self.assertRaises(ProtocolError, msg=bad):
+                parse_notify(notify(**bad))
 
 
 class NotifyAppsTests(unittest.TestCase):
@@ -336,13 +364,13 @@ class NotifyAppsTests(unittest.TestCase):
 
     def setUp(self):
         self.now = 50.0
-        self.apps = t.Apps(clock=lambda: self.now)
+        self.apps = Apps(clock=lambda: self.now)
         self.apps.asks.set_available(True)
         self.ext = FakeClient()
         self.apps.connect(self.ext)
         self.apps.handle(self.ext, {"op": "hello", "app": "gnome-notifications"})
-        self.bar = t.Bar(
-            config(CONFIG), t.KeyEmitter(lambda ev: None), lambda a: None, clock=lambda: self.now, asks=self.apps.asks
+        self.bar = Bar(
+            config(CONFIG), KeyEmitter(lambda ev: None), lambda a: None, clock=lambda: self.now, asks=self.apps.asks
         )
 
     def send(self, **kw):
@@ -356,26 +384,26 @@ class NotifyAppsTests(unittest.TestCase):
         ask = self.apps.asks.shown()
         self.assertEqual(
             (ask.title, ask.text, ask.deadline),
-            ("Standup", "Calendar \u00b7 Starts in 5 minutes", 50.0 + t.NOTIFY_TIMEOUT),
+            ("Standup", "Calendar \u00b7 Starts in 5 minutes", 50.0 + NOTIFY_TIMEOUT),
         )
         self.assertEqual(
             [(o["id"], o["label"]) for o in ask.options],
             [("action-0", "Join"), ("action-1", "Snooze"), ("action-2", "Decline")],
         )
-        self.assertEqual(self.bar.height(), t.CARD_HEIGHT)
+        self.assertEqual(self.bar.height(), CARD_HEIGHT)
         # Never activated by itself: nothing goes back until a tap.
         self.assertEqual(self.answers(), [])
-        self.now += t.ASK_ARM
+        self.now += ASK_ARM
         self.bar.handle([("begin", 0, 1300, 300), ("end", 0, 1300, 300)])
         self.assertEqual(self.answers(), [{"op": "answer", "id": "n1", "option": "action-1", "reason": "chosen"}])
         self.assertEqual(self.bar.height(), 160)
 
     def test_dismiss_and_timeout_close_the_card_only(self):
         self.send()
-        self.now += t.ASK_ARM
+        self.now += ASK_ARM
         self.bar.handle([("begin", 0, 700, 100), ("end", 0, 700, 100)])
         self.send(id="n2")
-        self.now += t.NOTIFY_TIMEOUT
+        self.now += NOTIFY_TIMEOUT
         self.apps.asks.tick()
         self.assertEqual(
             [(m["id"], m["option"], m["reason"]) for m in self.answers()],
@@ -395,7 +423,7 @@ class NotifyAppsTests(unittest.TestCase):
         self.assertEqual((ask.id, ask.options), ("n3", []))
 
     def test_config_policy(self):
-        self.apps.notify_policy = t.NotifyPolicy(deny=["org.gnome.Calendar.desktop"], timeout=5)
+        self.apps.notify_policy = NotifyPolicy(deny=["org.gnome.Calendar.desktop"], timeout=5)
         self.send()
         self.send(id="n2", app="org.gnome.Fractal.desktop")
         self.assertEqual(self.answers()[0]["why"], "the config denies org.gnome.Calendar.desktop")
@@ -403,7 +431,7 @@ class NotifyAppsTests(unittest.TestCase):
 
     def test_an_update_replaces_the_card_and_arms_it_anew(self):
         self.send()
-        self.now += t.ASK_ARM
+        self.now += ASK_ARM
         old = self.apps.asks.shown()
         self.bar.handle([("begin", 0, 1000, 300)])  # a finger on "Join"
         self.send(actions=["Accept", "Join"])  # the app changed its buttons
@@ -422,12 +450,12 @@ class NotifyAppsTests(unittest.TestCase):
         self.send()
         self.apps.handle(self.ext, {"op": "cancel", "id": "n1"})
         self.assertEqual(self.answers()[-1]["reason"], "cancelled")
-        for k in range(t.MAX_NOTIFY_WAITING + 1):
+        for k in range(MAX_NOTIFY_WAITING + 1):
             self.send(id="n%d" % (k + 10))
-        self.assertEqual(len(self.apps.asks.queue), t.MAX_NOTIFY_WAITING)
+        self.assertEqual(len(self.apps.asks.queue), MAX_NOTIFY_WAITING)
         self.assertEqual(self.answers()[-1]["why"], "too many notifications waiting")
         self.apps.asks.set_available(False)
-        self.assertEqual(len([m for m in self.answers() if m["reason"] == "unavailable"]), t.MAX_NOTIFY_WAITING)
+        self.assertEqual(len([m for m in self.answers() if m["reason"] == "unavailable"]), MAX_NOTIFY_WAITING)
         self.send(id="late")
         self.assertEqual(self.answers()[-1]["reason"], "unavailable")
 
@@ -439,7 +467,7 @@ class NotifyAppsTests(unittest.TestCase):
             agent, {"op": "ask", "id": "q", "title": "Run npm test?", "options": [{"id": "yes", "label": "Allow once"}]}
         )
         self.send()
-        tiles = t.ask_tiles(self.apps.asks.shown(), queued=len(self.apps.asks.queue) - 1)
+        tiles = ask_tiles(self.apps.asks.shown(), queued=len(self.apps.asks.queue) - 1)
         self.assertEqual((tiles[0]["title"], tiles[0]["badge"]), ("Run npm test?", "+1"))
 
     def test_bad_messages(self):
@@ -454,7 +482,7 @@ class NotifyAppsTests(unittest.TestCase):
 class NotifyConfigTests(unittest.TestCase):
     def test_settings(self):
         n = config("").notifications
-        self.assertEqual((n.mirror, n.allow, n.deny, n.timeout), (True, None, [], t.NOTIFY_TIMEOUT))
+        self.assertEqual((n.mirror, n.allow, n.deny, n.timeout), (True, None, [], NOTIFY_TIMEOUT))
         n = config(
             '[notifications]\nmirror = false\nallow = ["org.gnome.Calendar"]\n'
             'deny = ["a.desktop", "a.desktop"]\ntimeout = 45\n'
@@ -476,16 +504,16 @@ class NotifyConfigTests(unittest.TestCase):
             ("[notifications]\ntimeout = 0", "timeout must be a whole number"),
             ("[notifications]\ntimeout = 2.5", "timeout must be a whole number"),
         ):
-            with self.assertRaises(t.ConfigError, msg=text) as e:
+            with self.assertRaises(ConfigError, msg=text) as e:
                 config(text)
             self.assertIn("notifications: ", str(e.exception))
             self.assertIn(error, str(e.exception))
 
     def test_default_documents_it(self):
         # The commented example in the default is a valid table once uncommented.
-        text = re.sub(r"(?m)^# (\[notifications\]|mirror =|deny =|allow =|timeout =)", r"\1", t.EXAMPLE_CONFIG)
+        text = re.sub(r"(?m)^# (\[notifications\]|mirror =|deny =|allow =|timeout =)", r"\1", EXAMPLE_CONFIG)
         n = config(text).notifications
-        self.assertEqual((n.mirror, n.deny, n.timeout), (False, ["org.gnome.Evolution.desktop"], t.NOTIFY_TIMEOUT))
+        self.assertEqual((n.mirror, n.deny, n.timeout), (False, ["org.gnome.Evolution.desktop"], NOTIFY_TIMEOUT))
 
     def test_check_and_shortcut_edits(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
@@ -494,11 +522,11 @@ class NotifyConfigTests(unittest.TestCase):
                 f.write(CONFIG + '\n[notifications]\ndeny = ["a.desktop"]\n')
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                self.assertEqual(t.main(["check"]), 0)
+                self.assertEqual(main(["check"]), 0)
             self.assertIn("bar: 160 of 1080 px high (10.0 mm); 456 px while a card shows", out.getvalue())
             self.assertIn("notifications: mirrored for 20 s, never a.desktop", out.getvalue())
             # Adding a shortcut keeps the table (and appends after it).
-            c = t.edit_config(lambda c: (c.height, c.shortcuts + ["web.desktop"]))
+            c = edit_config(lambda c: (c.height, c.shortcuts + ["web.desktop"]))
             self.assertEqual((c.shortcuts, c.notifications.deny), (["files.desktop", "web.desktop"], ["a.desktop"]))
 
     def test_migrate_the_default_before_notifications(self):
@@ -509,10 +537,10 @@ class NotifyConfigTests(unittest.TestCase):
             os.makedirs(os.path.dirname(path))
             with open(path, "w") as f:
                 f.write(v4)
-            self.assertTrue(t.migrate_config())
+            self.assertTrue(migrate_config())
             with open(path) as f:
-                self.assertEqual(f.read(), t.EXAMPLE_CONFIG)
-            self.assertFalse(t.migrate_config())
+                self.assertEqual(f.read(), EXAMPLE_CONFIG)
+            self.assertFalse(migrate_config())
 
 
 class ExtensionMirrorTests(unittest.TestCase):
@@ -524,16 +552,16 @@ class ExtensionMirrorTests(unittest.TestCase):
         # the daemon's protocol.
         src = read("notifications.js")
         names = re.search(r"const URGENCY = \[([^\]]*)\];", src).group(1)
-        self.assertEqual(tuple(re.findall(r"'(\w+)'", names)), t.URGENCIES)
-        self.assertTrue(t.TILE_NAME.fullmatch(re.search(r"const APP = '([^']+)';", src).group(1)))
+        self.assertEqual(tuple(re.findall(r"'(\w+)'", names)), URGENCIES)
+        self.assertTrue(TILE_NAME.fullmatch(re.search(r"const APP = '([^']+)';", src).group(1)))
         action = re.search(r"const ACTION = /(.*)/;", src).group(1)
-        self.assertRegex("action-%d" % (t.MAX_OPTIONS - 1), action)
+        self.assertRegex("action-%d" % (MAX_OPTIONS - 1), action)
         body = src[re.search(r"op:\s*'notify'\s*,", src).end() :]
         body = body[: re.search(r"}\s*\)", body).start()]
         keys = set(re.findall(r"^\s*(\w+)\s*[:,]", body, re.M)) | {"id"}
-        self.assertEqual(keys, set(t.parse_notify(notify())))
+        self.assertEqual(keys, set(parse_notify(notify())))
         ext = read("extension.js")
-        self.assertEqual(re.search(r"const SOCKET_NAME = '([^']+)';", ext).group(1), t.SOCKET_NAME)
+        self.assertEqual(re.search(r"const SOCKET_NAME = '([^']+)';", ext).group(1), SOCKET_NAME)
 
 
 if __name__ == "__main__":

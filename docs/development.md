@@ -4,8 +4,8 @@
 
 | Path | What it is |
 |---|---|
-| `screenpad.py` | the display CLI, installed as `/usr/local/sbin/screenpad` |
-| `touchbar.py` | the touch bar daemon and CLI, installed as `/usr/local/bin/screenpad-touchbar` |
+| `screenpad.py`, `screenpad_display/` | the display CLI, installed as `/usr/local/sbin/screenpad` |
+| `touchbar.py`, `screenpad_touchbar/` | the touch bar daemon and CLI, installed as `/usr/local/bin/screenpad-touchbar` |
 | `gnome-shell/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |
 | `systemd/` | the boot unit, the resume hook and the touch bar's user unit |
 | `udev/` | the `/dev/uinput` access rule |
@@ -18,7 +18,39 @@
 | `.github/workflows/ci.yml` | CI: the same checks on every push and pull request |
 | `.no-mistakes.yaml` | the commands the no-mistakes review pipeline runs |
 
-Both programs are single-file Python 3 (3.11 or newer, standard library only), so they can be run from the checkout: `./screenpad.py status`, `./touchbar.py check`.
+Both programs are Python 3 (3.11 or newer, standard library only) and run from the checkout: `./screenpad.py status`, `./touchbar.py check`. `screenpad.py` and `touchbar.py` are small launchers: run in isolated mode (`python3 -I`), they put the directory they really live in on `sys.path` and call `main()` in their package, `screenpad_display` or `screenpad_touchbar`. `install.sh` copies both with their packages to `/usr/local/lib/screenpad/` and links `/usr/local/sbin/screenpad` and `/usr/local/bin/screenpad-touchbar` to them, so the checkout and the installed copy have the same layout.
+
+Each package has one module per concern, each under about 500 lines:
+
+| Module | What it holds |
+|---|---|
+| `screenpad_display/common.py` | the supported machine, the paths, the panel's constants, the errors |
+| `screenpad_display/edid.py` | EDID checksums and description |
+| `screenpad_display/system.py` | `Env` (the filesystem root and side effects), file and sysfs access, the DDC read, the machine check |
+| `screenpad_display/lockdown.py` | lockdown and the `drm.edid_firmware` path |
+| `screenpad_display/discovery.py` | the NVIDIA card, the connector, its DDC bus and debugfs directory |
+| `screenpad_display/actions.py` | lighting and darkening the panel, the connector, the EDID, the active flag |
+| `screenpad_display/commands.py` | `on`, `replug`, `off`, `capture-edid`, `status` |
+| `screenpad_display/grub.py` | `grub show|apply|remove` |
+| `screenpad_display/cli.py` | the arguments and `main()` |
+| `screenpad_touchbar/common.py` | the panel and the bar's geometry, names, paths, timings and limits, the errors, the runtime files |
+| `screenpad_touchbar/codes.py` | Linux input event codes, the evdev and uinput structs and ioctls |
+| `screenpad_touchbar/keys.py` | key names and combos, the key device's presses |
+| `screenpad_touchbar/config.py` | `touchbar.toml`: the spots, buttons, shortcuts and `[notifications]`, parsing and loading |
+| `screenpad_touchbar/defaults.py` | the default config and the defaults earlier versions wrote |
+| `screenpad_touchbar/config_edit.py` | editing the config in place and migrating earlier defaults |
+| `screenpad_touchbar/scene.py` | the tiles in `touchbar.json` |
+| `screenpad_touchbar/splitter.py` | the zone split between the bar and the virtual touchpad |
+| `screenpad_touchbar/bar.py` | what touches on the spots, the grip and a question do |
+| `screenpad_touchbar/protocol.py` | validating app messages, questions as apps send them |
+| `screenpad_touchbar/notify.py` | GNOME notifications: normalizing, the mirror rules, the question one becomes |
+| `screenpad_touchbar/asks.py` | the questions waiting and the attention card |
+| `screenpad_touchbar/apps.py` | the programs on the app socket and the socket itself |
+| `screenpad_touchbar/devices.py` | the touchpad's evdev node and the uinput devices |
+| `screenpad_touchbar/daemon.py` | the daemon's loop, the grab, publishing the scene, reloading the config |
+| `screenpad_touchbar/cli.py` | the commands and their arguments |
+
+The imports between them go one way (no cycles): `common` and `codes` import nothing of the package, and `cli` sits on top.
 
 ## Checks
 
@@ -55,7 +87,7 @@ They need no root and no hardware. `tests/test_screenpad.py` covers the display 
 - lockdown detection, kernel command line parsing, and the kernel's `edid_firmware` connector matching;
 - the DDC retry;
 - `grub show/apply/remove`, including that apply then remove gives back the original file;
-- `install.sh` against a fake root (`DESTDIR`), with stub `id`, `systemctl`, `lsinitramfs`, `update-initramfs` and `udevadm` first on `PATH`, including the touch bar's files. These tests are skipped when run as root.
+- `install.sh` against a fake root (`DESTDIR`), with stub `id`, `systemctl`, `lsinitramfs`, `update-initramfs` and `udevadm` first on `PATH`, including the touch bar's files, the programs' links and packages in `/usr/local/lib/screenpad/` (an update replacing a single-file install and dropping a module that is gone), and both installed commands running in isolated mode. These tests are skipped when run as root.
 
 The touch bar tests cover:
 

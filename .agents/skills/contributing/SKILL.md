@@ -19,7 +19,7 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 - `make check`: everything CI runs, in order: format check, lint, typecheck, tests. **Run it before finishing every change.**
 - `make format-check`: `ruff format --check` on the Python, Prettier `--check` on the extension's JavaScript. `make format` applies both.
 - `make lint`: `ruff check` and ESLint (`eslint.config.js`).
-- `make typecheck`: mypy with `check_untyped_defs` on `screenpad.py`, `touchbar.py` and `tests/`.
+- `make typecheck`: mypy with `check_untyped_defs` on the launchers `screenpad.py` and `touchbar.py`, their packages `screenpad_display/` and `screenpad_touchbar/`, and `tests/`.
 - `make test`: `python3 -m unittest discover -s tests`, stdlib only, so it runs without uv or npm.
 - The tool versions are pinned: ruff and mypy in `pyproject.toml` (`[dependency-groups] dev`) and `uv.lock`; Prettier and ESLint in `package.json` and `package-lock.json`. Their settings live in `pyproject.toml`, `.prettierrc.json` and `eslint.config.js`.
 - Prettier formats only `gnome-shell/**/*.js` and `eslint.config.js`, and ruff only `*.py`; never run them on `docs/`, `README.md`, JSON or CSS, where they would rewrite hand-kept tables and snippets.
@@ -28,8 +28,8 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 ## Rules
 
 - **The checks pass before a change is done.** Formatting, lint, typecheck and tests are all green under `make check`. Fix the code rather than silencing a check; a `# type: ignore[code]` or `# noqa: CODE` names its code and says why on the same line.
-- **The programs stay standard-library Python 3.11+.** `screenpad.py` and `touchbar.py` run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
-- **Keep files small: about 500 lines per module is the soft limit.** Split a module along its responsibilities instead of growing it past that, and put new code in the module of its area. Over it today: `touchbar.py` (about 3,200 lines), `screenpad.py` (about 1,150), `tests/test_touchbar.py` and `tests/test_screenpad.py`; `gnome-shell/screenpad-touchbar@screenpad/extension.js` and `tests/test_touchbar_cards.py` are at it. Do not grow them; move code out when a change reworks a part of them.
+- **The programs stay standard-library Python 3.11+.** `screenpad.py` and `touchbar.py` and their packages run from the checkout and as installed copies, with no third-party import. Tooling goes in the dev dependency group or `devDependencies`, never in what `install.sh` installs.
+- **Keep files small: about 500 lines per module is the soft limit.** Split a module along its responsibilities instead of growing it past that, and put new code in the module of its area. Over it today: `tests/test_touchbar.py` and `tests/test_screenpad.py`; `gnome-shell/screenpad-touchbar@screenpad/extension.js` and `tests/test_touchbar_cards.py` are at it. Do not grow them; move code out when a change reworks a part of them.
 - **Document what you write, in the same change.** A behavior, command, setting, file or installed path that changes updates the page that describes it (README and `docs/`, see below), the test list in [docs/development.md](../../../docs/development.md#tests) when tests change, and the matching skill.
 - **Work in steps.** A step is one coherent change with its tests, docs and skill update, `make check` green, and committed. Finish and document a step before moving on to the next; a large change goes in as several such steps (and pull requests), each complete on its own.
 - **Every change goes through no-mistakes review.** Commit on a branch and run it through the no-mistakes gate (the `/no-mistakes` skill, or `git push no-mistakes <branch>`): it reviews, tests, lints, pushes, opens the pull request and watches CI. Never push to `main` directly.

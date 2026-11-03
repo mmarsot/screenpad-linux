@@ -16,7 +16,29 @@ from unittest import mock
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, REPO)
 
-import screenpad  # noqa: E402
+from screenpad_display import system
+from screenpad_display.cli import main
+from screenpad_display.common import (
+    BACKLIGHT,
+    DDC_RETRY_DELAY,
+    DRM_CLASS,
+    EDID_HEADER,
+    EDID_READ_TRIES,
+    POWER_SETTLE,
+    RELIGHT_GAP,
+    ScreenpadError,
+)
+from screenpad_display.discovery import discover, short_pci, wait_for_target
+from screenpad_display.edid import block_checksum, checksums_ok, describe_edid, fix_checksums
+from screenpad_display.grub import grub_add, grub_remove
+from screenpad_display.lockdown import (
+    cmdline_edid_firmware,
+    cmdline_params,
+    firmware_for_connector,
+    lockdown_state,
+    locked_down,
+)
+from screenpad_display.system import Env, write_attr
 
 NVIDIA_PCI = "0000:02:00.0"
 INTEL_PCI = "0000:00:02.0"
@@ -51,7 +73,7 @@ def tsb_edid(cta_checksum=None):
     correct checksum is 0x6f; cta_checksum overrides the stored byte.
     """
     b0 = bytearray(128)
-    b0[0:8] = screenpad.EDID_HEADER
+    b0[0:8] = EDID_HEADER
     b0[8:10] = b"\x52\x62"  # "TSB"
     b0[10:12] = b"\x88\x88"  # product 0x8888
     b0[18:20] = b"\x01\x03"  # EDID 1.3
@@ -59,13 +81,13 @@ def tsb_edid(cta_checksum=None):
     # 140.00 MHz, 1080x1920, blanking 115/10, flags 0x18 (-H -V).
     b0[54:72] = bytes([0xB0, 0x36, 0x38, 0x73, 0x40, 0x80, 0x0A, 0x70, 0x10, 0x10, 0x11, 0x00, 0, 0, 0, 0, 0, 0x18])
     b0[126] = 1
-    b0[127] = screenpad.block_checksum(b0)
+    b0[127] = block_checksum(b0)
 
     b1 = bytearray(128)
     b1[0:4] = b"\x02\x03\x0b\x00"
     b1[4:11] = b"\x66\x03\x0c\x00\x10\x00\x00"  # vendor block, HDMI OUI 00-0C-03
     b1[100] = (0x91 - sum(b1[:127])) & 0xFF  # makes the correct checksum 0x6f
-    assert screenpad.block_checksum(b1) == 0x6F
+    assert block_checksum(b1) == 0x6F
     b1[127] = 0x6F if cta_checksum is None else cta_checksum
     return bytes(b0 + b1)
 
@@ -184,9 +206,9 @@ class FakeAsusWmi:
         self.calls = []  # ("LIGHT" | "POWER=0", connector enabled?)
         self.compositor_delay = compositor_delay
         self.enable_at = None
-        self.bl = sys.p(screenpad.BACKLIGHT)
-        self.conn = sys.p(screenpad.DRM_CLASS, "card0-HDMI-A-2")
-        self.real_write_attr = screenpad.write_attr
+        self.bl = sys.p(BACKLIGHT)
+        self.conn = sys.p(DRM_CLASS, "card0-HDMI-A-2")
+        self.real_write_attr = write_attr
 
     def enabled(self):
         return self.sys.read(os.path.join(self.conn, "enabled")) == b"enabled"
@@ -253,7 +275,7 @@ class Base(unittest.TestCase):
         self.sys = FakeSys(self.tmp.name, **kw)
         self.time = FakeClock()
         self.wmi = FakeAsusWmi(self.sys, self.time, powered, compositor_delay)
-        patch = mock.patch.object(screenpad, "write_attr", self.wmi.write_attr)
+        patch = mock.patch.object(system, "write_attr", self.wmi.write_attr)
         patch.start()
         self.addCleanup(patch.stop)
         edid_by_bus = edid_by_bus if edid_by_bus is not None else {9: tsb_edid(cta_checksum=0x3E)}
@@ -272,7 +294,7 @@ class Base(unittest.TestCase):
             return edid_by_bus[bus]
 
         self.ran = []
-        self.env = screenpad.Env(
+        self.env = Env(
             root=self.tmp.name,
             sleep=sleep,
             euid=lambda: euid,
@@ -286,14 +308,14 @@ class Base(unittest.TestCase):
         err = io.StringIO()
         out = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
-            code = screenpad.main(list(argv), self.env)
+            code = main(list(argv), self.env)
         return code, out.getvalue(), err.getvalue()
 
 
 class ChecksumTests(unittest.TestCase):
     def test_known_ux580_case_single_byte(self):
         bad = tsb_edid(cta_checksum=0x3E)
-        fixed, changes = screenpad.fix_checksums(bad)
+        fixed, changes = fix_checksums(bad)
         self.assertEqual(changes, [(1, 0x3E, 0x6F)])
         diff = [(i, a, b) for i, (a, b) in enumerate(zip(bad, fixed, strict=True)) if a != b]
         # cmp -l in the report prints this 1-based as offset 256.
@@ -304,33 +326,33 @@ class ChecksumTests(unittest.TestCase):
         good = tsb_edid()
         for stored in (0x00, 0x6E, 0xFF):
             bad = good[:255] + bytes([stored])
-            fixed, changes = screenpad.fix_checksums(bad)
+            fixed, changes = fix_checksums(bad)
             self.assertEqual(fixed, good)
             self.assertEqual(changes, [(1, stored, 0x6F)])
-            self.assertFalse(screenpad.checksums_ok(bad))
-            self.assertTrue(screenpad.checksums_ok(fixed))
+            self.assertFalse(checksums_ok(bad))
+            self.assertTrue(checksums_ok(fixed))
 
     def test_fixes_every_block(self):
         bad = bytearray(tsb_edid())
         bad[127] ^= 0x55
         bad[255] = 0x3E
-        fixed, changes = screenpad.fix_checksums(bytes(bad))
+        fixed, changes = fix_checksums(bytes(bad))
         self.assertEqual([c[0] for c in changes], [0, 1])
         self.assertEqual(fixed, tsb_edid())
 
     def test_valid_edid_untouched_and_trimmed(self):
         good = tsb_edid()
-        fixed, changes = screenpad.fix_checksums(good + b"\xff" * 128)
+        fixed, changes = fix_checksums(good + b"\xff" * 128)
         self.assertEqual((fixed, changes), (good, []))
 
     def test_rejects_non_edid(self):
-        with self.assertRaises(screenpad.ScreenpadError):
-            screenpad.fix_checksums(b"\x00" * 256)
-        with self.assertRaises(screenpad.ScreenpadError):
-            screenpad.fix_checksums(tsb_edid()[: 128 + 64])
+        with self.assertRaises(ScreenpadError):
+            fix_checksums(b"\x00" * 256)
+        with self.assertRaises(ScreenpadError):
+            fix_checksums(tsb_edid()[: 128 + 64])
 
     def test_describe(self):
-        desc = screenpad.describe_edid(tsb_edid())
+        desc = describe_edid(tsb_edid())
         self.assertIn("TSB 8888", desc)
         self.assertIn("1080x1920 @ 60.70 Hz, 140.00 MHz", desc)
         self.assertIn("HDMI VSDB", desc)
@@ -365,7 +387,7 @@ class DmiTests(Base):
 class DiscoveryTests(Base):
     def test_finds_nvidia_card_connector_buses_debugfs(self):
         self.make()
-        t = screenpad.discover(self.env)
+        t = discover(self.env)
         self.assertEqual(
             (t.card, t.pci, t.connector, t.short_connector), ("card0", NVIDIA_PCI, "card0-HDMI-A-2", "HDMI-A-2")
         )
@@ -374,22 +396,22 @@ class DiscoveryTests(Base):
 
     def test_card_numbers_swapped(self):
         self.make(nvidia_card="card1", intel_card="card0")
-        t = screenpad.discover(self.env)
+        t = discover(self.env)
         self.assertEqual((t.card, t.connector), ("card1", "card1-HDMI-A-2"))
         self.assertEqual(t.debugfs, self.sys.debugfs)
 
     def test_debugfs_named_by_minor(self):
         self.make(nvidia_card="card1", intel_card="card0", debugfs_by_minor=True)
-        t = screenpad.discover(self.env)
+        t = discover(self.env)
         self.assertEqual(t.debugfs, self.sys.p("sys/kernel/debug/dri/1/HDMI-A-2"))
 
     def test_debugfs_unreadable(self):
         self.make()
         os.rename(self.sys.p("sys/kernel/debug"), self.sys.p("sys/kernel/debug-hidden"))
-        t = screenpad.discover(self.env)
+        t = discover(self.env)
         self.assertIsNone(t.debugfs)
-        with self.assertRaisesRegex(screenpad.ScreenpadError, "debugfs"):
-            screenpad.wait_for_target(self.env, 2)
+        with self.assertRaisesRegex(ScreenpadError, "debugfs"):
+            wait_for_target(self.env, 2)
         self.assertGreaterEqual(self.time.now, 2)
 
     def test_i2c_by_name_when_not_parented(self):
@@ -399,25 +421,25 @@ class DiscoveryTests(Base):
         with open(os.path.join(node, "name"), "w") as f:
             f.write("NVIDIA i2c adapter 3 at 2:00.0")
         os.symlink(node, self.sys.p("sys/bus/i2c/devices/i2c-11"))
-        self.assertEqual(screenpad.discover(self.env).buses, [9, 10, 11])
+        self.assertEqual(discover(self.env).buses, [9, 10, 11])
 
     def test_short_pci(self):
-        self.assertEqual(screenpad.short_pci("0000:02:00.0"), "2:00.0")
-        self.assertEqual(screenpad.short_pci("0000:3b:00.1"), "3b:00.1")
+        self.assertEqual(short_pci("0000:02:00.0"), "2:00.0")
+        self.assertEqual(short_pci("0000:3b:00.1"), "3b:00.1")
 
     def test_several_connectors_need_choice(self):
         self.make(connectors=("HDMI-A-2", "HDMI-A-4"))
-        with self.assertRaisesRegex(screenpad.ScreenpadError, "--connector"):
-            screenpad.discover(self.env)
-        t = screenpad.discover(self.env, "HDMI-A-4")
+        with self.assertRaisesRegex(ScreenpadError, "--connector"):
+            discover(self.env)
+        t = discover(self.env, "HDMI-A-4")
         self.assertEqual(t.connector, "card0-HDMI-A-4")
 
     def test_no_nvidia(self):
         self.make()
         os.unlink(self.sys.p("sys/class/drm/card0"))
-        self.assertIsNone(screenpad.discover(self.env))
-        with self.assertRaisesRegex(screenpad.ScreenpadError, "nvidia-drm"):
-            screenpad.wait_for_target(self.env, 1)
+        self.assertIsNone(discover(self.env))
+        with self.assertRaisesRegex(ScreenpadError, "nvidia-drm"):
+            wait_for_target(self.env, 1)
 
 
 class CommandTests(Base):
@@ -499,7 +521,7 @@ class CmdlineTests(unittest.TestCase):
     def test_split_like_the_kernel(self):
         text = 'BOOT_IMAGE=/boot/vmlinuz ro quiet "%s" foo="a b" splash= -- drm.edid_firmware=x\n' % PARAM
         self.assertEqual(
-            screenpad.cmdline_params(text),
+            cmdline_params(text),
             [
                 ("BOOT_IMAGE", "/boot/vmlinuz"),
                 ("ro", None),
@@ -511,10 +533,10 @@ class CmdlineTests(unittest.TestCase):
         )
 
     def edid_firmware(self, cmdline):
-        env = screenpad.Env(root=self.tmp)
+        env = Env(root=self.tmp)
         with open(os.path.join(self.tmp, "proc/cmdline"), "w") as f:
             f.write(cmdline + "\n")
-        return screenpad.cmdline_edid_firmware(env)
+        return cmdline_edid_firmware(env)
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -531,7 +553,7 @@ class CmdlineTests(unittest.TestCase):
         self.assertIsNone(self.edid_firmware("drm_kms_helper.edid_firmware=old.bin"))
 
     def test_firmware_for_connector_mirrors_drm_edid_load(self):
-        pick = screenpad.firmware_for_connector
+        pick = firmware_for_connector
         self.assertEqual(pick("HDMI-A-2:screenpad/edid.bin", "HDMI-A-2"), "screenpad/edid.bin")
         self.assertIsNone(pick("HDMI-A-2:screenpad/edid.bin", "HDMI-A-1"))
         self.assertIsNone(pick("HDMI-A-2:screenpad/edid.bin", "eDP-1"))
@@ -568,11 +590,11 @@ class LockdownTests(Base):
             self.tmp.cleanup()
             os.makedirs(self.tmp.name)
             self.make(lockdown=mode)
-            self.assertEqual(screenpad.lockdown_state(self.env), mode)
-            self.assertEqual(screenpad.locked_down(self.env), locked)
+            self.assertEqual(lockdown_state(self.env), mode)
+            self.assertEqual(locked_down(self.env), locked)
         os.unlink(self.sys.p("sys/kernel/security/lockdown"))
-        self.assertIsNone(screenpad.lockdown_state(self.env))
-        self.assertFalse(screenpad.locked_down(self.env))
+        self.assertIsNone(lockdown_state(self.env))
+        self.assertFalse(locked_down(self.env))
 
     def test_on_skips_debugfs_and_sets_edid_firmware(self):
         s = self.make(lockdown="integrity")
@@ -597,7 +619,7 @@ class LockdownTests(Base):
         self.lit(s)
         shutil.rmtree(s.p("sys/kernel/debug"))
         self.assertEqual(self.run_cli("on", "--wait", "5")[0], 0)
-        self.assertEqual(self.time.sleeps, [screenpad.RELIGHT_GAP])
+        self.assertEqual(self.time.sleeps, [RELIGHT_GAP])
 
     def test_on_with_boot_param_applied(self):
         s = self.make(lockdown="integrity", cmdline=CMDLINE + " " + PARAM)
@@ -787,7 +809,7 @@ class PanelTests(Base):
         code, _, err = self.run_cli("on")
         self.assertEqual(code, 0, err)
         self.assert_lit()
-        self.assertGreaterEqual(self.time.now, 3 + screenpad.RELIGHT_GAP)
+        self.assertGreaterEqual(self.time.now, 3 + RELIGHT_GAP)
         self.assertNotIn("not enabled", err)
 
     def test_on_lights_anyway_without_a_compositor(self):
@@ -798,7 +820,7 @@ class PanelTests(Base):
         self.assertTrue(self.wmi.lit)
         self.assertEqual(self.wmi.calls[-1], ("POWER=0", False))
         # One deadline for the card and the compositor, then the relight gap.
-        self.assertEqual(self.time.now, 4 + screenpad.RELIGHT_GAP)
+        self.assertEqual(self.time.now, 4 + RELIGHT_GAP)
 
     def test_relight_gap_option(self):
         self.start("4", False)
@@ -828,16 +850,14 @@ class DdcRetryTests(Base):
         self.assertEqual(code, 0, err)
         self.assertIn("retrying", err)
         self.assertEqual(s.read("var/lib/screenpad/edid.bin"), tsb_edid())
-        self.assertEqual(
-            self.time.sleeps, [screenpad.RELIGHT_GAP, screenpad.POWER_SETTLE] + [screenpad.DDC_RETRY_DELAY] * 6
-        )
+        self.assertEqual(self.time.sleeps, [RELIGHT_GAP, POWER_SETTLE] + [DDC_RETRY_DELAY] * 6)
 
     def test_gives_up_with_the_file_hint(self):
         self.make(edid_by_bus={})
         self.env.i2c_read = lambda dev: (_ for _ in ()).throw(OSError(5, "Input/output error"))
         code, _, err = self.run_cli("capture-edid")
         self.assertEqual(code, 1)
-        self.assertIn("after %d attempts" % screenpad.EDID_READ_TRIES, err)
+        self.assertIn("after %d attempts" % EDID_READ_TRIES, err)
         self.assertIn("--from ux580-tsb-fixed.bin", err)
 
 
@@ -883,7 +903,7 @@ class GrubTests(Base):
         self.assertEqual(len(self.ran), 2)
 
     def test_add_and_remove_edge_cases(self):
-        add, remove = screenpad.grub_add, screenpad.grub_remove
+        add, remove = grub_add, grub_remove
         self.assertEqual(add('GRUB_CMDLINE_LINUX_DEFAULT=""\n', PARAM), 'GRUB_CMDLINE_LINUX_DEFAULT="%s"\n' % PARAM)
         self.assertEqual(
             add("GRUB_CMDLINE_LINUX_DEFAULT='quiet'", PARAM), "GRUB_CMDLINE_LINUX_DEFAULT='quiet %s'" % PARAM
@@ -905,7 +925,7 @@ class GrubTests(Base):
             'GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=HDMI-A-2:edid/x.bin"\n',
         ):
             self.assertEqual(remove(other), other)
-        with self.assertRaisesRegex(screenpad.ScreenpadError, "already sets"):
+        with self.assertRaisesRegex(ScreenpadError, "already sets"):
             add('GRUB_CMDLINE_LINUX_DEFAULT="quiet drm.edid_firmware=edid/x.bin"\n', PARAM)
 
     def test_apply_needs_root_and_the_firmware(self):
@@ -1041,6 +1061,38 @@ class InstallTests(Base):
         # The touch bar is the user's to turn on; install never enables it.
         self.assertNotIn(["systemctl", "--user"], self.called())
 
+    def test_install_programs(self):
+        # An earlier version installed the programs as single files, and a
+        # module it had must not linger in the package.
+        self.s.write("usr/local/bin/screenpad-touchbar", "old single file\n")
+        self.s.write("usr/local/lib/screenpad/screenpad_touchbar/gone.py", "")
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lib = "usr/local/lib/screenpad"
+        for link, script in (
+            ("usr/local/sbin/screenpad", "screenpad.py"),
+            ("usr/local/bin/screenpad-touchbar", "touchbar.py"),
+        ):
+            self.assertEqual(os.readlink(self.s.p(link)), "../lib/screenpad/" + script)
+            self.assertEqual(self.s.read("%s/%s" % (lib, script)), repo_file(script))
+            self.assertTrue(os.access(self.s.p(lib, script), os.X_OK))
+        for pkg in ("screenpad_display", "screenpad_touchbar"):
+            modules = sorted(n for n in os.listdir(os.path.join(REPO, pkg)) if n.endswith(".py"))
+            self.assertEqual(sorted(os.listdir(self.s.p(lib, pkg))), modules)
+            for name in modules:
+                self.assertEqual(self.s.read("%s/%s/%s" % (lib, pkg, name)), repo_file("%s/%s" % (pkg, name)))
+        # The installed commands find their package from where they are
+        # installed, in isolated mode, run from anywhere.
+        for link, prog in (
+            ("usr/local/sbin/screenpad", "screenpad"),
+            ("usr/local/bin/screenpad-touchbar", "screenpad-touchbar"),
+        ):
+            run = subprocess.run(
+                [sys.executable, "-I", self.s.p(link), "--help"], cwd=self.tmp.name, capture_output=True, text=True
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertTrue(run.stdout.startswith("usage: %s " % prog), run.stdout)
+
     def test_install_without_saved_edid(self):
         r = self.install()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -1085,6 +1137,7 @@ class InstallTests(Base):
             "usr/lib/systemd/system-sleep/screenpad",
             "usr/local/share/doc/screenpad",
             "lib/firmware/screenpad",
+            "usr/local/lib/screenpad",
         ) + self.TOUCHBAR_FILES:
             self.assertFalse(os.path.exists(self.s.p(rel)), rel)
         self.assertTrue(os.path.exists(self.s.p("var/lib/screenpad/edid.bin")))
