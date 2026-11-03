@@ -23,7 +23,7 @@ from screenpad_touchbar.common import (
     TONES,
 )
 from screenpad_touchbar.keys import KeyEmitter
-from screenpad_touchbar.protocol import parse_ask
+from screenpad_touchbar.protocol import Ask, parse_ask
 from screenpad_touchbar.scene import DISMISS, TILE_CLASSES, TILE_STYLES, ask_option_at, ask_tiles, spot_tiles
 
 
@@ -317,6 +317,33 @@ class AskBarTests(unittest.TestCase):
                 self.assertEqual(
                     self.app.last("answer"), {"op": "answer", "id": "q%d" % x, "option": option, "reason": "chosen"}
                 )
+
+    def test_a_card_without_answers_has_only_dismiss(self):
+        # An urgent notification without buttons: its text over the space
+        # the answers would take (1496 px, all but Dismiss and the gap),
+        # then Dismiss, which a touch dismisses; nothing else is a button.
+        for height in (CARD_HEIGHT, MAX_HEIGHT):
+            with self.subTest(height=height):
+                self.bar.set_config(config("height = %d\n" % height + BAR_CONFIG))
+                self.asks.add(Ask(self.app, "n%d" % height, "Battery low", None, [], self.now + 60, notification=True))
+                self.now += ASK_ARM
+                ask = self.asks.shown()
+                self.assertEqual(self.bar.card_height(), height)
+                tiles = ask_tiles(ask, self.bar.card_height())
+                self.assertEqual(
+                    [(t["id"], t["x"], t["width"]) for t in tiles], [("ask-text", 0, 1496), ("ask-dismiss", 1496, 136)]
+                )
+                for x in (0, 1495, 1632, PAGE_X - 1):
+                    self.assertIsNone(ask_option_at(ask, x, height), x)
+                for x in (1496, 1564, 1631):
+                    self.assertEqual(ask_option_at(ask, x, height), DISMISS, x)
+                self.assertFalse(self.bar.handle([("begin", 0, 1640, 50)]))
+                self.bar.handle([("end", 0, 1640, 50)])
+                self.assertIs(self.asks.shown(), ask)
+                self.assertTrue(self.bar.handle([("begin", 0, 1564, 50)]))
+                self.bar.handle([("end", 0, 1564, 50)])
+                self.assertEqual(self.app.last("answer")["reason"], "dismissed")
+                self.assertIsNone(self.asks.shown())
 
     def test_too_soon_does_nothing(self):
         self.asks.add(parse_ask(self.app, {"id": "q", "title": "T", "options": [{"id": "a", "label": "A"}]}, self.now))

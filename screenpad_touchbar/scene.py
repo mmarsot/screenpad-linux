@@ -120,6 +120,8 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
 
 def ask_answer_width(ask, height):
     """The width of each of a question's answers on a card height tall."""
+    if not ask.options:
+        return 0
     return min(height, (ASK_SPACE - ASK_TEXT_MIN) // len(ask.options))
 
 
