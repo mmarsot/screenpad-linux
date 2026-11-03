@@ -27,6 +27,7 @@ from .common import (
     RENDERER_NAME,
     SCENE_VERSION,
     SOCKET_NAME,
+    WIDGETS_PROTOCOL,
     ConfigError,
     TouchbarError,
     log,
@@ -38,9 +39,10 @@ from .config import config_path, load_config
 from .config_edit import edit_config
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
 from .keys import KeyEmitter
-from .pager import Pager, Surface
+from .pager import Pager
 from .scene import DIVIDER_X, ask_tiles, spot_tiles
 from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
+from .surface import Surface
 
 
 class Daemon:
@@ -80,7 +82,16 @@ class Daemon:
             return_after=config.pages.return_after,
             can_show=lambda: self.grabbed() and self.renderer_protocol() >= PAGES_PROTOCOL,
         )
-        self.surface = Surface()
+        # The apps page's widgets, below the bar's own height; a card
+        # covers their top while it shows. Touches act on them only while
+        # the extension draws them.
+        self.surface = Surface(
+            self.apps,
+            self.pager,
+            top=lambda: self.bar.base_height() if self.bar else self.config.height,
+            cover=lambda: self.bar.touch_height() if self.bar else self.config.height,
+            can_draw=lambda: self.renderer_protocol() >= WIDGETS_PROTOCOL,
+        )
         self.dots_shown = False
         self.server = None
         # renderer.json's mtime, and the protocol it says it draws while
@@ -159,7 +170,7 @@ class Daemon:
             # whether with a clock), and what the apps page shows there.
             "page": self.pager.name(),
             "screensaver": {"clock": self.config.pages.clock},
-            "surface": self.pager.surface(),
+            "surface": self.surface.scene(),
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension
             # code only then). It shows no app tiles and no questions.
@@ -299,6 +310,7 @@ class Daemon:
             self.bar.handle(bar)
             self.bar.release_all()
             self.surface.handle(surface)
+            self.surface.release_all()
             write_events(self.pad, pad)
         except OSError as e:
             log("releasing: %s" % e)
@@ -397,8 +409,11 @@ class Daemon:
             if self.pager.tick() or self.pager.available() != self.dots_shown:
                 self.dots_shown = self.pager.available()
                 self.publish()
+            if self.surface.tick():
+                self.publish()
             for deadline in (
                 self.bar.deadline() if self.bar else None,
+                self.surface.deadline(),
                 self.apps.asks.deadline(),
                 self.pager.deadline(),
             ):

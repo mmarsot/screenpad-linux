@@ -3,7 +3,7 @@ and the page dots that turn them, and the return to the touchpad."""
 
 import time
 
-from .common import APPS, HOME, PAGE_NAMES, RETURN_AFTER, SWIPE_MIN, SWIPE_SLOPE, SWIPE_TIME
+from .common import HOME, PAGE_NAMES, RETURN_AFTER, SWIPE_MIN, SWIPE_SLOPE, SWIPE_TIME
 
 
 class Stroke:
@@ -129,22 +129,3 @@ class Pager:
     def dots(self):
         """What the page dots tile draws: the page shown and how many."""
         return {"page": self.page, "pages": len(PAGE_NAMES)}
-
-    def surface(self):
-        """What the apps page shows, or None on the touchpad page."""
-        if self.page != APPS:
-            return None
-        return {
-            "title": "Apps",
-            "text": "No apps here yet.",
-            "hint": "Swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."
-            % self.return_after,
-        }
-
-
-class Surface:
-    """The apps page's contacts: every contact that starts below the bar
-    there. Apps get them in a later version; for now nothing happens."""
-
-    def handle(self, events):
-        return False

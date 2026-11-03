@@ -2,23 +2,35 @@
 
 import json
 import os
-import re
 import socket
 import struct
 import time
 
 from .asks import Asks
-from .common import MAX_APPS, MAX_LINE, MAX_NOTIFY_WAITING, MAX_OUT, TILE_NAME, TouchbarError
+from .common import (
+    HOME_COLUMNS,
+    HOME_ROWS,
+    MAX_APPS,
+    MAX_LINE,
+    MAX_NOTIFY_WAITING,
+    MAX_OUT,
+    MAX_PAGES,
+    TILE_NAME,
+    TouchbarError,
+)
 from .config import NotifyPolicy
 from .notify import mirror_refusal, notification_ask, parse_notify
-from .protocol import ProtocolError, known_fields, parse_ask, text_field, tone_field
+from .protocol import ProtocolError, known_fields, parse_ask
+from .widgets import look_fields, parse_page
 
 
 class Apps:
-    """The programs on the socket: who provides which tile, and their asks.
+    """The programs on the socket: who provides which tile and which page
+    of the apps surface, and their asks.
 
-    A tile belongs to the first app that provides it, until that app goes.
-    on_tile_gone(name) lets the bar end touches on a tile whose app left.
+    A tile or a page belongs to the first app that provides it, until that
+    app goes. on_tile_gone(name) lets the bar end touches on a tile whose
+    app left; the surface sees a page go on its own (pages).
     """
 
     def __init__(self, clock=time.monotonic):
@@ -26,6 +38,7 @@ class Apps:
         self.owner = {}  # tile name -> client
         self.look = {}  # tile name -> what it shows
         self.placed = set()  # tile names the config gives a spot
+        self.pages = {}  # page name -> widgets.Page, in the order given
         self.asks = Asks(clock)
         self.notify_policy = NotifyPolicy()
         self.on_tile_gone = lambda name: None
@@ -54,6 +67,9 @@ class Apps:
             self.look.pop(name, None)
             self.on_tile_gone(name)
             self.dirty = True
+        for name in [n for n, p in self.pages.items() if p.client is client]:
+            del self.pages[name]
+            self.dirty = True
 
     def set_placed(self, names):
         self.placed = set(names)
@@ -76,6 +92,13 @@ class Apps:
             msg["inside"] = inside
         client.send(msg)
 
+    def press(self, client, page, widget, kind):
+        """A touch on a widget of client's page: "down", then "tap", "long"
+        or "cancel", the end even when the page has gone since; nothing
+        once the app has disconnected."""
+        if client in self.clients:
+            client.send({"op": "event", "page": page, "widget": widget, "type": kind})
+
     def handle(self, client, msg):
         """One message from an app; errors go back to it."""
         op = msg.get("op") if isinstance(msg, dict) else None
@@ -90,6 +113,10 @@ class Apps:
                 self._set(client, msg)
             elif op == "ask":
                 self.asks.add(parse_ask(client, msg, self.asks.clock()))
+            elif op == "page":
+                self._page(client, msg)
+            elif op == "unpage":
+                self._unpage(client, msg)
             elif op == "notify":
                 self._notify(client, msg)
             elif op == "cancel":
@@ -161,24 +188,39 @@ class Apps:
         if not self.asks.replace(ask):
             self.asks.add(ask)
 
+    def _page(self, client, msg):
+        """An app's page for the apps surface; it replaces the previous one."""
+        page = parse_page(client, msg)
+        old = self.pages.get(page.name)
+        if old is not None and old.client is not client:
+            raise ProtocolError("page %r is another app's" % page.name)
+        if old is None and sum(p.client is client for p in self.pages.values()) >= MAX_PAGES:
+            raise ProtocolError("at most %d pages per app" % MAX_PAGES)
+        if old is None and len(self.pages) >= HOME_COLUMNS * HOME_ROWS:
+            raise ProtocolError("the apps page is full (%d pages)" % (HOME_COLUMNS * HOME_ROWS))
+        if (
+            old is None
+            or [w.key() for w in old.widgets] != [w.key() for w in page.widgets]
+            or ((old.look, old.columns, old.rows) != (page.look, page.columns, page.rows))
+        ):
+            self.pages[page.name] = page
+            self.dirty = True
+
+    def _unpage(self, client, msg):
+        known_fields(msg, {"page"})
+        name = msg.get("page")
+        page = self.pages.get(name) if isinstance(name, str) else None
+        if page is None or page.client is not client:
+            raise ProtocolError("page %r is not yours" % name)
+        del self.pages[name]
+        self.dirty = True
+
     def _set(self, client, msg):
         known_fields(msg, {"tile", "icon", "label", "text", "badge", "tone"})
         tile = msg.get("tile")
         if self.owner.get(tile) is not client:
             raise ProtocolError("tile %r is not yours; provide it in hello" % tile)
-        look = {"tone": tone_field(msg.get("tone"))}
-        icon = msg.get("icon")
-        if icon is not None:
-            if not isinstance(icon, str) or not (
-                re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", icon)
-                or (icon.startswith("/") and len(icon) <= 4096 and icon.isprintable())
-            ):
-                raise ProtocolError("icon must be an icon name or an absolute image path")
-            look["icon"] = icon
-        for key, limit in (("label", 32), ("text", 48), ("badge", 4)):
-            value = text_field(msg.get(key), key, limit, required=False)
-            if value:
-                look[key] = value
+        look = look_fields(msg, {"label": 32, "text": 48, "badge": 4})
         if look != self.look.get(tile):
             self.look[tile] = look
             self.dirty = True

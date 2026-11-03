@@ -11,13 +11,17 @@ from .common import ASK_TIMEOUT, MAX_ASK_TIMEOUT, MAX_OPTIONS, OPTION_ID, TONES
 #    "badge": .., "tone": ..}                              what a tile shows
 #   {"op": "ask", "id": ID, "title": .., "text": .., "timeout": SECONDS,
 #    "options": [{"id": .., "label": .., "tone": ..}, ...]}  a question
+#   {"op": "page", "page": NAME, ..., "widgets": [...]}  a page of widgets
+#                                    for the apps page (widgets.py)
+#   {"op": "unpage", "page": NAME}
 #   {"op": "cancel", "id": ID}  and  {"op": "ping"}
 #   {"op": "notify", ...}   a GNOME notification (the extension; see below)
 #
 # and gets back "welcome" (which of its tiles have a spot), "event" (a touch
 # on its tile: "down", then "up" with "inside" when the finger lifted on
-# it), "answer" (the chosen option id, or null with the reason: "dismissed"
-# when the user closed the card, "timeout", "unavailable" when the bar
+# it; on a widget of its page: "down", then "tap", "long" or "cancel"),
+# "answer" (the chosen option id, or null with the reason: "dismissed" when
+# the user closed the card, "timeout", "unavailable" when the bar
 # cannot show questions, "cancelled", or "ignored" with "why" for a
 # notification the bar does not mirror), "pong" and "error".
 

@@ -59,13 +59,15 @@ SCENE_VERSION = 2
 # version 1 spots and could not show them, a bar not drawn (no ScreenPad
 # monitor found) shows nothing, and a touch must never answer a question
 # nobody can see.
-RENDERER_PROTOCOL = 3
+RENDERER_PROTOCOL = 4
 # What each feature needs of the renderer: questions came with protocol 2,
-# the pages (the black screensaver, the page dots and the apps page) with 3.
-# An extension GNOME keeps from before an update until the next login keeps
-# showing questions; the pages wait for the new one.
+# the pages (the black screensaver, the page dots and the apps page) with 3,
+# apps' widgets on the apps page with 4. An extension GNOME keeps from
+# before an update until the next login keeps showing what it knows; the
+# rest waits for the new one.
 ASKS_PROTOCOL = 2
 PAGES_PROTOCOL = 3
+WIDGETS_PROTOCOL = 4
 RENDERER_NAME = "renderer.json"
 SOCKET_NAME = "touchbar.sock"
 MAX_APPS = 16
@@ -125,6 +127,21 @@ SWIPE_TIME = 0.4
 # Seconds without a touch before the apps page goes back to the touchpad.
 RETURN_AFTER = 8
 MAX_RETURN_AFTER = 3600
+# The apps page below the bar: a header strip (9 mm, a fingertip) with the
+# page's title and, on an app's page, Home; under it the page's grid of
+# widgets, at most MAX_COLUMNS by MAX_ROWS cells. The home page lists the
+# apps' pages HOME_COLUMNS by HOME_ROWS, so it holds at most that many in
+# all. An app has at most MAX_PAGES pages of at most MAX_WIDGETS widgets;
+# a widget's lines at most MAX_LINES.
+HEADER_H = 144
+HOME_W = 2 * SPOT_W
+MAX_COLUMNS = 6
+MAX_ROWS = 4
+HOME_COLUMNS = 4
+HOME_ROWS = 2
+MAX_PAGES = 4
+MAX_WIDGETS = 24
+MAX_LINES = 16
 
 
 class TouchbarError(Exception):
