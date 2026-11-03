@@ -1,6 +1,19 @@
 """The scene in touchbar.json: the tiles the extension draws, for the spots and for a question."""
 
-from .common import APP, GRIP, PAGE, PAGE_ICONS, PAGE_ITEM, PAGE_LABELS, SHORTCUTS_X, SPOT_W, TILE, TONES
+from .common import (
+    APP,
+    DEFAULT_HEIGHT,
+    GRIP,
+    GROUP_GAP,
+    PAGE,
+    PAGE_ICONS,
+    PAGE_ITEM,
+    PAGE_LABELS,
+    PAGE_X,
+    SPOT_W,
+    TILE,
+    TONES,
+)
 
 # What touchbar.json shows the extension: tiles, each a rectangle in the bar
 # (x and width in panel pixels, as tall as the bar) and what to draw in it.
@@ -10,13 +23,17 @@ from .common import APP, GRIP, PAGE, PAGE_ICONS, PAGE_ITEM, PAGE_LABELS, SHORTCU
 # Every tile has "id", "x", "width" and "style" (its CSS class is
 # screenpad-touchbar-<style>). It may have "classes" (more CSS classes),
 # "pressed", "glyph" (a narrow tile, which does not limit the other tiles'
-# icon size: "grip", drawn by the extension's own code, or "page", the
-# page button, drawn as its icon fitted to the tile), "icon" (an icon name
+# icon size: "grip", drawn by the extension's own code, "page", the page
+# button, or "dismiss", a card's Dismiss, both drawn as their icon fitted
+# to the tile), "icon" (an icon name
 # or an image path) and "icon_scale", "app" (a desktop file id,
 # drawn as that app's icon; the extension opens only apps shown this way),
 # "label", "title" and "text" (text lines), "badge" (a short text in a
 # corner), "drop" (the spot number an app icon dropped there takes) and
-# "empty". "divider" (the x of a line between two groups of spots) is
+# "empty", and "text_rows" (size the tile's text as on a bar this many
+# panel rows tall at most: a card's text and answers keep the default
+# card's type on a taller bar, and wrap; an older extension ignores it).
+# "divider" (the x of a line between two groups of spots) is
 # null: any item goes in any spot.
 # "height" is the bar's height drawn (CARD_HEIGHT while a card shows) and
 # "strut" its own height, which windows keep clear of; the extension
@@ -29,10 +46,16 @@ TILE_STYLES = ("button", "shortcut", "grip", "page", "ask-text", "option")
 TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline", "moving", "target") + tuple(
     "tone-" + tone for tone in TONES
 )
-# A question (an attention card): its title and text over the first two
-# spots, Dismiss in the third, its answers in the last three. The grip
-# stays.
-ASK_TEXT_W = DISMISS_X = 2 * SPOT_W
+# A question (an attention card): its title and text, a narrow Dismiss,
+# then its answers up to the page button, GROUP_GAP after Dismiss. The text
+# and the answers share the rest: an answer is as wide as the card is tall
+# (height: CARD_HEIGHT, or the bar's own height if taller, Bar.card_height())
+# while the text keeps at least one and a half spots (one or two answers),
+# else (three) the answers share what the text leaves. The page button and
+# the grip stay.
+DISMISS_W = SPOT_W // 2
+ASK_TEXT_MIN = 3 * SPOT_W // 2
+ASK_SPACE = PAGE_X - DISMISS_W - GROUP_GAP
 DISMISS = "dismiss"
 
 
@@ -99,37 +122,59 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
     return tiles
 
 
-def ask_option_x(k):
-    return SHORTCUTS_X + k * SPOT_W
+def ask_answer_width(ask, height):
+    """The width of each of a question's answers on a card height tall."""
+    if not ask.options:
+        return 0
+    return min(height, (ASK_SPACE - ASK_TEXT_MIN) // len(ask.options))
 
 
-def option_x(option):
-    """Where an answer's tile (an index, or DISMISS) starts."""
-    return DISMISS_X if option == DISMISS else ask_option_x(option)
+def ask_text_width(ask, height):
+    """The width of a question's text tile, at the left of the bar."""
+    return ASK_SPACE - len(ask.options) * ask_answer_width(ask, height)
 
 
-def ask_option_at(ask, px):
-    """The answer under a touch at px (an index, or DISMISS), or None."""
-    if DISMISS_X <= px < DISMISS_X + SPOT_W:
-        return DISMISS
-    for k in range(len(ask.options)):
-        if ask_option_x(k) <= px < ask_option_x(k) + SPOT_W:
-            return k
+def ask_option_box(ask, option, height):
+    """Where an answer's tile (an index, or DISMISS) is on a card height
+    tall: its x and width."""
+    if option == DISMISS:
+        return ask_text_width(ask, height), DISMISS_W
+    width = ask_answer_width(ask, height)
+    return ask_text_width(ask, height) + DISMISS_W + GROUP_GAP + option * width, width
+
+
+def ask_option_at(ask, px, height):
+    """The answer under a touch at px on a card height tall (an index, or
+    DISMISS), or None."""
+    for option in (DISMISS, *range(len(ask.options))):
+        x, width = ask_option_box(ask, option, height)
+        if x <= px < x + width:
+            return option
     return None
 
 
-def ask_tiles(ask, pressed=(), queued=0):
-    """The tiles of a question: its text, Dismiss, then one tile per answer."""
-    text = {"id": "ask-text", "x": 0, "width": ASK_TEXT_W, "style": "ask-text", "title": ask.title}
+def ask_tiles(ask, height, pressed=(), queued=0):
+    """The tiles of a question on a card height tall: its text, Dismiss,
+    then one tile per answer."""
+    text = {
+        "id": "ask-text",
+        "x": 0,
+        "width": ask_text_width(ask, height),
+        "style": "ask-text",
+        "title": ask.title,
+        "text_rows": DEFAULT_HEIGHT,
+    }
     if ask.text:
         text["text"] = ask.text
     if queued:
         text["badge"] = "+%d" % queued
+    x, width = ask_option_box(ask, DISMISS, height)
     dismiss = {
         "id": "ask-dismiss",
-        "x": DISMISS_X,
-        "width": SPOT_W,
+        "x": x,
+        "width": width,
         "style": "option",
+        "glyph": DISMISS,
         "classes": ["tone-neutral"],
         "icon": "window-close-symbolic",
         "icon_scale": 0.6,
@@ -139,13 +184,15 @@ def ask_tiles(ask, pressed=(), queued=0):
         dismiss["pressed"] = True
     tiles = [text, dismiss]
     for k, o in enumerate(ask.options):
+        x, width = ask_option_box(ask, k, height)
         tile = {
             "id": "ask-option-%d" % k,
-            "x": ask_option_x(k),
-            "width": SPOT_W,
+            "x": x,
+            "width": width,
             "style": "option",
             "classes": ["tone-" + o["tone"]],
             "label": o["label"],
+            "text_rows": DEFAULT_HEIGHT,
         }
         if k in pressed:
             tile["pressed"] = True

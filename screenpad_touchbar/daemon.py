@@ -156,7 +156,9 @@ class Daemon:
         tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to, pages, marks)
         ask = self.apps.asks.shown()
         if ask is not None:
-            tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
+            height = self.bar.card_height() if self.bar else max(self.config.height, CARD_HEIGHT)
+            pressed_ask = self.bar.ask_pressed(ask) if self.bar else ()
+            tiles = ask_tiles(ask, height, pressed_ask, len(self.apps.asks.queue) - 1) + [
                 t for t in tiles if t["style"] in (GRIP, PAGE)
             ]
         return tiles

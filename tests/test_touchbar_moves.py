@@ -35,7 +35,7 @@ from screenpad_touchbar.daemon import Daemon
 from screenpad_touchbar.keys import KeyEmitter
 from screenpad_touchbar.moves import MOVE_TIMEOUT
 from screenpad_touchbar.protocol import Ask
-from screenpad_touchbar.scene import ask_option_x
+from screenpad_touchbar.scene import ask_option_box
 from screenpad_touchbar.splitter import Splitter
 
 CONFIG = """\
@@ -161,7 +161,8 @@ class MovesTests(unittest.TestCase):
     def answer(self, option):
         """Tap an answer of the card shown (0 Cancel, 1 Replace)."""
         self.clock.now += ASK_ARM
-        x = ask_option_x(option) + SPOT_W // 2
+        x, width = ask_option_box(self.daemon.apps.asks.shown(), option, self.daemon.bar.card_height())
+        x += width // 2
         self.down((x, 200))
         self.frame(lift(0))
         self.daemon.check_config()

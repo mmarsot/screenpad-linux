@@ -2,6 +2,7 @@
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests"""
 
+import itertools
 import unittest
 
 from touchbar_support import BAR_CONFIG, SYN, TILE_CONFIG, FakeClient, config
@@ -14,11 +15,16 @@ from screenpad_touchbar.codes import (
 from screenpad_touchbar.common import (
     APPS,
     ASK_ARM,
+    CARD_HEIGHT,
+    DEFAULT_HEIGHT,
+    GROUP_GAP,
     HOME,
+    MAX_HEIGHT,
+    PAGE_X,
     TONES,
 )
 from screenpad_touchbar.keys import KeyEmitter
-from screenpad_touchbar.protocol import parse_ask
+from screenpad_touchbar.protocol import Ask, parse_ask
 from screenpad_touchbar.scene import DISMISS, TILE_CLASSES, TILE_STYLES, ask_option_at, ask_tiles, spot_tiles
 
 
@@ -151,7 +157,9 @@ class SceneTests(unittest.TestCase):
             {"id": "q", "title": "T", "options": [{"id": "a", "label": "A", "tone": tone} for tone in TONES[:1]]},
             0,
         )
-        tiles = spot_tiles(c, removing=[2], provided={"agents": {"tone": "accept"}}, page_to=APPS) + ask_tiles(ask)
+        tiles = spot_tiles(c, removing=[2], provided={"agents": {"tone": "accept"}}, page_to=APPS) + ask_tiles(
+            ask, CARD_HEIGHT
+        )
         for tile in tiles:
             self.assertIn(tile["style"], TILE_STYLES)
             for name in tile.get("classes", []):
@@ -171,27 +179,30 @@ class SceneTests(unittest.TestCase):
             },
             0,
         )
-        tiles = ask_tiles(ask, pressed=[1], queued=2)
+        tiles = ask_tiles(ask, CARD_HEIGHT, pressed=[1], queued=2)
         self.assertEqual(
             tiles[0],
             {
                 "id": "ask-text",
                 "x": 0,
-                "width": 544,
+                "width": 584,
                 "style": "ask-text",
                 "title": "Run npm test?",
                 "text": "in api",
                 "badge": "+2",
+                # Card text keeps the default card's size on a taller bar.
+                "text_rows": DEFAULT_HEIGHT,
             },
         )
-        # Every card can be dismissed, from the third button spot.
+        # Every card can be dismissed, from a narrow tile after its text.
         self.assertEqual(
             tiles[1],
             {
                 "id": "ask-dismiss",
-                "x": 544,
-                "width": 272,
+                "x": 584,
+                "width": 136,
                 "style": "option",
+                "glyph": "dismiss",
                 "classes": ["tone-neutral"],
                 "icon": "window-close-symbolic",
                 "icon_scale": 0.6,
@@ -202,19 +213,54 @@ class SceneTests(unittest.TestCase):
             tiles[2],
             {
                 "id": "ask-option-0",
-                "x": 856,
-                "width": 272,
+                "x": 760,
+                "width": 456,
                 "style": "option",
                 "classes": ["tone-reject"],
                 "label": "Deny",
+                "text_rows": DEFAULT_HEIGHT,
             },
         )
         self.assertEqual(tiles[3]["pressed"], True)
-        self.assertTrue(ask_tiles(ask, pressed=[DISMISS])[1]["pressed"])
+        self.assertTrue(ask_tiles(ask, CARD_HEIGHT, pressed=[DISMISS])[1]["pressed"])
         self.assertEqual(
-            [ask_option_at(ask, x) for x in (0, 543, 600, 830, 856, 1200, 1500)],
-            [None, None, DISMISS, None, 0, 1, None],
+            [ask_option_at(ask, x, CARD_HEIGHT) for x in (0, 583, 584, 719, 720, 759, 760, 1215, 1216, 1671, 1672)],
+            [None, None, DISMISS, DISMISS, None, None, 0, 0, 1, 1, None],
         )
+
+    def test_answers_are_as_wide_as_the_card_is_tall(self):
+        # One or two answers get boxes as wide as the card is tall: 456 px
+        # (CARD_HEIGHT), or 540 on a bar as tall as it goes (MAX_HEIGHT);
+        # three share what the text's one and a half spots (408 px) leave.
+        # A narrow Dismiss (half a spot) sits after the text, a group gap
+        # before the answers, which end at the page button. A touch hits
+        # what is drawn.
+        layouts = {
+            (CARD_HEIGHT, 1): [(0, 1040), (1040, 136), (1216, 456)],
+            (CARD_HEIGHT, 2): [(0, 584), (584, 136), (760, 456), (1216, 456)],
+            (CARD_HEIGHT, 3): [(0, 410), (410, 136), (586, 362), (948, 362), (1310, 362)],
+            (MAX_HEIGHT, 1): [(0, 956), (956, 136), (1132, 540)],
+            (MAX_HEIGHT, 2): [(0, 416), (416, 136), (592, 540), (1132, 540)],
+            (MAX_HEIGHT, 3): [(0, 410), (410, 136), (586, 362), (948, 362), (1310, 362)],
+        }
+        for (height, n), layout in layouts.items():
+            options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
+            ask = parse_ask(None, {"id": "q", "title": "T", "options": options}, 0)
+            tiles = ask_tiles(ask, height)
+            self.assertEqual([(t["x"], t["width"]) for t in tiles], layout)
+            self.assertGreaterEqual(tiles[0]["width"], 408)
+            if n <= 2:
+                self.assertTrue(all(t["width"] == height for t in tiles[2:]), (height, n))
+            self.assertEqual(tiles[1]["x"], tiles[0]["width"])
+            self.assertEqual(tiles[2]["x"], tiles[1]["x"] + tiles[1]["width"] + GROUP_GAP)
+            for a, b in itertools.pairwise(tiles[2:]):
+                self.assertEqual(b["x"], a["x"] + a["width"])
+            self.assertEqual(tiles[-1]["x"] + tiles[-1]["width"], PAGE_X)
+            for k, tile in zip((DISMISS, *range(n)), tiles[1:], strict=True):
+                for x in (tile["x"], tile["x"] + tile["width"] // 2, tile["x"] + tile["width"] - 1):
+                    self.assertEqual(ask_option_at(ask, x, height), k, (height, n, x))
+            for x in (tiles[0]["width"] - 1, tiles[2]["x"] - 1, tiles[2]["x"] - GROUP_GAP, PAGE_X):
+                self.assertIsNone(ask_option_at(ask, x, height), (height, n, x))
 
 
 class AskBarTests(unittest.TestCase):
@@ -251,12 +297,64 @@ class AskBarTests(unittest.TestCase):
         # Nothing reached the spots under the question.
         self.assertEqual((self.frames, self.launched), ([], []))
 
+    def test_a_wide_answer_takes_a_touch_anywhere_on_it(self):
+        # One answer's box (1216 to 1672): a touch near either end chooses
+        # it, and sliding within it keeps it armed.
+        self.ask(n=1)
+        self.assertTrue(self.bar.handle([("begin", 0, 1230, 50)]))
+        self.bar.handle([("move", 0, 1650, 300)])
+        self.bar.handle([("end", 0, 1650, 300)])
+        self.assertEqual(self.app.last("answer"), {"op": "answer", "id": "q", "option": "o0", "reason": "chosen"})
+
+    def test_a_taller_bar_widens_the_answers_it_hits(self):
+        # On a 540 px bar, two answers are 540 wide, at 592 and 1132: a
+        # touch at either drawn edge chooses that answer, though on the
+        # 456 px card 592 is Dismiss and 1132 the first answer.
+        self.bar.set_config(config("height = %d\n" % MAX_HEIGHT + BAR_CONFIG))
+        for x, option in ((592, "o0"), (1131, "o0"), (1132, "o1"), (1671, "o1")):
+            with self.subTest(x=x):
+                self.ask(ask_id="q%d" % x)
+                drawn = ask_tiles(self.asks.shown(), self.bar.card_height())
+                self.assertEqual([(t["x"], t["width"]) for t in drawn[2:]], [(592, 540), (1132, 540)])
+                self.assertTrue(self.bar.handle([("begin", 0, x, 500)]))
+                self.bar.handle([("end", 0, x, 500)])
+                self.assertEqual(
+                    self.app.last("answer"), {"op": "answer", "id": "q%d" % x, "option": option, "reason": "chosen"}
+                )
+
+    def test_a_card_without_answers_has_only_dismiss(self):
+        # An urgent notification without buttons: its text over the space
+        # the answers would take (1496 px, all but Dismiss and the gap),
+        # then Dismiss, which a touch dismisses; nothing else is a button.
+        for height in (CARD_HEIGHT, MAX_HEIGHT):
+            with self.subTest(height=height):
+                self.bar.set_config(config("height = %d\n" % height + BAR_CONFIG))
+                self.asks.add(Ask(self.app, "n%d" % height, "Battery low", None, [], self.now + 60, notification=True))
+                self.now += ASK_ARM
+                ask = self.asks.shown()
+                self.assertEqual(self.bar.card_height(), height)
+                tiles = ask_tiles(ask, self.bar.card_height())
+                self.assertEqual(
+                    [(t["id"], t["x"], t["width"]) for t in tiles], [("ask-text", 0, 1496), ("ask-dismiss", 1496, 136)]
+                )
+                for x in (0, 1495, 1632, PAGE_X - 1):
+                    self.assertIsNone(ask_option_at(ask, x, height), x)
+                for x in (1496, 1564, 1631):
+                    self.assertEqual(ask_option_at(ask, x, height), DISMISS, x)
+                self.assertFalse(self.bar.handle([("begin", 0, 1640, 50)]))
+                self.bar.handle([("end", 0, 1640, 50)])
+                self.assertIs(self.asks.shown(), ask)
+                self.assertTrue(self.bar.handle([("begin", 0, 1564, 50)]))
+                self.bar.handle([("end", 0, 1564, 50)])
+                self.assertEqual(self.app.last("answer")["reason"], "dismissed")
+                self.assertIsNone(self.asks.shown())
+
     def test_too_soon_does_nothing(self):
         self.asks.add(parse_ask(self.app, {"id": "q", "title": "T", "options": [{"id": "a", "label": "A"}]}, self.now))
         self.now += ASK_ARM / 2
-        self.assertFalse(self.bar.handle([("begin", 0, 1000, 50)]))
+        self.assertFalse(self.bar.handle([("begin", 0, 1300, 50)]))
         self.now += 1
-        self.bar.handle([("end", 0, 1000, 50)])
+        self.bar.handle([("end", 0, 1300, 50)])
         self.assertIsNone(self.app.last("answer"))
         self.assertIsNotNone(self.asks.shown())
 

@@ -243,9 +243,9 @@ class DaemonCardTests(unittest.TestCase):
             with open(state_path()) as f:
                 state = json.load(f)
             self.assertEqual((state["height"], state["strut"], state["tiles"][0]["id"]), (456, 160, "ask-text"))
-            # After ASK_ARM, a tap in the new area answers; the pad sees nothing.
+            # After ASK_ARM, a tap on the answer (panel x 1400) answers; the pad sees nothing.
             now[0] += ASK_ARM
-            for groups in (touch(1, 2, 2000, 600), lift(1)):
+            for groups in (touch(1, 2, 2800, 600), lift(1)):
                 out = None
                 for ev in groups + [(EV_SYN, SYN_REPORT, 0)]:
                     out = sp.feed(*ev)
