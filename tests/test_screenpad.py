@@ -73,7 +73,7 @@ class ChecksumTests(unittest.TestCase):
 class DmiTests(Base):
     def test_refuses_other_machine_for_every_command(self):
         self.make(product="ZenBook UX425EA")
-        for argv in (["on"], ["off"], ["replug"], ["status"], ["capture-edid"]):
+        for argv in (["on"], ["off"], ["replug"], ["light"], ["dark"], ["status"], ["capture-edid"]):
             code, _out, err = self.run_cli(*argv)
             self.assertEqual(code, 2, argv)
             self.assertIn("unsupported machine", err)

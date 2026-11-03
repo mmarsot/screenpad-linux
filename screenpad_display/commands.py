@@ -1,5 +1,6 @@
-"""The on, replug, off, capture-edid and status commands."""
+"""The on, replug, off, light, dark, capture-edid and status commands."""
 
+import errno
 import os
 
 from . import system
@@ -20,6 +21,7 @@ from .actions import (
 from .common import (
     ACTIVE_FLAG,
     BACKLIGHT,
+    BL_POWER_ON,
     DRM_CLASS,
     DRM_EDID_FIRMWARE,
     EDID_FIRMWARE_PARAM,
@@ -77,6 +79,9 @@ def cmd_replug(env, args):
     if args.if_active and not os.path.exists(env.path(ACTIVE_FLAG)):
         return 0
     require_root(env)
+    # bl_power 0 while active: 'screenpad dark' turned it off (on and replug
+    # end at 4), so --keep-dark leaves it dark.
+    keep_dark = args.keep_dark and is_dark(env)
     locked = locked_down(env)
     deadline = env.clock() + args.wait
     target = wait_for_target(env, args.wait, args.connector, need_debugfs=not locked)
@@ -91,9 +96,51 @@ def cmd_replug(env, args):
         apply_edid(env, target, edid)
         set_connector(env, target, "on")
     wait_for_enabled(env, target, deadline)
-    light(env, args.relight_gap)
+    if keep_dark:
+        darken(env)
+    else:
+        light(env, args.relight_gap)
     set_active(env, True)
-    log("%s replugged and lit" % target.connector)
+    log("%s replugged and %s" % (target.connector, "kept dark" if keep_dark else "lit"))
+    return 0
+
+
+def is_dark(env):
+    return read_text(env.path(BACKLIGHT, "bl_power")) == str(BL_POWER_ON)
+
+
+def panel_access(env, action):
+    """Run action(); a refused backlight write says how to get the right."""
+    try:
+        action()
+    except PermissionError as e:
+        if env.euid() == 0:
+            raise
+        raise ScreenpadError(
+            "%s: run as root, or let the input group write the backlight with the udev rule "
+            "install.sh installs (70-screenpad-backlight.rules)" % e
+        )
+    except OSError as e:
+        if e.errno != errno.EACCES:
+            raise
+        raise ScreenpadError(str(e))
+
+
+def cmd_light(env, args):
+    """Light the panel again after 'dark', leaving the connector alone."""
+    check_dmi(env)
+    if not os.path.exists(env.path(ACTIVE_FLAG)):
+        raise ScreenpadError("the ScreenPad is off; 'screenpad on' first")
+    panel_access(env, lambda: light(env, args.relight_gap))
+    log("lit")
+    return 0
+
+
+def cmd_dark(env, args):
+    """Darken the panel, leaving the connector and the active flag alone."""
+    check_dmi(env)
+    panel_access(env, lambda: darken(env))
+    log("darkened")
     return 0
 
 

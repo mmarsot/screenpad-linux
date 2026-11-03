@@ -22,6 +22,7 @@ class InstallTests(Base):
         "usr/lib/systemd/user/screenpad-touchbar.service",
         "usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad",
         "etc/udev/rules.d/70-screenpad-uinput.rules",
+        "etc/udev/rules.d/70-screenpad-backlight.rules",
         "usr/local/bin/screenpad-agents",
         "usr/lib/systemd/user/screenpad-agents.service",
     )
@@ -82,10 +83,13 @@ class InstallTests(Base):
         ):
             self.assertTrue(os.path.exists(self.s.p(rel)), rel)
         self.assertFalse(os.path.exists(self.s.p("etc/initramfs-tools/hooks/screenpad")))
+        # After resume, a display Fn+F6 turned off stays dark.
+        self.assertIn(b"replug --if-active --keep-dark", self.s.read("usr/lib/systemd/system-sleep/screenpad"))
         self.assertEqual(
             self.called(),
             [
                 ["udevadm", "control"],
+                ["udevadm", "trigger"],
                 ["udevadm", "trigger"],
                 ["lsinitramfs", self.s.p("boot/initrd.img-%s" % os.uname().release)],
                 ["systemctl", "daemon-reload"],
@@ -107,6 +111,12 @@ class InstallTests(Base):
         self.assertEqual(
             self.s.read("etc/udev/rules.d/70-screenpad-uinput.rules"), repo_file("udev/70-screenpad-uinput.rules")
         )
+        self.assertEqual(
+            self.s.read("etc/udev/rules.d/70-screenpad-backlight.rules"),
+            repo_file("udev/70-screenpad-backlight.rules"),
+        )
+        with open(self.calls) as f:
+            self.assertIn("udevadm trigger --subsystem-match=backlight --sysname-match=asus_screenpad\n", f.read())
         ext = "gnome-shell/screenpad-touchbar@screenpad"
         for name in os.listdir(os.path.join(REPO, ext)):
             self.assertEqual(

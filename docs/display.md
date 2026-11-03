@@ -28,7 +28,7 @@ Nothing persists across a reboot unless the systemd unit is installed or the boo
 
 ## Commands
 
-All of them refuse to run on any machine other than the UX480FD. Everything except `status` and `grub show` needs root.
+All of them refuse to run on any machine other than the UX480FD. Everything except `status` and `grub show` needs root, except `light` and `dark`, which group `input` may also run: the udev rule `/etc/udev/rules.d/70-screenpad-backlight.rules` (installed by `install.sh`) gives that group write access to the ScreenPad backlight's `bl_power` and `brightness`, so the touch bar can turn the display off and on for [Fn+F6](touchbar.md#fnf6-touchpad-and-display). Nothing else becomes writable: the connector, the EDID and the boot parameter stay root's.
 
 | Command | What it does |
 |---|---|
@@ -37,12 +37,14 @@ All of them refuse to run on any machine other than the UX480FD. Everything exce
 | `screenpad capture-edid --from FILE` | Same, but takes the EDID from a file instead of DDC. |
 | `screenpad on` | EDID (debugfs override or `drm.edid_firmware`), connector on, wait for a compositor to enable it, light. Captures the EDID first if none is saved. |
 | `screenpad off` | The rollback: reset override / runtime `edid_firmware` entry, `detect`, darken. |
-| `screenpad replug` | Connector off, 1 s, EDID, connector on, wait for a compositor to enable it, light. Used after resume. `--if-active` makes it do nothing unless `on` ran since boot. |
+| `screenpad replug` | Connector off, 1 s, EDID, connector on, wait for a compositor to enable it, light. Used after resume. `--if-active` makes it do nothing unless `on` ran since boot; `--keep-dark` darkens instead of lighting when `dark` had turned the panel off (`bl_power` reads 0 while it is on), which the resume hook uses so Fn+F6's choice survives a suspend. |
+| `screenpad light` | Lights the panel again after `dark` (the same two `bl_power` writes as `on`), leaving the connector and the EDID alone. Refuses unless `on` ran. |
+| `screenpad dark` | Darkens the panel (`bl_power` 0 and a `brightness` rewrite), leaving the connector forced on and the ScreenPad on: GNOME keeps the monitor, the touch bar lets go of the touchpad. |
 | `screenpad grub [show]` | Prints the exact `/etc/default/grub` line before and after, and how to apply or remove it. Writes nothing. |
 | `screenpad grub apply` | Adds `drm.edid_firmware=HDMI-A-2:screenpad/edid.bin` to `GRUB_CMDLINE_LINUX_DEFAULT`, keeps a copy of the original as `/etc/default/grub.screenpad-backup`, runs `update-grub`. Takes effect at the next boot. |
 | `screenpad grub remove` | Deletes exactly that parameter again and runs `update-grub`. |
 
-`on`, `replug` and `capture-edid` take `--wait SECONDS` (default 10), the time to wait for the card and backlight and, for `on` and `replug`, also for the compositor, in all. They also take `--relight-gap SECONDS` (default 1), the pause between the two `bl_power` writes that light the panel. 1 s was proposed, not measured; if the panel stays dark after `on` but lights with a lone `echo 4`, try a longer gap. If the dGPU ever exposes more than one HDMI connector, choose one with `screenpad --connector HDMI-A-2 on`; `grub` uses the same option.
+`on`, `replug` and `capture-edid` take `--wait SECONDS` (default 10), the time to wait for the card and backlight and, for `on` and `replug`, also for the compositor, in all. They and `light` also take `--relight-gap SECONDS` (default 1), the pause between the two `bl_power` writes that light the panel. 1 s was proposed, not measured; if the panel stays dark after `on` but lights with a lone `echo 4`, try a longer gap. If the dGPU ever exposes more than one HDMI connector, choose one with `screenpad --connector HDMI-A-2 on`; `grub` uses the same option.
 
 ## Secure Boot (kernel lockdown)
 

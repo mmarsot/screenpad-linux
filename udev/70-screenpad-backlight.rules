@@ -1,0 +1,8 @@
+# screenpad: lets the input group (the touch bar's user is in it) light and
+# darken the ScreenPad with 'screenpad light' and 'screenpad dark', which the
+# touch bar runs when Fn+F6 turns the ScreenPad's display on or off. Only
+# these two attributes of the ScreenPad's own backlight; the connector and
+# the EDID stay root's. Installed by the screenpad install.sh.
+SUBSYSTEM=="backlight", KERNEL=="asus_screenpad", ACTION!="remove", \
+    RUN+="/bin/chgrp input /sys%p/bl_power /sys%p/brightness", \
+    RUN+="/bin/chmod g+w /sys%p/bl_power /sys%p/brightness"

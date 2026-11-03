@@ -4,7 +4,7 @@ import argparse
 import subprocess
 
 from . import __doc__ as PACKAGE_DOC
-from .commands import cmd_capture_edid, cmd_off, cmd_on, cmd_replug, cmd_status
+from .commands import cmd_capture_edid, cmd_dark, cmd_light, cmd_off, cmd_on, cmd_replug, cmd_status
 from .common import RELIGHT_GAP, ScreenpadError, Unsupported, log
 from .grub import cmd_grub
 from .system import Env
@@ -27,6 +27,11 @@ def parse_args(argv):
     replug.add_argument(
         "--if-active", action="store_true", help="do nothing unless 'on' ran since boot (for the resume hook)"
     )
+    replug.add_argument(
+        "--keep-dark", action="store_true", help="leave a panel that 'dark' turned off dark (for the resume hook)"
+    )
+    light = sub.add_parser("light", help="light the panel again after 'dark'; the input group may run it")
+    sub.add_parser("dark", help="darken the panel, keeping the connector on; the input group may run it")
     sub.add_parser("status", help="show what was found; needs no root")
     cap = sub.add_parser("capture-edid", help="read the EDID over DDC, fix checksums, save it")
     cap.add_argument("--from", dest="source", metavar="FILE", help="take the EDID from FILE instead of DDC")
@@ -39,6 +44,7 @@ def parse_args(argv):
             help="how long to wait for the card and backlight and, for on and "
             "replug, a compositor to enable the connector (default 10)",
         )
+    for s in (on, replug, light, cap):
         s.add_argument(
             "--relight-gap",
             type=seconds,
@@ -55,6 +61,8 @@ COMMANDS = {
     "on": cmd_on,
     "off": cmd_off,
     "replug": cmd_replug,
+    "light": cmd_light,
+    "dark": cmd_dark,
     "status": cmd_status,
     "capture-edid": cmd_capture_edid,
     "grub": cmd_grub,

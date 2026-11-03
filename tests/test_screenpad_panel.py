@@ -9,6 +9,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from screenpad_support import (
     CMDLINE,
@@ -18,6 +19,7 @@ from screenpad_support import (
     tsb_edid,
 )
 
+from screenpad_display import system
 from screenpad_display.common import (
     DDC_RETRY_DELAY,
     EDID_READ_TRIES,
@@ -263,6 +265,58 @@ class PanelTests(Base):
         self.assertFalse(self.wmi.lit)
         self.assertEqual(self.run_cli("on")[0], 0)
         self.assert_lit()
+
+    def test_dark_and_light_from_every_state_keep_the_connector(self):
+        for state in self.STATES:
+            with self.subTest(state=state):
+                s = self.start(*state, euid=1000)
+                s.write("run/screenpad/active", "")
+                s.write("sys/class/drm/card0-HDMI-A-2/status", "on")
+                code, _, err = self.run_cli("dark")
+                self.assertEqual(code, 0, err)
+                self.assertFalse(self.wmi.lit)
+                self.assertEqual(self.wmi.calls[-1][0], "LIGHT")
+                self.assertEqual(s.read("sys/class/backlight/asus_screenpad/bl_power"), b"0")
+                code, _, err = self.run_cli("light")
+                self.assertEqual(code, 0, err)
+                self.assertTrue(self.wmi.lit)
+                self.assertEqual(s.read("sys/class/backlight/asus_screenpad/bl_power"), b"4")
+                self.assertEqual(s.read("sys/class/drm/card0-HDMI-A-2/status"), b"on")
+                self.assertTrue(os.path.exists(s.p("run/screenpad/active")))
+
+    def test_light_needs_the_screenpad_on(self):
+        self.start("0", True, euid=1000)
+        code, _, err = self.run_cli("light")
+        self.assertEqual(code, 1)
+        self.assertIn("'screenpad on' first", err)
+        self.assertEqual(self.wmi.calls, [])
+
+    def test_a_refused_backlight_write_names_the_udev_rule(self):
+        s = self.start("4", False, euid=1000)
+        s.write("run/screenpad/active", "")
+        with mock.patch.object(system, "write_attr", side_effect=PermissionError(13, "Permission denied")):
+            code, _, err = self.run_cli("dark")
+        self.assertEqual(code, 1)
+        self.assertIn("70-screenpad-backlight.rules", err)
+
+    def test_replug_keep_dark_keeps_a_darkened_panel_dark(self):
+        for lockdown in ("integrity", None):
+            with self.subTest(lockdown=lockdown):
+                s = self.start("0", True, lockdown=lockdown)
+                self.assertEqual(self.run_cli("on")[0], 0)
+                self.assertEqual(self.run_cli("dark")[0], 0)
+                code, _, err = self.run_cli("replug", "--if-active", "--keep-dark")
+                self.assertEqual(code, 0, err)
+                self.assertIn("kept dark", err)
+                self.assertFalse(self.wmi.lit)
+                self.assertEqual(s.read("sys/class/drm/card0-HDMI-A-2/status"), b"on")
+                # A lit panel is relit, and without --keep-dark a dark one too.
+                self.assertEqual(self.run_cli("light")[0], 0)
+                self.assertEqual(self.run_cli("replug", "--if-active", "--keep-dark")[0], 0)
+                self.assert_lit()
+                self.assertEqual(self.run_cli("dark")[0], 0)
+                self.assertEqual(self.run_cli("replug", "--if-active")[0], 0)
+                self.assert_lit()
 
     def test_on_waits_for_the_compositor(self):
         self.start("0", True, compositor_delay=3)

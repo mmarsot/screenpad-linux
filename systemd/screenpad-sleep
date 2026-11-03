@@ -1,5 +1,6 @@
 #!/bin/sh
-# systemd-sleep hook: re-light the ScreenPad after resume.
+# systemd-sleep hook: re-light the ScreenPad after resume, or keep it dark if
+# 'screenpad dark' (Fn+F6 through the touch bar) turned it off.
 #
 # Hooks run inside systemd-suspend.service, before nvidia-resume.service has
 # brought the GPU back, and their children are killed when it finishes. So
@@ -10,7 +11,7 @@ post)
     systemd-run --no-block --collect --quiet \
         --unit="screenpad-replug-$(date +%s)" \
         --property=After=nvidia-resume.service \
-        /usr/local/sbin/screenpad replug --if-active --wait 30 || true
+        /usr/local/sbin/screenpad replug --if-active --keep-dark --wait 30 || true
     ;;
 esac
 exit 0

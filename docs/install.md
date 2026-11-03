@@ -98,7 +98,7 @@ sudo systemctl start screenpad
 |---|---|
 | `/usr/local/sbin/screenpad` | the display CLI: a link to `/usr/local/lib/screenpad/screenpad.py` |
 | `/etc/systemd/system/screenpad.service` | runs `screenpad on --wait 30` at boot, after the display manager; `systemctl stop screenpad` runs `screenpad off` |
-| `/usr/lib/systemd/system-sleep/screenpad` | relights the panel after resume (`screenpad replug --if-active`) |
+| `/usr/lib/systemd/system-sleep/screenpad` | relights the panel after resume, or keeps it dark if Fn+F6 turned it off (`screenpad replug --if-active --keep-dark`) |
 | `/var/lib/screenpad/`, `/lib/firmware/screenpad/edid.bin` | the saved, fixed EDID and the copy the kernel loads |
 | `/etc/initramfs-tools/hooks/screenpad` | only if nvidia-drm is in your initramfs (it is not on stock Ubuntu); followed by `update-initramfs -u` |
 | `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI: a link to `/usr/local/lib/screenpad/touchbar.py` |
@@ -108,6 +108,7 @@ sudo systemctl start screenpad
 | `/usr/lib/systemd/user/screenpad-agents.service` | the agent app's user unit, installed but not enabled; it starts only once `~/.config/screenpad/agents.toml` exists |
 | `/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |
 | `/etc/udev/rules.d/70-screenpad-uinput.rules` | lets the user at the seat use `/dev/uinput` for the touch bar's virtual touchpad and keys |
+| `/etc/udev/rules.d/70-screenpad-backlight.rules` | lets group `input` write the ScreenPad backlight's `bl_power` and `brightness`, so the touch bar can run `screenpad light` and `dark` for [Fn+F6](touchbar.md#fnf6-touchpad-and-display); applied at once with `udevadm trigger` |
 | `/usr/local/share/doc/screenpad/` | this documentation |
 
 **With Secure Boot on** (`install.sh` says so when the kernel is in lockdown), add the boot parameter so the kernel loads the EDID from the first probe:
@@ -232,7 +233,7 @@ The first command gives the panel back as a plain touchpad, at once. The second 
    sudo ./install.sh uninstall
    ```
 
-   This stops the unit (which turns the ScreenPad off), then removes every installed file, including the touch bar's. It keeps the saved EDID in `/var/lib/screenpad`.
+   This stops the unit (which turns the ScreenPad off), then removes every installed file, including the touch bar's. It keeps the saved EDID in `/var/lib/screenpad`. The backlight stays writable by group `input` until the reboot below.
 
    To also delete the saved EDID, run `purge` instead:
 

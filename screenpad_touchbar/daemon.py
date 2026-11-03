@@ -32,12 +32,14 @@ from .common import (
     TouchbarError,
     log,
     monitor_identity,
+    read_renderer,
     runtime_file,
     state_path,
 )
 from .config import config_path, load_config
 from .config_edit import edit_config
 from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
+from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
 from .pager import Pager
 from .scene import DIVIDER_X, ask_tiles, spot_tiles
@@ -46,12 +48,14 @@ from .surface import Surface
 
 
 class Daemon:
-    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG):
+    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG, toggle=None):
         self.config = config
         self.config_file = config_file
         self.config_mtime = self._mtime()
         self.device = device
         self.flag = flag
+        # Fn+F6's cycle (fnkey.py); main() makes it, the tests pass their own.
+        self.toggle: Toggle | None = toggle
         self.source: Source | None = None
         self.pad: int | None = None
         self.keys_fd: int | None = None
@@ -129,15 +133,7 @@ class Daemon:
             self.renderer = (None, 0)
             return 0
         if self.renderer[0] != mtime:
-            try:
-                with open(path) as f:
-                    said = json.load(f)
-                protocol = said.get("protocol")
-                if not (isinstance(protocol, int) and not isinstance(protocol, bool) and said.get("drawn") is True):
-                    protocol = 0
-            except (OSError, ValueError, AttributeError):
-                protocol = 0
-            self.renderer = (mtime, max(protocol, 0))
+            self.renderer = (mtime, read_renderer(path))
         return self.renderer[1]
 
     def renderer_ready(self):
@@ -249,7 +245,8 @@ class Daemon:
         self.children = [c for c in self.children if c.poll() is None]
 
     def want_active(self):
-        return os.path.exists(self.flag)
+        """The ScreenPad on ('screenpad on') and its display not turned off with Fn+F6."""
+        return os.path.exists(self.flag) and (self.toggle is None or self.toggle.display_on())
 
     def activate(self):
         """True once grabbed; False while a finger is down; None if there is no pad."""
@@ -399,6 +396,8 @@ class Daemon:
             self.check_config()
             self.reap()
             timeout = POLL
+            if self.toggle:
+                self.toggle.tick()
             if self.source is None and self.want_active() and time.monotonic() >= retry_at:
                 try:
                     taken = self.activate()
@@ -411,7 +410,7 @@ class Daemon:
                 elif taken is False:
                     timeout = 0.2  # a finger is down, or the pad is not there yet
             elif self.source is not None and not self.want_active():
-                self.deactivate("%s is gone (screenpad off)" % self.flag)
+                self.deactivate("the ScreenPad is off (screenpad off, or its display off with Fn+F6)")
                 self.publish()
             self.apps.asks.refresh()
             self.apps.asks.tick()
@@ -427,6 +426,7 @@ class Daemon:
                 self.surface.deadline(),
                 self.apps.asks.deadline(),
                 self.pager.deadline(),
+                self.toggle.deadline() if self.toggle else None,
             ):
                 if deadline is not None:
                     timeout = min(timeout, max(deadline - time.monotonic(), 0))
@@ -438,6 +438,7 @@ class Daemon:
                 ([self.source.fd] if self.source else [])
                 + ([self.wakeup] if self.wakeup is not None else [])
                 + (self.server.rfds() if self.server else [])
+                + (self.toggle.fds() if self.toggle else [])
             )
             ready, _, _ = select.select(fds, self.server.wfds() if self.server else [], [], timeout)
             if self.wakeup is not None and self.wakeup in ready:
@@ -445,6 +446,8 @@ class Daemon:
                     os.read(self.wakeup, 64)
                 except BlockingIOError:
                     pass
+            if self.toggle:
+                self.toggle.readable(ready)
             if self.source and self.source.fd in ready:
                 self.process()
                 if self.source is None:
@@ -478,9 +481,12 @@ class Daemon:
             self.server = AppServer(runtime_file(SOCKET_NAME), self.apps)
         except (OSError, TouchbarError) as e:
             log("apps cannot use the bar: %s" % e)
+        if self.toggle is None:
+            self.toggle = Toggle(TouchpadSetting(), Panel(), flag=self.flag)
         try:
             self.loop()
         finally:
+            self.toggle.close()
             self.deactivate("stopping")
             if self.server:
                 self.server.close()

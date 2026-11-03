@@ -4,6 +4,7 @@ The panel and the bar's geometry, names, paths, timings and limits, the
 errors, logging, and the runtime files next to touchbar.json.
 """
 
+import json
 import os
 import re
 import sys
@@ -217,3 +218,16 @@ def state_path():
 def runtime_file(name):
     """A file next to touchbar.json: the app socket or the renderer handshake."""
     return os.path.join(os.path.dirname(state_path()), name)
+
+
+def read_renderer(path):
+    """The protocol renderer.json says the extension draws while the bar is on screen, else 0."""
+    try:
+        with open(path) as f:
+            said = json.load(f)
+        protocol = said.get("protocol")
+        if isinstance(protocol, int) and not isinstance(protocol, bool) and said.get("drawn") is True:
+            return max(protocol, 0)
+    except (OSError, ValueError, AttributeError):
+        pass
+    return 0
