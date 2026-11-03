@@ -33,8 +33,8 @@ PRESETS = (
     ("Copy", "edit-copy-symbolic", "ctrl+c"),
     ("Paste", "edit-paste-symbolic", "ctrl+v"),
     ("Show desktop", "user-desktop-symbolic", "super+d"),
-    ("Next workspace", "go-next-symbolic", "super+pagedown"),
-    ("Previous workspace", "go-previous-symbolic", "super+pageup"),
+    ("Workspace right", "go-next-symbolic", "super+pagedown"),
+    ("Workspace left", "go-previous-symbolic", "super+pageup"),
 )
 CUSTOM_LOOK = {"icon": "document-edit-symbolic", "label": "Custom shortcut…"}
 TITLES = {"bar": "Add to the bar", "apps": "Add to the apps page"}

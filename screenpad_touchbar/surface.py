@@ -56,7 +56,7 @@ ITEM = "item:"
 ADD = "add:"
 BACK = "back"
 PICK = "pick:"
-PICK_COLUMNS = 6
+PICK_COLUMNS = 4  # wide enough for "Custom shortcut…" at full size
 # How to go back, under the apps page's title.
 BACK_HINT = (
     "Tap the touchpad button, swipe the bar to the right, or leave the panel for %d s, to go back to the touchpad."

@@ -94,6 +94,7 @@ module = [
     "test_touchbar_extension_fnkey",
     "test_touchbar_extension_keepout",
     "test_touchbar_extension_repaint",
+    "test_touchbar_extension_shortcut",
     "test_touchbar_extension_widgets",
     "test_touchbar_fnkey",
     "test_touchbar_items",

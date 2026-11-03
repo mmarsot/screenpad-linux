@@ -21,7 +21,17 @@ from touchbar_support import AXES, GRID_H, GRID_Y, SYN, Clock, ConfigHome, confi
 from screenpad_touchbar import daemon as daemon_module
 from screenpad_touchbar import picker as picker_module
 from screenpad_touchbar.cli import main
-from screenpad_touchbar.common import APPS, ASK_ARM, HOME, RENDERER_NAME, WIDGETS_PROTOCOL, ConfigError, runtime_file
+from screenpad_touchbar.common import (
+    ADD_ITEM,
+    APPS,
+    ASK_ARM,
+    CUSTOM_PROTOCOL,
+    HOME,
+    RENDERER_NAME,
+    WIDGETS_PROTOCOL,
+    ConfigError,
+    runtime_file,
+)
 from screenpad_touchbar.config import load_config
 from screenpad_touchbar.config_edit import append_item, with_items
 from screenpad_touchbar.daemon import Daemon
@@ -165,16 +175,23 @@ class PickerTests(unittest.TestCase):
         self.tap((700, 80))
         self.assertEqual(self.daemon.pager.page, HOME)
 
-    def test_the_custom_shortcut_needs_the_extension_that_draws_it(self):
-        opened = []
-        p = self.daemon.surface.picker
-        p.can_custom, p.custom = (lambda: True), opened.append
+    def test_the_custom_shortcut_needs_the_extension_that_has_it(self):
+        ran = []
+        self.daemon.run_command = ran.append  # type: ignore[method-assign]  # nothing runs
         self.daemon.pager.turn(APPS)
+        self.tap(self.centre(self.widgets()["add:1"]))
+        self.assertNotEqual(self.widgets()["pick:0"]["label"], CUSTOM_LOOK["label"])
+        self.tap(self.centre(self.widgets()["back"]))
+        with open(runtime_file(RENDERER_NAME), "w") as f:
+            json.dump({"protocol": CUSTOM_PROTOCOL, "drawn": True}, f)
+        os.utime(runtime_file(RENDERER_NAME), ns=(0, 2000))
         self.tap(self.centre(self.widgets()["add:1"]))
         w = self.widgets()
         self.assertEqual(w["pick:0"]["label"], CUSTOM_LOOK["label"])
         self.tap(self.centre(w["pick:0"]))
-        self.assertEqual((opened, self.text()), (["apps"], CONFIG))
+        # The extension's window opens for the apps page; nothing is written yet.
+        self.assertEqual((ran, self.text()), ([ADD_ITEM + ["apps"]], CONFIG))
+        self.assertEqual(self.daemon.surface.scene()["title"], "Apps")
 
     def test_the_presets_icons_are_in_the_adwaita_theme(self):
         if not os.path.isdir("/usr/share/icons/Adwaita"):

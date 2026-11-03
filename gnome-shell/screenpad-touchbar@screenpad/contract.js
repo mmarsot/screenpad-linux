@@ -9,7 +9,7 @@
 // handshake this extension writes, and the daemon's app socket.
 export const STATE_NAME = 'touchbar.json';
 export const RENDERER_NAME = 'renderer.json';
-export const RENDERER_PROTOCOL = 4;
+export const RENDERER_PROTOCOL = 5;
 export const SOCKET_NAME = 'touchbar.sock';
 
 // How long the bar takes to grow into a card, in ms. Less than the daemon's
@@ -20,13 +20,17 @@ export const GROW_MS = 150;
 export const CLI = 'screenpad-touchbar';
 export const CLI_FALLBACK = '/usr/local/bin/screenpad-touchbar';
 
-// The daemon opens a shortcut by calling Launch(app) here.
+// The daemon opens a shortcut by calling Launch(app) here, and the
+// picker's custom shortcut window with AddItem(place), "bar" or "apps".
 export const DBUS_PATH = '/org/screenpad/Touchbar';
 export const DBUS_IFACE = 'org.screenpad.Touchbar';
 export const DBUS_XML = `<node>
   <interface name="${DBUS_IFACE}">
     <method name="Launch">
       <arg type="s" direction="in" name="app"/>
+    </method>
+    <method name="AddItem">
+      <arg type="s" direction="in" name="place"/>
     </method>
   </interface>
 </node>`;
@@ -38,8 +42,8 @@ export const STRUT_CHROME = {affectsStruts: true};
 
 // renderer.json: the protocol this extension draws, and whether the bar is
 // on screen now. The daemon shows questions (protocol 2), the pages
-// (protocol 3) and apps' widgets on the apps page (protocol 4) only while
-// both say so.
+// (protocol 3), apps' widgets on the apps page (protocol 4) and the
+// picker's custom shortcut (protocol 5, AddItem) only while both say so.
 export function rendererJson(drawn) {
     return JSON.stringify({protocol: RENDERER_PROTOCOL, drawn});
 }

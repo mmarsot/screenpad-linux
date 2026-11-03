@@ -33,6 +33,15 @@ LAUNCH = [
     ' >/dev/null 2>&1 || exec gtk-launch "$1"' % (DBUS_PATH, DBUS_IFACE),
     "sh",
 ]
+# The picker's custom shortcut: the extension's window on the main screen,
+# for a place ("bar" or "apps"); only with an extension at CUSTOM_PROTOCOL.
+ADD_ITEM = [
+    "/bin/sh",
+    "-c",
+    'gdbus call --session --dest org.gnome.Shell --object-path %s --method %s.AddItem "$1" >/dev/null'
+    % (DBUS_PATH, DBUS_IFACE),
+    "sh",
+]
 ACTIVE_FLAG = "/run/screenpad/active"
 DEFAULT_CONFIG = "/usr/local/share/screenpad/touchbar.toml"
 # The EDID 'screenpad on' hands the kernel for the ScreenPad's connector.
@@ -60,15 +69,17 @@ SCENE_VERSION = 2
 # version 1 spots and could not show them, a bar not drawn (no ScreenPad
 # monitor found) shows nothing, and a touch must never answer a question
 # nobody can see.
-RENDERER_PROTOCOL = 4
+RENDERER_PROTOCOL = 5
 # What each feature needs of the renderer: questions came with protocol 2,
 # the pages (the black screensaver, the page button and the apps page) with 3,
-# apps' widgets on the apps page with 4. An extension GNOME keeps from
+# apps' widgets on the apps page with 4, the picker's custom shortcut
+# window (its D-Bus AddItem) with 5. An extension GNOME keeps from
 # before an update until the next login keeps showing what it knows; the
 # rest waits for the new one.
 ASKS_PROTOCOL = 2
 PAGES_PROTOCOL = 3
 WIDGETS_PROTOCOL = 4
+CUSTOM_PROTOCOL = 5
 RENDERER_NAME = "renderer.json"
 SOCKET_NAME = "touchbar.sock"
 # The app protocol on that socket (docs/app-api.md#the-protocol-version): an

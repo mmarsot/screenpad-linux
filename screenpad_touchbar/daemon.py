@@ -13,8 +13,10 @@ from .bar import Bar
 from .codes import ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT
 from .common import (
     ACTIVE_FLAG,
+    ADD_ITEM,
     ASKS_PROTOCOL,
     CARD_HEIGHT,
+    CUSTOM_PROTOCOL,
     HOME,
     LAUNCH,
     LIFT_WAIT,
@@ -103,7 +105,13 @@ class Daemon:
         self.surface.mover = self.mover
         # What a + adds; the dock's favourites only from main() (tests
         # never run gsettings) unless a test passes its own.
-        self.picker = Picker(lambda: self.config, self.add_item, favourites=favourites)
+        self.picker = Picker(
+            lambda: self.config,
+            self.add_item,
+            custom=lambda place: self.run_command(ADD_ITEM + [place]),
+            can_custom=lambda: self.renderer_protocol() >= CUSTOM_PROTOCOL,
+            favourites=favourites,
+        )
         self.surface.picker = self.picker
         # Which apps page touches move the pointer and which press: on the
         # surface's clock.

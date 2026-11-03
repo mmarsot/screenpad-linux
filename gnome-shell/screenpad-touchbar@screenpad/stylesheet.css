@@ -233,3 +233,18 @@
     border: 2px solid #3584e4;
     color: #ffffff;
 }
+
+/* The custom shortcut window, on the main screen: a name, the key
+   combination recorded or a command, and what went wrong. */
+.screenpad-touchbar-custom-box {
+    spacing: 12px;
+    min-width: 420px;
+}
+
+.screenpad-touchbar-custom-title {
+    font-weight: bold;
+}
+
+.screenpad-touchbar-custom-error {
+    color: #ff7b63;
+}

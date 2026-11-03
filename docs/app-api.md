@@ -175,7 +175,7 @@ A widget must show something: a `label`, `text`, `lines` or an `icon`. Each `pag
 - **A widget that changes or goes while a finger is on it sends `cancel`**, and that finger chooses nothing, even if the new version has the same id. So a widget's meaning cannot change under a finger: answer only `tap` and `long`, and only for what the page showed then.
 - A touch keeps what it started on, as on the bar: one that started on a widget stays that widget's (or nothing) until it lifts, and a page turning to the touchpad under it cancels it.
 
-The pages need the extension of this version (`renderer.json` protocol 4). An older extension, still loaded until you log out and in, shows only that the apps page needs it, and touches there do nothing.
+The pages need the extension of this version (`renderer.json` protocol 4 or later). An older extension, still loaded until you log out and in, shows only that the apps page needs it, and touches there do nothing.
 
 ## A minimal app
 
