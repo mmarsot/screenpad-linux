@@ -160,7 +160,7 @@ mirror = false
 
 ## Pages
 
-The bar has two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A tap on the bar's page button, which shows the page it goes to (an app grid or a touchpad), or a swipe along the bar turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock and the wait (after the items):
+The bar has two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps: one finger still moves the pointer there, and a still tap or press acts on what is under it. A tap on the bar's page button, which shows the page it goes to (an app grid or a touchpad), or a swipe along the bar turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock, the wait and what makes a tap on the apps page (after the items):
 
 ```toml
 [screensaver]
@@ -168,12 +168,16 @@ clock = false
 
 [pager]
 return_after = 15
+tap_time = 0.5
+tap_move = 3
 ```
 
 | Setting | Meaning |
 |---|---|
 | `[screensaver]` `clock` | `false`: no clock on the black (the battery level stays). Default `true` |
 | `[pager]` `return_after` | how many seconds without a touch on the panel the apps page waits before going back to the touchpad, 1 to 3600. Default 8 |
+| `[pager]` `tap_time` | on the apps page, the longest tap, in seconds, 0.1 to 2: a touch lifted sooner, without moving, taps what is under it; one held still that long on a widget or an item presses it (to hold a key, long-press a widget or drag an item to the bar). Default 0.4 ([touches on the apps page](touchbar.md#touches-on-the-apps-page)) |
+| `[pager]` `tap_move` | on the apps page, how far, in millimetres, 0.5 to 10, a touch may move before it is the pointer's: within `tap_time`, a touch that moves farther moves the pointer and presses nothing. Default 2.5 |
 
 `screenpad-touchbar check` prints what applies (`pages:`).
 

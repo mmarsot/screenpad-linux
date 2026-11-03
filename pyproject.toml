@@ -87,6 +87,7 @@ module = [
     "test_touchbar_clicks",
     "test_touchbar_commands",
     "test_touchbar_config",
+    "test_touchbar_decide",
     "test_touchbar_edit",
     "test_touchbar_extension",
     "test_touchbar_extension_cards",

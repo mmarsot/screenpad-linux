@@ -152,6 +152,16 @@ SWIPE_TIME = 0.4
 # Seconds without a touch before the apps page goes back to the touchpad.
 RETURN_AFTER = 8
 MAX_RETURN_AFTER = 3600
+# On the apps page one finger moves the pointer (decide.py): a touch that
+# moves more than TAP_MOVE mm before TAP_TIME seconds is the pointer's; one
+# lifted nearly still within TAP_TIME is a tap; one still that long on a
+# widget or an item is a press. [pager] tap_move and tap_time change them,
+# within these bounds.
+PX_PER_MM = 16
+TAP_TIME = 0.4
+TAP_TIMES = (0.1, 2.0)
+TAP_MOVE = 2.5
+TAP_MOVES = (0.5, 10.0)
 # The apps page below the bar: a header strip (9 mm, a fingertip) with the
 # page's title and, on an app's page, Home; under it the page's grid of
 # widgets, at most MAX_COLUMNS by MAX_ROWS cells. The home page lists the

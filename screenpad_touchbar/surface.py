@@ -2,8 +2,10 @@
 
 The apps page shows either the home page, a list of the config's [[apps]]
 items and then the apps' pages no item places, or one app's page of widgets
-(widgets.py). Every contact that starts below the bar
-on the apps page is the surface's, and acts on the widget under it:
+(widgets.py). The contacts that start below the bar on the
+apps page and are not the pointer's (decide.py hands the surface only taps
+and presses, begun where and when they went down) act on the widget under
+it:
 
 - a touch that starts within ASK_ARM of that widget appearing, moving or
   changing does nothing, so a tap already on its way when a page turned or
@@ -286,16 +288,19 @@ class Surface:
         """The surface's contact events; True if what it draws changed."""
         changed = self.refresh()
         now = self.clock()
-        for kind, slot, px, py in events:
+        for ev in events:
+            kind, slot, px, py = ev[:4]
             if kind == "begin":
-                spot = next((s for s in self.spots() if s.on(px, py)), None)
-                fresh = spot is not None and now < self.since.get(spot.key(), now) + ASK_ARM
+                # When it went down (decide.py holds a touch back until it
+                # is a press): the arming counts from then.
+                at = ev[4] if len(ev) > 4 else now
+                spot, fresh = self._under(px, py, at)
                 source = None
                 if self.mover and spot is not None and spot.entry is not None and not fresh:
                     source = (APPS_LIST, spot.entry, self.items()[spot.entry])
                 if spot is not None and (spot.touch == "none" or fresh):
                     spot = None
-                self.presses[slot] = Press(spot, now, source)
+                self.presses[slot] = Press(spot, at, source)
                 if spot is not None:
                     self._send(spot, "down")
                     if spot.item is not None and spot.item.hold():
@@ -328,6 +333,21 @@ class Surface:
             else:
                 self._cancel(p)
         return changed
+
+    def _under(self, px, py, at):
+        """The widget under px, py, and whether it appeared or changed
+        within ASK_ARM before at (then a touch from at does nothing)."""
+        spot = next((s for s in self.spots() if s.on(px, py)), None)
+        return spot, spot is not None and at < self.since.get(spot.key(), at) + ASK_ARM
+
+    def holdable(self, px, py, at):
+        """Whether a touch that went down at px, py at time at presses
+        something there: a widget that takes touches, or an item that can
+        be dragged to the bar, armed. A widget not seen yet (refresh()) is
+        newer than the touch."""
+        spot, fresh = self._under(px, py, at)
+        movable = self.mover is not None and spot is not None and spot.entry is not None
+        return spot is not None and not fresh and (spot.touch != "none" or movable)
 
     def _lifted(self, p):
         spot = p.spot

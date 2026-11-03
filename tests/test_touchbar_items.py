@@ -37,6 +37,7 @@ from screenpad_touchbar.common import (
     LAUNCH,
     PANEL_W,
     RENDERER_NAME,
+    TAP_TIME,
     WIDGETS_PROTOCOL,
     runtime_file,
     state_path,
@@ -112,11 +113,15 @@ class ItemsTests(unittest.TestCase):
     def widgets(self):
         return {w["id"]: w for w in self.published()["surface"]["widgets"]}
 
-    def press(self, widget, slot=0):
-        """A touch on a widget, in device units (twice panel pixels); returns the lift."""
+    def press(self, widget, slot=0, hold=False):
+        """A touch on a widget, in device units (twice panel pixels), held
+        still for the tap time if hold; returns the lift."""
         self.clock.now += ASK_ARM
         x, y = (widget["x"] + 20) * 2, (widget["y"] + 20) * 2
         self.frame(touch(slot, 1, x, y))
+        if hold:
+            self.clock.now += TAP_TIME
+            self.daemon.settle()
         return lambda: self.frame(lift(slot))
 
     def test_the_home_page_lists_the_items_then_the_pages(self):
@@ -157,12 +162,21 @@ class ItemsTests(unittest.TestCase):
         # An app opens on the lift.
         self.press(w["surface/item:0"])()
         self.assertEqual(self.ran, [LAUNCH + ["org.gnome.Settings.desktop"]])
-        # A hold key is down while the finger is, and clicks as it goes down.
+        # A hold key is down while the finger is, once it is a press (still
+        # for the tap time), and clicks as it goes down.
         clicks = d.clicks
         up = self.press(w["surface/item:1"])
+        self.assertEqual((self.keys, d.clicks), ([], clicks))
+        self.clock.now += TAP_TIME
+        self.assertTrue(d.settle())
         self.assertEqual((self.keys, d.clicks), ([[(EV_KEY, 184, 1), SYN]], clicks + 1))
         up()
         self.assertEqual((self.keys[-1], d.clicks), ([(EV_KEY, 184, 0), SYN], clicks + 1))
+        # A quick tap on it presses and releases it on the lift, one click.
+        self.keys.clear()
+        self.press(w["surface/item:1"])()
+        self.assertEqual((self.keys, d.clicks), ([[(EV_KEY, 184, 1), SYN], [(EV_KEY, 184, 0), SYN]], clicks + 2))
+        clicks += 1
         # A tap key on the lift; a command runs.
         self.keys.clear()
         self.press(w["surface/item:2"])()
@@ -182,12 +196,12 @@ class ItemsTests(unittest.TestCase):
         d.pager.turn(APPS)
         w = self.widgets()
         talk = w["surface/item:1"]
-        self.press(talk)
+        self.press(talk, hold=True)
         self.frame(touch(0, None, 3800, 2100))
         self.frame(lift(0))
         self.assertEqual(self.keys[-1], [(EV_KEY, 184, 0), SYN])
         self.keys.clear()
-        self.press(talk)
+        self.press(talk, hold=True)
         d.surface.release_all()
         self.assertEqual(self.keys[-1], [(EV_KEY, 184, 0), SYN])
 
