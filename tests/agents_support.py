@@ -140,7 +140,7 @@ class FakeHerdr:
         with self.lock:
             self.reads += 1
             if self.error:
-                raise HerdrError(self.error)
+                raise self.error if isinstance(self.error, Exception) else HerdrError(self.error)
             return list(self.list)
 
     def focus(self, pane):
@@ -157,7 +157,7 @@ class FakeFirstmate:
     def read(self):
         self.reads += 1
         if self.error:
-            raise FirstmateError(self.error)
+            raise self.error if isinstance(self.error, Exception) else FirstmateError(self.error)
         return self.bearings
 
 

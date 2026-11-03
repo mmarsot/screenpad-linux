@@ -62,8 +62,10 @@ class HerdrTests(unittest.TestCase):
         self.agents("down")
         with self.assertRaisesRegex(HerdrError, "herdr agent list: Error: Os"):
             self.herdr.agents()
-        with self.assertRaisesRegex(HerdrError, "nonexistent-herdr: not found"):
+        with self.assertRaisesRegex(HerdrError, "nonexistent-herdr: No such file or directory"):
             Herdr(["nonexistent-herdr"], "lab").agents()
+        with self.assertRaisesRegex(HerdrError, "Permission denied"):
+            Herdr([self.dir], "lab").agents()
 
     def test_a_herdr_that_hangs_or_says_nothing(self):
         def hang(*args, **kwargs):

@@ -12,6 +12,7 @@ ConditionPathExists=%E/screenpad/agents.toml
 ExecStart=/usr/local/bin/screenpad-agents run
 Restart=on-failure
 RestartSec=5
+RestartPreventExitStatus=2
 MemoryMax=64M
 
 [Install]

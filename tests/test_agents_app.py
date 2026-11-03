@@ -144,6 +144,20 @@ class AppTests(unittest.TestCase):
         rig.until(lambda: rig.widgets() == ["calls", "agent.w1.p1", "agent.w2.p1"])
         self.assertEqual(rig.logged[-1], "herdr answers again")
 
+    def test_an_unexpected_error_keeps_both_threads_going(self):
+        rig = self.rig()
+        self.herdr.error = RuntimeError("boom")
+        self.firstmate.error = KeyError("calls")
+        rig.apps.event("calls", "up", inside=True)
+        rig.until(lambda: rig.widgets() == ["calls", "herdr"])
+        rig.until(lambda: rig.apps.provided()["calls"].get("text") == "3 waiting (stale)")
+        self.assertEqual(sorted(rig.logged), ["KeyError: 'calls'", "RuntimeError: boom"])
+        self.herdr.error = self.firstmate.error = None
+        rig.apps.event("calls", "up", inside=True)
+        rig.until(lambda: rig.widgets() == ["calls", "agent.w1.p1", "agent.w2.p1"])
+        rig.until(lambda: rig.apps.provided()["calls"].get("text") == "3 waiting")
+        self.assertEqual(sorted(rig.logged[2:]), ["firstmate answers again", "herdr answers again"])
+
     @mock.patch("screenpad_agents.app.RECONNECT", 0.05)
     def test_the_touch_bar_going_and_coming_back(self):
         rig = self.rig()

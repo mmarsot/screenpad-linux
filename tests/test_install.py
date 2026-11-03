@@ -3,6 +3,7 @@ on PATH. Skipped when run as root.
 
 Run with: python3 -m unittest discover -s tests"""
 
+import configparser
 import os
 import shutil
 import subprocess
@@ -121,8 +122,13 @@ class InstallTests(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         unit = self.s.read("usr/lib/systemd/user/screenpad-agents.service")
         self.assertEqual(unit, repo_file("systemd/screenpad-agents.service"))
-        self.assertIn(b"ExecStart=/usr/local/bin/screenpad-agents run\n", unit)
-        self.assertIn(b"ConditionPathExists=%E/screenpad/agents.toml\n", unit)
+        parsed = configparser.ConfigParser(interpolation=None, strict=False)
+        parsed.optionxform = str  # type: ignore[assignment,method-assign]  # systemd keys are case-sensitive
+        parsed.read_string(unit.decode())
+        self.assertEqual(parsed["Unit"]["ConditionPathExists"], "%E/screenpad/agents.toml")
+        self.assertEqual(parsed["Service"]["ExecStart"], "/usr/local/bin/screenpad-agents run")
+        self.assertEqual(parsed["Service"]["Restart"], "on-failure")
+        self.assertEqual(parsed["Service"]["RestartPreventExitStatus"], "2")
         # Installed but off: nothing enables or starts it, and without its
         # config the command refuses to run.
         self.assertIn("Agent app: installed but off", r.stdout)

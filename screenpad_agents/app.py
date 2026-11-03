@@ -76,12 +76,12 @@ class App:
             if pane is not None:
                 try:
                     self.herdr.focus(pane)
-                except HerdrError as e:
-                    self._post(("log", str(e)))
+                except Exception as e:
+                    self._post(("log", _why(e, HerdrError)))
             try:
                 self._post(("agents", self.herdr.agents(), None))
-            except HerdrError as e:
-                self._post(("agents", None, str(e)))
+            except Exception as e:
+                self._post(("agents", None, _why(e, HerdrError)))
             due = self.clock() + self.config.herdr_poll
 
     def _firstmate_worker(self):
@@ -89,8 +89,8 @@ class App:
             self._read_firstmate.clear()
             try:
                 self._post(("bearings", self.firstmate.read(), None))
-            except FirstmateError as e:
-                self._post(("bearings", None, str(e)))
+            except Exception as e:
+                self._post(("bearings", None, _why(e, FirstmateError)))
             self._read_firstmate.wait(self.config.firstmate_poll)
 
     # --- the loop ------------------------------------------------------------
@@ -217,3 +217,9 @@ class App:
             for fd in (self._wake_r, self._wake_w):
                 os.close(fd)
             self._wake_r = self._wake_w = -1
+
+
+def _why(error, expected):
+    """What to show and log for an error a worker caught: an expected one
+    says why itself; any other is a bug, named by its type."""
+    return str(error) if isinstance(error, expected) else "%s: %s" % (type(error).__name__, error)

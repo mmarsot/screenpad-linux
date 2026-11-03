@@ -62,8 +62,8 @@ class Herdr:
         argv = self.command + list(args) + ["--session", self.session]
         try:
             done = self._run(argv, capture_output=True, text=True, timeout=self.timeout, stdin=subprocess.DEVNULL)
-        except FileNotFoundError:
-            raise HerdrError("%s: not found" % self.command[0])
+        except OSError as e:
+            raise HerdrError("%s: %s" % (self.command[0], e.strerror))
         except subprocess.TimeoutExpired:
             raise HerdrError("herdr %s: no answer in %g s" % (" ".join(args[:2]), self.timeout))
         reply = _json(done.stdout)
