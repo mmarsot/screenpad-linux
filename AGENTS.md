@@ -10,7 +10,7 @@ This project's agent knowledge lives in skills, one per code area: `.agents/skil
 |---|---|
 | `contributing` | anything: the checks (`make check`), file size, documentation, working in steps, no-mistakes review, maintaining skills |
 | `touchbar` | the touch bar daemon and CLI: `touchbar.py` and `screenpad_touchbar/`, its config and migration, the scene, the app socket and questions, notification cards |
-| `gnome-extension` | the GNOME Shell extension: `gnome-shell/screenpad-touchbar@screenpad/` (`extension.js`, `notifications.js`, `stylesheet.css`, `metadata.json`) |
+| `gnome-extension` | the GNOME Shell extension: `gnome-shell/screenpad-touchbar@screenpad/` (`extension.js`, `tiles.js`, `notifications.js`, `contract.js`, `scene.js`, `cards.js`, `stylesheet.css`, `metadata.json`) |
 | `display` | the display CLI: `screenpad.py` and `screenpad_display/` (EDID, connector, WMI light, lockdown, GRUB) |
 | `install` | `install.sh`, `systemd/`, `udev/`, `initramfs/`, and any installed path or unit |
 

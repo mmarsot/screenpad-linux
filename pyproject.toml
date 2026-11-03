@@ -64,6 +64,7 @@ module = [
     "test_touchbar_commands",
     "test_touchbar_config",
     "test_touchbar_extension",
+    "test_touchbar_extension_cards",
     "test_touchbar_notify",
     "test_touchbar_scene",
     "touchbar_support",

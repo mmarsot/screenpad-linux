@@ -1,12 +1,16 @@
 """What the touch bar tests share: the checkout on sys.path, the GDX1505's axes,
-events in device units, a Splitter fed whole frames, a config home, and fake
-and real app connections."""
+events in device units, a Splitter fed whole frames, a config home, fake and
+real app connections, and the extension's plain modules run under node."""
 
 import json
 import os
 import select
+import shutil
 import socket
+import subprocess
 import sys
+import unittest
+from urllib.request import pathname2url
 
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, REPO)
@@ -178,6 +182,30 @@ EXT = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad")
 def read(name):
     with open(os.path.join(EXT, name)) as f:
         return f.read()
+
+
+def js(module, expr, **values):
+    """The JSON value of expr, evaluated by node with the extension's module
+    (contract.js, scene.js or cards.js) imported as m and values as v.
+
+    Skips the test when node is missing, except in CI, where it must be
+    there: those modules are the extension's logic the tests run.
+    """
+    node = shutil.which("node")
+    if node is None:
+        if os.environ.get("CI"):
+            raise AssertionError("node is needed to test the GNOME Shell extension's modules")
+        raise unittest.SkipTest("node is not installed")
+    url = "file:" + pathname2url(os.path.abspath(os.path.join(EXT, module)))
+    code = "import * as m from %s;\nconst v = %s;\nprocess.stdout.write(JSON.stringify(%s) ?? 'null');\n" % (
+        json.dumps(url),
+        json.dumps(values),
+        expr,
+    )
+    run = subprocess.run([node, "--input-type=module", "-e", code], capture_output=True, text=True, timeout=30)
+    if run.returncode != 0:
+        raise AssertionError("node: %s" % run.stderr.strip())
+    return json.loads(run.stdout)
 
 
 # The bar tests' config. Spots: buttons at x 0, 296, 592; shortcuts at 928,

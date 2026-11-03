@@ -21,11 +21,15 @@
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
 //   app if it is already open, as the dock does.
+//
+// What it agrees on with the daemon is in contract.js, and where tiles go
+// in scene.js; both are plain modules the tests run. tiles.js builds one
+// tile's actors. This file does the rest of what needs GNOME Shell: the
+// bar and its strut, files, D-Bus, drag and drop.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -33,43 +37,33 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {
+    BAR_CHROME,
+    CLI,
+    CLI_FALLBACK,
+    DBUS_PATH,
+    DBUS_XML,
+    GROW_MS,
+    RENDERER_NAME,
+    SOCKET_NAME,
+    STATE_NAME,
+    STRUT_CHROME,
+    rendererJson,
+} from './contract.js';
 import {NotificationMirror} from './notifications.js';
-
-const STATE_NAME = 'touchbar.json';
-// The handshake: the daemon reads it (RENDERER_NAME and RENDERER_PROTOCOL
-// in screenpad_touchbar/common.py must match).
-const RENDERER_NAME = 'renderer.json';
-const RENDERER_PROTOCOL = 2;
-const SOCKET_NAME = 'touchbar.sock';
-// How long the bar takes to grow into a card, in ms. Less than the daemon's
-// ASK_ARM (0.3 s), so a card is fully drawn before it takes a tap.
-const GROW_MS = 150;
-const CLI = 'screenpad-touchbar';
-const CLI_FALLBACK = '/usr/local/bin/screenpad-touchbar';
-// Visual gap around each tile, as a fraction of the bar height. The touch
-// area is the whole tile rectangle.
-const INSET = 0.1;
-const ICON = 0.5;
-// At most this fraction of the narrowest tile's width, so a tall bar keeps
-// every tile, the narrow grip included, drawn at every height.
-const MAX_INSET = 0.15;
-const MAX_ICON = 0.8;
-// CSS class names a tile may carry; anything else is dropped.
-const CLASS_NAME = /^[a-z][a-z0-9-]{0,31}$/;
-
-const DBUS_PATH = '/org/screenpad/Touchbar';
-const DBUS_XML = `<node>
-  <interface name="org.screenpad.Touchbar">
-    <method name="Launch">
-      <arg type="s" direction="in" name="app"/>
-    </method>
-  </interface>
-</node>`;
-
-function iconFor(name) {
-    if (name.startsWith('/')) return Gio.FileIcon.new(Gio.File.new_for_path(name));
-    return Gio.ThemedIcon.new(name);
-}
+import {
+    badgeBox,
+    barGeometry,
+    canLaunch,
+    dividerBox,
+    dropArgs,
+    dropTile,
+    grows,
+    layoutKey,
+    sceneFrom,
+    tileBox,
+} from './scene.js';
+import {tileActor} from './tiles.js';
 
 export default class ScreenpadTouchbar extends Extension {
     enable() {
@@ -176,8 +170,9 @@ export default class ScreenpadTouchbar extends Extension {
     // D-Bus: open a shortcut on the bar (the daemon calls this on a tap).
     // Only an app the bar shows as a tile can be opened this way.
     Launch(id) {
-        const onBar = this._state?.tiles?.some(t => t.app === id);
-        const app = onBar ? Shell.AppSystem.get_default().lookup_app(id) : null;
+        const app = canLaunch(this._state, id)
+            ? Shell.AppSystem.get_default().lookup_app(id)
+            : null;
         if (!app) throw new Error(`${id} is not a shortcut on the touch bar`);
         if (Main.overview.visible) Main.overview.hide();
         app.activate();
@@ -192,9 +187,7 @@ export default class ScreenpadTouchbar extends Extension {
             // Gone: the daemon stopped. A half-written file cannot happen
             // (the daemon renames it into place).
         }
-        // A daemon from before tiles publishes only version 1 spots; its
-        // bar is not drawn until it is restarted.
-        this._state = Array.isArray(state?.tiles) ? state : null;
+        this._state = sceneFrom(state);
         this._sync();
         // A daemon (re)started: connect to its socket.
         if (this._state) this._mirror?.wake();
@@ -231,18 +224,7 @@ export default class ScreenpadTouchbar extends Extension {
         }
         // A finger going down or up only restyles a tile; anything else
         // rebuilds the bar.
-        const shape = state.tiles.map(({pressed, ...rest}) => rest);
-        const layout = JSON.stringify([
-            state.panel,
-            state.height,
-            state.strut,
-            shape,
-            state.divider,
-            monitor.x,
-            monitor.y,
-            monitor.width,
-            monitor.height,
-        ]);
+        const layout = layoutKey(state, monitor);
         if (layout !== this._layout) {
             const previous = this._drawn;
             this._destroyBar();
@@ -264,7 +246,7 @@ export default class ScreenpadTouchbar extends Extension {
         if (drawn === this._announced) return;
         try {
             this._renderer.replace_contents(
-                new TextEncoder().encode(JSON.stringify({protocol: RENDERER_PROTOCOL, drawn})),
+                new TextEncoder().encode(rendererJson(drawn)),
                 null,
                 false,
                 Gio.FileCreateFlags.REPLACE_DESTINATION,
@@ -277,23 +259,9 @@ export default class ScreenpadTouchbar extends Extension {
     }
 
     _build(state, monitor, previous) {
-        // Panel pixels to logical pixels; the ScreenPad's monitor is rotated
-        // so that it reads upright, which makes its top the bar's edge.
-        const [panelWidth, panelHeight] = state.panel;
-        this._sx = monitor.width / panelWidth;
-        const height = Math.round((state.height * monitor.height) / panelHeight);
-        // The bar's own height: the strut, and what insets, icons and text
-        // are sized by, so a card's extra height is room, not bigger type.
-        const strutRows = Number.isFinite(state.strut) ? state.strut : state.height;
-        const own = Math.min(Math.round((strutRows * monitor.height) / panelHeight), height);
-        const narrowest = Math.min(...state.tiles.map(t => t.width)) * this._sx;
-        const inset = Math.min(Math.round(own * INSET), Math.round(narrowest * MAX_INSET));
-        const iconWidth =
-            Math.min(...state.tiles.filter(t => t.glyph !== 'grip').map(t => t.width)) * this._sx;
-        const iconSize = Math.max(
-            Math.min(Math.round(own * ICON), Math.round((iconWidth - 2 * inset) * MAX_ICON)),
-            8,
-        );
+        const geometry = barGeometry(state, monitor);
+        const {sx, height, own, iconSize} = geometry;
+        this._sx = sx;
         const bar = new St.Widget({
             style_class: 'screenpad-touchbar',
             layout_manager: new Clutter.FixedLayout(),
@@ -309,35 +277,27 @@ export default class ScreenpadTouchbar extends Extension {
             handleDragOver: (source, _actor, x) => this._dragOver(source, x),
             acceptDrop: (source, _actor, x) => this._acceptDrop(source, x),
         };
-        if (Number.isFinite(state.divider)) {
-            bar.add_child(
-                new St.Widget({
-                    style_class: 'screenpad-touchbar-separator',
-                    x: Math.round(state.divider * this._sx) - 1,
-                    y: inset * 2,
-                    width: 2,
-                    height: Math.max(height - 4 * inset, 1),
-                }),
-            );
+        const divider = dividerBox(state, geometry);
+        if (divider) {
+            bar.add_child(new St.Widget({style_class: 'screenpad-touchbar-separator', ...divider}));
         }
         state.tiles.forEach(tile => {
-            const width = Math.max(Math.round(tile.width * this._sx) - 2 * inset, 1);
-            const innerHeight = Math.max(height - 2 * inset, 1);
-            const actor = this._tile(tile, width, innerHeight, iconSize);
-            const x = Math.round(tile.x * this._sx) + inset;
-            actor.set_position(x, inset);
-            actor.set_size(width, innerHeight);
-            actor.style = `border-radius: ${Math.round(Math.min(own * 0.16, width * 0.25))}px;`;
+            const box = tileBox(tile, geometry);
+            const actor = tileActor(tile, box.width, box.height, iconSize);
+            actor.set_position(box.x, box.y);
+            actor.set_size(box.width, box.height);
+            actor.style = `border-radius: ${box.radius}px;`;
             bar.add_child(actor);
             this._tiles.push(actor);
-            if (typeof tile.badge === 'string' && tile.badge) {
+            const place = badgeBox(tile, box, iconSize);
+            if (place) {
                 const badge = new St.Label({
                     style_class: 'screenpad-touchbar-badge',
                     text: tile.badge,
-                    style: `font-size: ${Math.max(Math.round(iconSize * 0.3), 8)}px;`,
+                    style: `font-size: ${place.fontSize}px;`,
                 });
                 bar.add_child(badge);
-                badge.set_position(x + width - Math.round(iconSize * 0.75), inset);
+                badge.set_position(place.x, place.y);
             }
         });
         // The strut: an empty actor as tall as the bar's own height, along
@@ -360,8 +320,8 @@ export default class ScreenpadTouchbar extends Extension {
         // the extension fail, unloads stylesheet.css: plain labels, no
         // strip, no pressed state. Hence no bar left behind on a failure.
         try {
-            Main.layoutManager.addChrome(strut, {affectsStruts: true});
-            Main.layoutManager.addChrome(bar);
+            Main.layoutManager.addChrome(strut, STRUT_CHROME);
+            Main.layoutManager.addChrome(bar, BAR_CHROME);
         } catch (e) {
             for (const actor of [strut, bar]) {
                 actor.get_parent()?.remove_child(actor);
@@ -375,132 +335,16 @@ export default class ScreenpadTouchbar extends Extension {
         this._drawn = {height, own};
         // Grown over an unchanged own height (a card appearing): the bar
         // unrolls downwards from where it was, instead of jumping.
-        if (previous && previous.own === own && previous.height < height) {
+        if (grows(previous, this._drawn)) {
             bar.clip_to_allocation = true;
             bar.height = previous.height;
             bar.ease({height, duration: GROW_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
         }
     }
 
-    // One tile: the grip, an icon, an app's icon, or text, in that order of
-    // preference. The style and classes come from the daemon.
-    _tile(tile, width, height, iconSize) {
-        const classes = ['screenpad-touchbar-spot'];
-        if (CLASS_NAME.test(tile.style ?? '')) classes.push(`screenpad-touchbar-${tile.style}`);
-        for (const name of Array.isArray(tile.classes) ? tile.classes : []) {
-            if (CLASS_NAME.test(name)) classes.push(name);
-        }
-        let child;
-        if (tile.glyph === 'grip') {
-            child = this._grip(width, height);
-        } else if (tile.icon) {
-            const scale = Number.isFinite(tile.icon_scale) ? tile.icon_scale : 1;
-            child = new St.Icon({
-                gicon: iconFor(tile.icon),
-                icon_size: Math.max(Math.round(iconSize * scale), 8),
-            });
-        } else if (tile.app) {
-            const app = Shell.AppSystem.get_default().lookup_app(tile.app);
-            child = app
-                ? app.create_icon_texture(iconSize)
-                : new St.Icon({icon_name: 'image-missing', icon_size: iconSize});
-        } else {
-            child = this._text(tile, iconSize, height);
-        }
-        const actor = new St.Bin({style_class: classes.join(' '), child});
-        const name = tile.label ?? tile.title;
-        if (name) actor.accessible_name = name;
-        else if (tile.glyph === 'grip') actor.accessible_name = 'Resize the touch bar';
-        return actor;
-    }
-
-    // Text lines: the title or label, and a smaller text under it, which
-    // wraps when the tile has room for more lines (a card).
-    _text(tile, iconSize, height) {
-        const first = tile.title ?? tile.label;
-        if (!first && !tile.text) return null;
-        const box = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const align = tile.title ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
-        if (first) {
-            box.add_child(
-                new St.Label({
-                    text: first,
-                    x_align: align,
-                    style_class: 'screenpad-touchbar-title',
-                    style: `font-size: ${Math.round(iconSize * 0.5)}px;`,
-                }),
-            );
-        }
-        if (tile.text) {
-            const size = Math.round(iconSize * 0.36);
-            const text = new St.Label({
-                text: tile.text,
-                x_align: align,
-                style_class: 'screenpad-touchbar-text',
-                style: `font-size: ${size}px;`,
-            });
-            if (height > 2 * (iconSize * 0.5 + size * 2)) {
-                text.clutter_text.line_wrap = true;
-                text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-            }
-            box.add_child(text);
-        }
-        return box;
-    }
-
-    // The resize grip: an up arrow, a grab bar and a down arrow, sized to
-    // fit the tile at any bar height so it never disappears.
-    _grip(width, height) {
-        const bar = Math.max(Math.round(Math.min(width, height) * 0.06), 3);
-        const gap = Math.max(Math.round(bar * 0.7), 2);
-        const arrow = Math.max(
-            Math.min(Math.round(width * 0.75), Math.round((height - bar - 2 * gap) / 2.4), 48),
-            8,
-        );
-        const box = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
-            style: `spacing: ${gap}px;`,
-        });
-        box.add_child(
-            new St.Icon({
-                icon_name: 'pan-up-symbolic',
-                icon_size: arrow,
-                x_align: Clutter.ActorAlign.CENTER,
-            }),
-        );
-        box.add_child(
-            new St.Widget({
-                style_class: 'screenpad-touchbar-grip-bar',
-                style: `border-radius: ${bar}px;`,
-                width: Math.max(Math.round(width * 0.6), arrow),
-                height: bar,
-                x_align: Clutter.ActorAlign.CENTER,
-            }),
-        );
-        box.add_child(
-            new St.Icon({
-                icon_name: 'pan-down-symbolic',
-                icon_size: arrow,
-                x_align: Clutter.ActorAlign.CENTER,
-            }),
-        );
-        return box;
-    }
-
-    // Which tile (index into tiles) an app dropped at bar x goes to: the
-    // drop tile under it, else the first empty one; -1 if none.
+    // Which tile an app dropped at bar x goes to (dropTile); -1 if none.
     _dropTile(x) {
-        const tiles = this._state?.tiles ?? [];
-        const px = x / this._sx;
-        const under = tiles.findIndex(t => t.drop && t.x <= px && px < t.x + t.width);
-        if (under >= 0) return under;
-        return tiles.findIndex(t => t.drop && t.empty);
+        return dropTile(this._state?.tiles ?? [], x / this._sx);
     }
 
     _dragOver(source, x) {
@@ -515,12 +359,13 @@ export default class ScreenpadTouchbar extends Extension {
         const index = id ? this._dropTile(x) : -1;
         this._highlight(-1);
         if (index < 0) return false;
-        // Over a shortcut spot: put it there. Elsewhere on the bar: the
-        // first free spot.
-        const px = x / this._sx;
-        const tile = tiles[index];
-        const argv = [GLib.find_program_in_path(CLI) ?? CLI_FALLBACK, 'shortcut', 'add', id];
-        if (tile.x <= px && px < tile.x + tile.width) argv.push('--spot', String(tile.drop));
+        const argv = [
+            GLib.find_program_in_path(CLI) ?? CLI_FALLBACK,
+            'shortcut',
+            'add',
+            id,
+            ...dropArgs(tiles, index, x / this._sx),
+        ];
         try {
             const proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDERR_PIPE);
             proc.communicate_utf8_async(null, null, (p, result) => {

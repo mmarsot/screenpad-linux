@@ -27,7 +27,8 @@ jobs:
         run: make typecheck
 
   # The unit tests need no root, hardware or GNOME Shell. Oldest supported
-  # Python and a current one.
+  # Python and a current one; node runs the extension's plain modules (the
+  # tests fail rather than skip them under CI).
   tests:
     runs-on: ubuntu-latest
     strategy:
@@ -38,5 +39,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - name: Unit tests
         run: make test
