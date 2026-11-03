@@ -1,55 +1,39 @@
-"""touchbar.toml: the spots, buttons and shortcuts, [notifications], [screensaver] and [pager]; parsing and loading."""
+"""touchbar.toml: the bar's and the apps page's items and the tables; parsing and loading."""
 
 import os
-import re
 import tomllib
 
 from .common import (
-    BUTTON,
+    APP,
+    BAR_ITEMS,
     DEFAULT_CONFIG,
     DEFAULT_HEIGHT,
     GRIP,
     GRIP_X,
+    ITEM,
+    MAX_APPS_ITEMS,
     MAX_ASK_TIMEOUT,
-    MAX_BUTTONS,
     MAX_HEIGHT,
     MAX_RETURN_AFTER,
-    MAX_SHORTCUTS,
     MIN_HEIGHT,
     NOTIFY_TIMEOUT,
     PAGE,
+    PAGE_ITEM,
     PAGE_W,
     PAGE_X,
     PANEL_W,
     RETURN_AFTER,
-    SHORTCUT,
-    SHORTCUTS_X,
     SPOT_W,
+    SPOT_X,
     TAP_SLOP,
-    TILE_NAME,
+    TILE,
     ConfigError,
 )
 from .defaults import EXAMPLE_CONFIG
-from .keys import parse_key
+from .items import ITEM_KEYS, Item, app_id, parse_item
 
-
-class Button:
-    def __init__(self, label, mode, keys=None, command=None, release_command=None, key=None, icon=None, tile=None):
-        self.label = label
-        self.icon = icon
-        self.key = key
-        self.mode = mode
-        self.keys = keys
-        self.command = command
-        self.release_command = release_command
-        # The name of a tile an app draws and handles in this spot.
-        self.tile = tile
-
-    def action(self):
-        return (self.mode, self.keys, self.command, self.release_command, self.tile)
-
-    def public(self):
-        return {"label": self.label, "icon": self.icon, "mode": self.mode}
+# Where the items go: the bar's spots and the apps page's home list.
+LISTS = {"bar": BAR_ITEMS, "apps": MAX_APPS_ITEMS}
 
 
 class Spot:
@@ -59,11 +43,14 @@ class Spot:
         self.kind, self.index, self.x, self.width, self.item = kind, index, x, width, item
 
     def public(self):
-        out = {"kind": self.kind, "x": self.x, "width": self.width}
-        if self.kind == BUTTON:
-            out.update(self.item.public() if self.item else {"label": None, "icon": None, "mode": None})
-        elif self.kind == SHORTCUT:
-            out["app"] = self.item
+        """The spot as version 1 had it (an extension from before tiles)."""
+        if self.item is not None:
+            out = self.item.public()
+        elif self.kind == ITEM:
+            out = {"kind": "button", "label": None, "icon": None, "mode": None}
+        else:
+            out = {"kind": self.kind}
+        out.update(x=self.x, width=self.width)
         return out
 
 
@@ -75,6 +62,9 @@ class NotifyPolicy:
         self.allow = None if allow is None else list(allow)
         self.deny = list(deny)
         self.timeout = timeout
+
+    def spec(self):
+        return (self.mirror, self.allow, self.deny, self.timeout)
 
     def describe(self):
         if not self.mirror:
@@ -94,6 +84,9 @@ class Pages:
         self.clock = clock  # a faint clock on the black below the bar
         self.return_after = return_after
 
+    def spec(self):
+        return (self.clock, self.return_after)
+
     def describe(self):
         return "screensaver black%s; apps page back to the touchpad after %d s" % (
             " with a clock" if self.clock else "",
@@ -102,31 +95,35 @@ class Pages:
 
 
 class Config:
-    def __init__(self, height, buttons, shortcuts=(), notifications=None, pages=None):
+    """The config: the bar's height, its items (bar) and the apps page's
+    (apps), each a list of items.Item, and the tables."""
+
+    def __init__(self, height, bar=(), apps=(), notifications=None, pages=None):
         self.height = height
-        self.buttons = list(buttons)
-        self.shortcuts = list(shortcuts)
+        self.bar = list(bar)
+        self.apps = list(apps)
         self.notifications = notifications or NotifyPolicy()
         self.pages = pages or Pages()
         self.spots = (
-            [
-                Spot(BUTTON, i, i * SPOT_W, SPOT_W, self.buttons[i] if i < len(self.buttons) else None)
-                for i in range(MAX_BUTTONS)
-            ]
-            + [
-                Spot(
-                    SHORTCUT,
-                    i,
-                    SHORTCUTS_X + i * SPOT_W,
-                    SPOT_W,
-                    self.shortcuts[i] if i < len(self.shortcuts) else None,
-                )
-                for i in range(MAX_SHORTCUTS)
-            ]
+            [Spot(ITEM, i, SPOT_X[i], SPOT_W, self.bar[i] if i < len(self.bar) else None) for i in range(BAR_ITEMS)]
             + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)]
             # Last, so the other spots keep the numbers an extension from
             # before the pages knows them by.
             + [Spot(PAGE, 0, PAGE_X, PAGE_W)]
+        )
+
+    def items(self, where):
+        """The items of a list: "bar" or "apps"."""
+        return self.bar if where == "bar" else self.apps
+
+    def spec(self):
+        """Everything the config says, to compare two."""
+        return (
+            self.height,
+            [i.spec() for i in self.bar],
+            [i.spec() for i in self.apps],
+            self.notifications.spec(),
+            self.pages.spec(),
         )
 
     def spot_at(self, px, py, height=None):
@@ -148,8 +145,17 @@ class Config:
         return near(s.x, s.width, height or self.height, px, py)
 
     def tiles(self):
-        """The tile names the config places, in spot order."""
-        return [b.tile for b in self.buttons if b.tile]
+        """The tile names the config places, on the bar and the apps page."""
+        return [i.name for i in self.bar + self.apps if i.kind == TILE]
+
+    def describe(self):
+        """A line on what the bar and the apps page hold."""
+        return "bar %d px, %d of %d items, apps page %d item(s)" % (
+            self.height,
+            len(self.bar),
+            BAR_ITEMS,
+            len(self.apps),
+        )
 
 
 def near(x, width, height, px, py):
@@ -157,10 +163,9 @@ def near(x, width, height, px, py):
     return x - TAP_SLOP <= px < x + width + TAP_SLOP and -TAP_SLOP <= py < height + TAP_SLOP
 
 
-# x and width placed buttons in the first version; the spots do it now.
-BUTTON_KEYS = {"label", "icon", "mode", "key", "command", "release_command", "tile", "x", "width"}
-SHORTCUT_KEYS = {"app"}
-APP_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*\.desktop")
+# What an earlier version called the items: [[button]] and [[shortcut]]
+# blocks (migrate.py converts them).
+OLD_LISTS = ("button", "shortcut")
 
 
 def _int(value, what):
@@ -169,45 +174,14 @@ def _int(value, what):
     return value
 
 
-def _command(value, what):
-    if isinstance(value, str) and value.strip():
-        return ["/bin/sh", "-c", value]
-    if isinstance(value, list) and value and all(isinstance(a, str) for a in value) and value[0]:
-        return list(value)
-    raise ConfigError("%s must be a string or a non-empty list of strings" % what)
-
-
-def _icon(value):
-    if not isinstance(value, str) or not value.strip():
-        raise ConfigError("icon must be an icon name or the path of an image")
-    value = value.strip()
-    if value.startswith("~"):
-        value = os.path.expanduser(value)
-    if "/" in value and not value.startswith("/"):
-        raise ConfigError("icon %r: an image path must start with / or ~" % value)
-    return value
-
-
-def app_id(value):
-    """A desktop file id, "org.gnome.Nautilus" or "org.gnome.Nautilus.desktop"."""
-    if not isinstance(value, str):
-        raise ConfigError('app must be a desktop file id like "org.gnome.Nautilus.desktop"')
-    value = value.strip()
-    if not value.endswith(".desktop"):
-        value += ".desktop"
-    if not APP_ID.fullmatch(value):
-        raise ConfigError('app %r is not a desktop file id like "org.gnome.Nautilus.desktop"' % value)
-    return value
-
-
 def _blocks(data, name, allowed, limit):
     raw = data.get(name, [])
     if not isinstance(raw, list):
-        raise ConfigError("%ss go in [[%s]] blocks" % (name, name))
+        raise ConfigError("%s items go in [[%s]] blocks" % (name, name))
     if len(raw) > limit:
         raise ConfigError("at most %d [[%s]] blocks (got %d)" % (limit, name, len(raw)))
     for n, b in enumerate(raw, 1):
-        where = "%s %d" % (name, n)
+        where = "%s item %d" % (name, n)
         if not isinstance(b, dict):
             raise ConfigError("%s: must be a [[%s]] block" % (where, name))
         if isinstance(b.get("label"), str) and b["label"]:
@@ -218,35 +192,25 @@ def _blocks(data, name, allowed, limit):
         yield where, b
 
 
-def _button(b):
-    label = b.get("label", "")
-    if not isinstance(label, str):
-        raise ConfigError("label must be a string")
-    icon = _icon(b["icon"]) if "icon" in b else None
-    if not icon and not label:
-        raise ConfigError("needs an icon or a label")
-    mode = b.get("mode", "tap")
-    if mode not in ("hold", "tap"):
-        raise ConfigError('mode must be "hold" or "tap"')
-    if sum(k in b for k in ("key", "command", "tile")) != 1:
-        raise ConfigError("needs exactly one of key, command or tile")
-    keys = parse_key(b["key"]) if "key" in b else None
-    command = _command(b["command"], "command") if "command" in b else None
-    tile = None
-    if "tile" in b:
-        tile = b["tile"]
-        if not isinstance(tile, str) or not TILE_NAME.fullmatch(tile):
-            raise ConfigError(
-                'tile must be a name like "agents" (lower case letters, digits, dot, dash or underscore, at most 32)'
-            )
-        if "mode" in b:
-            raise ConfigError("mode does not apply to a tile: the app that draws it decides")
-    release = None
-    if "release_command" in b:
-        if mode != "hold" or command is None:
-            raise ConfigError('release_command only goes with a command in mode "hold"')
-        release = _command(b["release_command"], "release_command")
-    return Button(label, mode, keys, command, release, b.get("key"), icon, tile)
+def _items(data, name, tiles):
+    """A list's items; tiles holds the tile names placed so far, as each
+    tile goes in one place only."""
+    items: list[Item] = []
+    for where, b in _blocks(data, name, ITEM_KEYS, LISTS[name]):
+        try:
+            item = parse_item(b)
+            if item.kind == TILE and item.name in tiles:
+                raise ConfigError("tile %s is already in another spot" % item.name)
+            if item.kind in (APP, PAGE_ITEM) and any((o.kind, o.name) == (item.kind, item.name) for o in items):
+                raise ConfigError(
+                    "%s %s is already on the %s" % (item.kind, item.name, "bar" if name == "bar" else "apps page")
+                )
+        except ConfigError as e:
+            raise ConfigError("%s: %s" % (where, e))
+        if item.kind == TILE:
+            tiles.add(item.name)
+        items.append(item)
+    return items
 
 
 def parse_config(text):
@@ -254,35 +218,31 @@ def parse_config(text):
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(str(e))
-    unknown = set(data) - {"height", "button", "shortcut", "notifications", "screensaver", "pager"}
+    return parse_data(data)
+
+
+def parse_data(data):
+    """A Config from the file's parsed TOML."""
+    old = [n for n in OLD_LISTS if n in data]
+    if old:
+        raise ConfigError(
+            "%s blocks are from an earlier version: the bar's items are [[bar]] blocks now, in order "
+            "(see Configs from earlier versions in configuration.md)" % " and ".join("[[%s]]" % n for n in old)
+        )
+    unknown = set(data) - {"height", "notifications", "screensaver", "pager"} - set(LISTS)
     if unknown:
         raise ConfigError("unknown setting(s): %s" % ", ".join(sorted(unknown)))
     height = _int(data.get("height", DEFAULT_HEIGHT), "height")
     if not MIN_HEIGHT <= height <= MAX_HEIGHT:
         raise ConfigError("height must be between %d and %d" % (MIN_HEIGHT, MAX_HEIGHT))
-    buttons: list[Button] = []
-    for where, b in _blocks(data, "button", BUTTON_KEYS, MAX_BUTTONS):
-        try:
-            button = _button(b)
-            if button.tile and button.tile in [o.tile for o in buttons]:
-                raise ConfigError("tile %s is already in another spot" % button.tile)
-            buttons.append(button)
-        except ConfigError as e:
-            raise ConfigError("%s: %s" % (where, e))
-    shortcuts = []
-    for where, s in _blocks(data, "shortcut", SHORTCUT_KEYS, MAX_SHORTCUTS):
-        try:
-            app = app_id(s.get("app"))
-        except ConfigError as e:
-            raise ConfigError("%s: %s" % (where, e))
-        if app in shortcuts:
-            raise ConfigError("%s: %s is already a shortcut" % (where, app))
-        shortcuts.append(app)
+    tiles: set[str] = set()
+    bar = _items(data, "bar", tiles)
+    apps = _items(data, "apps", tiles)
     try:
         notifications = _notifications(data.get("notifications", {}))
     except ConfigError as e:
         raise ConfigError("notifications: %s" % e)
-    return Config(height, buttons, shortcuts, notifications, _pages(data))
+    return Config(height, bar, apps, notifications, _pages(data))
 
 
 NOTIFY_KEYS = {"mirror", "allow", "deny", "timeout"}

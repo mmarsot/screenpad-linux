@@ -2,8 +2,9 @@
 
 from .common import DEFAULT_HEIGHT, MAX_HEIGHT, MIN_HEIGHT, NOTIFY_TIMEOUT, RETURN_AFTER
 
-# The push-to-talk button's block in the default config.
-PTT_BLOCK = """\
+# The push-to-talk button's block in the default config before items
+# (V7_PTT_BLOCK), and now.
+V7_PTT_BLOCK = """\
 # Push to talk. Alt+K, held while you hold the button: Claude Code's voice
 # push-to-talk when ~/.claude/keybindings.json binds "meta+k" (Claude
 # Code's name for Alt+K) to "voice:pushToTalk" in the "Chat" context.
@@ -15,6 +16,7 @@ label = "Push to talk"
 mode = "hold"
 key = "alt+k"
 """
+PTT_BLOCK = V7_PTT_BLOCK.replace("[[button]]", "[[bar]]")
 
 # What versions before it wrote. Terminals send nothing for F14 (GNOME maps
 # it to XF86Launch5), so it could not be Claude Code's push-to-talk key.
@@ -56,11 +58,108 @@ DOTS_LAYOUT_DOC = """\
 # see the panel with the laptop open: 1920 wide, 1080 tall, the top being
 # the edge nearest the screen hinge. 16 pixels are about 1 mm.
 """
-LAYOUT_DOC = """\
+V7_LAYOUT_DOC = """\
 # The bar, left to right: three button spots, three shortcut spots, the
 # page button and a grip at the right end. Units are ScreenPad pixels as
 # you see the panel with the laptop open: 1920 wide, 1080 tall, the top
 # being the edge nearest the screen hinge. 16 pixels are about 1 mm.
+"""
+# With items, which go in any spot.
+LAYOUT_DOC = """\
+# The bar, left to right: six spots for items, the page button and a grip
+# at the right end. Units are ScreenPad pixels as you see the panel with
+# the laptop open: 1920 wide, 1080 tall, the top being the edge nearest
+# the screen hinge. 16 pixels are about 1 mm.
+"""
+
+# The config's first lines, before items and now.
+V7_HEADER = """\
+# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
+# second. 'screenpad-touchbar check' validates this file. The bar writes
+# here too, when you resize it or add or remove a shortcut; it changes only
+# the height line and the [[shortcut]] blocks and keeps the rest as it is.
+"""
+HEADER = """\
+# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
+# second. 'screenpad-touchbar check' validates this file. The bar writes
+# here too, when you resize it or add or remove an app on it; it changes
+# only the height line and those apps' blocks and keeps the rest as it is.
+"""
+
+# How the default config documented buttons and shortcuts before items, and
+# how it documents items now.
+V7_BUTTONS_DOC = (
+    """\
+# Up to three [[button]] blocks, for the three button spots in order.
+#   icon             a symbolic icon name from the icon theme, such as
+#                    "audio-input-microphone-symbolic" (the names are the
+#                    files in /usr/share/icons/Adwaita/symbolic), or the
+#                    path of an image file (SVG or PNG)
+#   label            the button's name; drawn instead when there is no icon
+#   mode             "hold": keys down on touch, up on release
+#                    "tap":  one key press when you lift the finger on it
+#   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
+#                    "micmute", "playpause" (evdev names, KEY_ optional;
+#                    "meta" and "super" are the Super key, not Alt)
+"""
+    + COMMAND_DOC
+    + TILE_DOC
+)
+ITEMS_DOC = """\
+# Items: up to six [[bar]] blocks fill the bar's spots left to right, and
+# up to eight [[apps]] blocks the apps page's home list, before the pages
+# apps give it. Any item goes in either place. Each has one of:
+#   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
+#                    "micmute", "playpause" (evdev names, KEY_ optional;
+#                    "meta" and "super" are the Super key, not Alt)
+#   command          a command to run, as a string for sh or a list of
+#                    arguments. With mode "hold" it runs on touch, and
+#                    release_command (optional) runs on release.
+#   app              an app, by its desktop file id: a tap opens it (or
+#                    raises it). Drag an app from the dock or the app grid
+#                    onto the bar to add it; hold it for a second, until
+#                    it turns red, and lift to remove it.
+#                    'screenpad-touchbar shortcut' does the same from a
+#                    terminal, for the apps page too.
+#   tile             the name of a tile that an app draws and handles (an
+#                    app that talks to the bar's socket; see app-api.md in
+#                    the docs)
+#   page             the name of a page an app gives the apps page: a tap
+#                    opens it
+# and how it shows:
+#   icon             a symbolic icon name from the icon theme, such as
+#                    "audio-input-microphone-symbolic" (the names are the
+#                    files in /usr/share/icons/Adwaita/symbolic), or the
+#                    path of an image file (SVG or PNG). An app shows its
+#                    own icon, a tile or page what its app draws.
+#   label            its name; drawn instead when there is no icon. A tile
+#                    or page shows its icon or label, dimmed, while no app
+#                    provides it.
+#   mode             for a key or a command: "hold": keys down on touch,
+#                    up on release; "tap" (the default): one key press
+#                    when you lift the finger on it
+"""
+
+# The shortcut example before items, and the app examples now.
+V7_SHORTCUTS_DOC = """\
+# Up to three [[shortcut]] blocks, for the shortcut spots in order: apps by
+# their desktop file id. Drag an app from the dock or the app grid onto the
+# bar to add it; tap it to open the app; hold it for a second, until it
+# turns red, and lift to remove it. 'screenpad-touchbar shortcut' does the
+# same from a terminal. For example:
+# [[shortcut]]
+# app = "org.gnome.Nautilus.desktop"
+"""
+APPS_DOC = """\
+# An app on the bar, for example:
+# [[bar]]
+# app = "org.gnome.Nautilus.desktop"
+# The apps page lists its [[apps]] items, then the pages apps give it that
+# no item places. For example Settings, and an app's page:
+# [[apps]]
+# app = "org.gnome.Settings.desktop"
+# [[apps]]
+# page = "agents"
 """
 
 # How the default config described the pages with the page dots, and now.
@@ -84,55 +183,30 @@ PAGES_DOC = """\
 """ % {"return_after": RETURN_AFTER}
 
 EXAMPLE_CONFIG = """\
-# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
-# second. 'screenpad-touchbar check' validates this file. The bar writes
-# here too, when you resize it or add or remove a shortcut; it changes only
-# the height line and the [[shortcut]] blocks and keeps the rest as it is.
-#
+%(header)s#
 %(layout)s
 # Height of the bar at the top of the panel, %(min)d to %(max)d. Touches that
 # start in it never move the pointer or click; everything below stays a
 # touchpad. Drag the grip at the bar's right end down or up to change it.
 height = %(height)d
 
-# Up to three [[button]] blocks, for the three button spots in order.
-#   icon             a symbolic icon name from the icon theme, such as
-#                    "audio-input-microphone-symbolic" (the names are the
-#                    files in /usr/share/icons/Adwaita/symbolic), or the
-#                    path of an image file (SVG or PNG)
-#   label            the button's name; drawn instead when there is no icon
-#   mode             "hold": keys down on touch, up on release
-#                    "tap":  one key press when you lift the finger on it
-#   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
-#                    "micmute", "playpause" (evdev names, KEY_ optional;
-#                    "meta" and "super" are the Super key, not Alt)
-#   command          instead of key: a command to run, as a string for sh
-#                    or a list of arguments. With mode "hold" it runs on
-#                    touch, and release_command (optional) runs on release.
-%(tile)s
+%(items)s
 %(ptt)s
 # Mutes and unmutes the microphone, like a keyboard's mic mute key.
-[[button]]
+[[bar]]
 icon = "microphone-sensitivity-muted-symbolic"
 label = "Mute microphone"
 mode = "tap"
 key = "micmute"
 
 # GNOME's screenshot tool, like the Print Screen key.
-[[button]]
+[[bar]]
 icon = "applets-screenshooter-symbolic"
 label = "Screenshot"
 mode = "tap"
 key = "printscreen"
 
-# Up to three [[shortcut]] blocks, for the shortcut spots in order: apps by
-# their desktop file id. Drag an app from the dock or the app grid onto the
-# bar to add it; tap it to open the app; hold it for a second, until it
-# turns red, and lift to remove it. 'screenpad-touchbar shortcut' does the
-# same from a terminal. For example:
-# [[shortcut]]
-# app = "org.gnome.Nautilus.desktop"
-
+%(apps)s
 # GNOME notifications that have buttons (Join, Reply, ...), and urgent ones,
 # show in the bar: it grows into a card with the notification's text and
 # buttons, and shrinks back when you tap one, dismiss it or it times out.
@@ -151,14 +225,16 @@ key = "printscreen"
 # [pager]
 # return_after = %(return_after)d                           # seconds before the touchpad
 """ % {
+    "header": HEADER,
     "layout": LAYOUT_DOC,
+    "items": ITEMS_DOC,
+    "apps": APPS_DOC,
     "pages": PAGES_DOC,
     "return_after": RETURN_AFTER,
     "height": DEFAULT_HEIGHT,
     "min": MIN_HEIGHT,
     "max": MAX_HEIGHT,
     "ptt": PTT_BLOCK,
-    "tile": TILE_DOC,
     "notify_timeout": NOTIFY_TIMEOUT,
 }
 
@@ -174,13 +250,15 @@ OLD_DEFAULTS = {
     "f1c38e99d337195743b369674044d2f71053781a51822ebf10797d7dccf7d53c",
     # With the page dots, before the page button (tests/touchbar-v6-default.toml).
     "0b366d9742cefa53c6734fb4f0ed757c0605990ad6e256492fb53db42d2be112",
+    # Buttons and shortcuts, before items (tests/touchbar-v7-default.toml).
+    "32f53a3f3fef9f684f9296f7bbeda468f65ff37f0ecd99177d2109a31051987d",
 }
 
 # Default blocks earlier versions wrote, each with its current text. A config
 # that still holds one word for word gets the new one in its place and keeps
 # the rest (see migrate_config()).
 OLD_BLOCKS = (
-    (OLD_PTT_BLOCK, PTT_BLOCK),
+    (OLD_PTT_BLOCK, V7_PTT_BLOCK),
     (
         """\
 #   key              a key or combo: "F14", "ctrl+alt+t", "super+space",
@@ -198,6 +276,12 @@ OLD_BLOCKS = (
     # In this order, so a config from before the page dots ends with the
     # page button's.
     (OLD_LAYOUT_DOC, DOTS_LAYOUT_DOC),
-    (DOTS_LAYOUT_DOC, LAYOUT_DOC),
+    (DOTS_LAYOUT_DOC, V7_LAYOUT_DOC),
     (DOTS_PAGES_DOC, PAGES_DOC),
+    # Last, the comments about buttons and shortcuts become the ones about
+    # items; migrate.py then turns the blocks themselves into [[bar]] items.
+    (V7_HEADER, HEADER),
+    (V7_LAYOUT_DOC, LAYOUT_DOC),
+    (V7_BUTTONS_DOC, ITEMS_DOC),
+    (V7_SHORTCUTS_DOC, APPS_DOC),
 )

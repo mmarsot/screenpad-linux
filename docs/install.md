@@ -161,7 +161,7 @@ screenpad-touchbar status
 
 Then, on the ScreenPad:
 
-1. A dark bar with three buttons, three empty shortcut spots (`+`) and a grip is drawn along its top edge (the edge nearest the screen hinge).
+1. A dark bar with three items (push to talk, mute microphone, screenshot), three empty spots (`+`), the page button and a grip is drawn along its top edge (the edge nearest the screen hinge).
 2. Touching or sliding inside the bar never moves the pointer. Below it, the panel works as a touchpad, following GNOME's touchpad settings.
 3. Hold the microphone button: it turns red while held.
 4. Drag an app icon from the dock onto a `+` spot: the app is added. Tap it to open the app.

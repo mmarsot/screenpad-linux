@@ -209,13 +209,13 @@ export default class ScreenpadTouchbar extends Extension {
         this._dir = null;
     }
 
-    // D-Bus: open a shortcut on the bar (the daemon calls this on a tap).
-    // Only an app the bar shows as a tile can be opened this way.
+    // D-Bus: open an app on the bar or the apps page (the daemon calls this
+    // on a tap). Only an app shown there can be opened this way.
     Launch(id) {
         const app = canLaunch(this._state, id)
             ? Shell.AppSystem.get_default().lookup_app(id)
             : null;
-        if (!app) throw new Error(`${id} is not a shortcut on the touch bar`);
+        if (!app) throw new Error(`${id} is not an app on the touch bar`);
         if (Main.overview.visible) Main.overview.hide();
         app.activate();
     }

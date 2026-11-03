@@ -11,7 +11,7 @@ import re
 import tempfile
 import unittest
 
-from touchbar_support import EXT, GRID_H, GRID_Y, TOP, Clock, hello, js, page_msg
+from touchbar_support import EXT, GRID_H, GRID_Y, TOP, Clock, config, hello, js, page_msg
 
 from screenpad_touchbar.apps import Apps
 from screenpad_touchbar.common import APPS, ASK_ARM, PANEL_H
@@ -87,6 +87,39 @@ class ExtensionTests(unittest.TestCase):
                 if parts["lines"]:
                     room = box["height"] - 2 * box["padding"]
                     self.assertLessEqual(len(parts["lines"]) * parts["lineSize"] * 1.45, room + 1)
+
+    def test_apps_on_the_home_page(self):
+        # [[apps]] items on the home page: an app is drawn with its own icon
+        # (unless it has one) and can be opened over D-Bus.
+        clock = Clock()
+        apps = Apps(clock)
+        pager = Pager(clock=clock)
+        items = config(
+            '[[apps]]\napp = "org.gnome.Settings.desktop"\n[[apps]]\napp = "b.desktop"\nicon = "x-symbolic"\n'
+        ).apps
+        surface = Surface(apps, pager, lambda: TOP, lambda: TOP, lambda: True, clock, items=lambda: items)
+        pager.turn(APPS)
+        scene = surface.scene()
+        out = js(
+            "widgets.js",
+            "m.surfaceWidgets(v.s).slice(1).map(w => { const b = m.widgetBox(w, [1920, 1080], v.mon);"
+            " const p = m.widgetParts(w, b, 1); return [w.app, p.app, p.icon, p.iconSize > 8, p.first]; })",
+            s=scene,
+            mon=self.MONITORS[0],
+        )
+        self.assertEqual(
+            out,
+            [
+                ["org.gnome.Settings.desktop", "org.gnome.Settings.desktop", None, True, "Settings"],
+                ["b.desktop", None, "x-symbolic", True, "b"],
+            ],
+        )
+        launch = js(
+            "scene.js",
+            "['org.gnome.Settings.desktop', 'b.desktop', 'c.desktop'].map(id => m.canLaunch(v.s, id))",
+            s={"tiles": [], "surface": scene},
+        )
+        self.assertEqual(launch, [True, True, False])
 
     def test_stylesheet(self):
         rules = css_rules(os.path.join(EXT, "stylesheet.css"))

@@ -107,22 +107,30 @@ TILE_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,31}")
 OPTION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 
 
-# The bar, left to right: three button spots, a gap, three shortcut spots,
-# the page button and the resize grip at the right end, all as tall as the
-# bar. A spot is 17 mm wide and the page button 9 mm, a fingertip.
-MAX_BUTTONS = 3
-MAX_SHORTCUTS = 3
+# The bar, left to right: six spots for the config's items (three, a gap,
+# three more), the page button and the resize grip at the right end, all
+# as tall as the bar. A spot is 17 mm wide and the page button 9 mm, a
+# fingertip. Any item goes in any spot: the [[bar]] blocks fill them left
+# to right.
+BAR_ITEMS = 6
 SPOT_W = 272
 GROUP_GAP = 40
-SHORTCUTS_X = MAX_BUTTONS * SPOT_W + GROUP_GAP
-PAGE_X = SHORTCUTS_X + MAX_SHORTCUTS * SPOT_W
+# Where a question's answers start (scene.py): the right half of the spots.
+SHORTCUTS_X = 3 * SPOT_W + GROUP_GAP
+SPOT_X = tuple(i * SPOT_W + (GROUP_GAP if i >= 3 else 0) for i in range(BAR_ITEMS))
+PAGE_X = SPOT_X[-1] + SPOT_W
 PAGE_W = 144
 GRIP_X = PAGE_X + PAGE_W
 MIN_HEIGHT = 64
 MAX_HEIGHT = PANEL_H // 2
 # The grip changes the height in steps of this many pixels (half a mm).
 HEIGHT_STEP = 8
-BUTTON, SHORTCUT, GRIP, PAGE = "button", "shortcut", "grip", "page"
+# The bar's spots: an item's, the grip and the page button.
+ITEM, GRIP, PAGE = "item", "grip", "page"
+# What an item is: exactly one of these keys in its [[bar]] or [[apps]]
+# block (items.py).
+KEY, COMMAND, APP, TILE, PAGE_ITEM = "key", "command", "app", "tile", "page"
+ITEM_KINDS = (KEY, COMMAND, APP, TILE, PAGE_ITEM)
 
 # The pages, left to right: the touchpad page (home, below the bar a
 # touchpad over a black screensaver) and the apps page (below the bar a
@@ -159,6 +167,9 @@ HOME_ROWS = 2
 MAX_PAGES = 4
 MAX_WIDGETS = 24
 MAX_LINES = 16
+# The [[apps]] items the home page lists before the apps' own pages. With
+# those, it grows to more rows than HOME_ROWS.
+MAX_APPS_ITEMS = HOME_COLUMNS * HOME_ROWS
 
 
 class TouchbarError(Exception):

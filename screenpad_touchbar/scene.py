@@ -1,6 +1,6 @@
 """The scene in touchbar.json: the tiles the extension draws, for the spots and for a question."""
 
-from .common import GRIP, GROUP_GAP, PAGE, PAGE_ICONS, PAGE_LABELS, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
+from .common import APP, GRIP, PAGE, PAGE_ICONS, PAGE_ITEM, PAGE_LABELS, SHORTCUTS_X, SPOT_W, TILE, TONES
 
 # What touchbar.json shows the extension: tiles, each a rectangle in the bar
 # (x and width in panel pixels, as tall as the bar) and what to draw in it.
@@ -15,8 +15,9 @@ from .common import GRIP, GROUP_GAP, PAGE, PAGE_ICONS, PAGE_LABELS, SHORTCUT, SH
 # or an image path) and "icon_scale", "app" (a desktop file id,
 # drawn as that app's icon; the extension opens only apps shown this way),
 # "label", "title" and "text" (text lines), "badge" (a short text in a
-# corner), "drop" (the shortcut spot number an app icon dropped there takes)
-# and "empty". "divider" is the x of the line between the two groups.
+# corner), "drop" (the spot number an app icon dropped there takes) and
+# "empty". "divider" (the x of a line between two groups of spots) is
+# null: any item goes in any spot.
 # "height" is the bar's height drawn (CARD_HEIGHT while a card shows) and
 # "strut" its own height, which windows keep clear of; the extension
 # animates a growth of height over an unchanged strut.
@@ -26,66 +27,68 @@ TILE_STYLES = ("button", "shortcut", "grip", "page", "ask-text", "option")
 # rule for each but "tap", which is the plain button
 # (tests/test_touchbar_scene.py checks it).
 TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple("tone-" + tone for tone in TONES)
-DIVIDER_X = SHORTCUTS_X - GROUP_GAP // 2
 # A question (an attention card): its title and text over the first two
-# button spots, Dismiss in the third, its answers in the three shortcut
-# spots. The grip stays.
+# spots, Dismiss in the third, its answers in the last three. The grip
+# stays.
 ASK_TEXT_W = DISMISS_X = 2 * SPOT_W
 DISMISS = "dismiss"
 
 
-def _looks(button):
-    """A config button's icon and label, those it has."""
-    return {k: v for k, v in (("icon", button.icon), ("label", button.label)) if v}
+def app_look(item, look):
+    """What an app's tile or page item shows: the look its app gives it
+    (provided), else its own icon and label, dimmed. Its classes and fields."""
+    if look is None:
+        return ["tile", "offline"], item.looks()
+    shown = {k: look[k] for k in ("icon", "label", "text", "badge") if look.get(k)}
+    if "icon" not in shown and "label" not in shown:
+        shown.update(item.looks())
+    return ["tile", "tone-" + look.get("tone", "neutral")], shown
 
 
-def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None):
-    """The tiles of the config's spots: buttons, shortcuts, the grip and the
-    page button.
+def page_look(page):
+    """What a page item shows of an app's page (widgets.Page): its title, icon, badge and tone."""
+    return {"label": page.title(), **{k: v for k, v in page.look.items() if k != "title"}}
 
-    provided maps the names of the tiles apps provide now to what they draw.
-    page_to is the page a tap on the page button turns to (the pager's
-    target()) while the pages turn; without it, no page button.
+
+def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pages=None):
+    """The tiles of the config's spots: its items, the grip and the page
+    button.
+
+    provided maps the names of the tiles apps provide now to what they draw,
+    pages the names of the apps' pages that can be opened now to theirs
+    (page_look()). page_to is the page a tap on the page button turns to
+    (the pager's target()) while the pages turn; without it, no page button.
+    An app dropped on an empty spot or on an app's spot goes there.
     """
     provided = provided or {}
+    pages = pages or {}
     tiles = []
     for i, s in enumerate(config.spots):
         if s.kind == PAGE and page_to is None:
             continue
-        tile = {"id": "%s-%d" % (s.kind, s.index), "x": s.x, "width": s.width, "style": s.kind}
+        item = s.item
+        tile = {"id": "%s-%d" % (s.kind, s.index), "x": s.x, "width": s.width, "style": "button"}
         if i in pressed:
             tile["pressed"] = True
         if s.kind == GRIP:
-            tile["id"], tile["glyph"] = GRIP, GRIP
+            tile.update(id=GRIP, style=GRIP, glyph=GRIP)
         elif s.kind == PAGE:
             # Only where a tap goes, as an icon. An extension from before
             # the page button draws it as any icon tile.
-            tile.update(id=PAGE, glyph=PAGE, icon=PAGE_ICONS[page_to], label=PAGE_LABELS[page_to])
-        elif s.kind == SHORTCUT:
-            tile["drop"] = s.index + 1
-            if s.item is None:
-                tile.update(classes=["empty"], icon="list-add-symbolic", icon_scale=0.6, empty=True)
-            else:
-                tile["app"] = s.item
-                if i in removing:
-                    tile.update(classes=["removing"], icon="edit-delete-symbolic")
-        elif s.item is None:
-            tile["classes"] = ["empty"]
-        elif s.item.tile:
-            look = provided.get(s.item.tile)
-            if look is None:
-                tile["classes"] = ["tile", "offline"]
-                look = {"icon": s.item.icon, "label": s.item.label}
-            else:
-                tile["classes"] = ["tile", "tone-" + look.get("tone", "neutral")]
-            for k in ("icon", "label", "text", "badge"):
-                if look.get(k):
-                    tile[k] = look[k]
-            if "icon" not in tile and "label" not in tile:
-                tile.update(_looks(s.item))
+            tile.update(id=PAGE, style=PAGE, glyph=PAGE, icon=PAGE_ICONS[page_to], label=PAGE_LABELS[page_to])
+        elif item is None:
+            tile.update(
+                style="shortcut", classes=["empty"], icon="list-add-symbolic", icon_scale=0.6, empty=True, drop=i + 1
+            )
+        elif item.kind == APP:
+            tile.update(style="shortcut", app=item.name, drop=i + 1, **item.looks())
+            if i in removing:
+                tile.update(classes=["removing"], icon="edit-delete-symbolic")
+        elif item.kind in (TILE, PAGE_ITEM):
+            classes, shown = app_look(item, (provided if item.kind == TILE else pages).get(item.name))
+            tile.update(classes=classes, **shown)
         else:
-            tile["classes"] = [s.item.mode]
-            tile.update(_looks(s.item))
+            tile.update(classes=[item.mode], **item.looks())
         tiles.append(tile)
     return tiles
 

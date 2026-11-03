@@ -1,6 +1,6 @@
 # Touch bar app API
 
-Other programs can use the touch bar (the agent app, [screenpad-agents](https://github.com/mmarsot/screenpad-agents), is one): an **app** draws and handles button spots the config gives it and [pages of large widgets](#pages-on-the-apps-page) on the apps page, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
+Other programs can use the touch bar (the agent app, [screenpad-agents](https://github.com/mmarsot/screenpad-agents), is one): an **app** draws and handles the tiles the config places, on the bar or the apps page, and [pages of large widgets](#pages-on-the-apps-page) on the apps page, and any program can **ask** the user a question with up to three answers. Both go through a Unix socket that the daemon (`screenpad-touchbar run`) opens next to its state file:
 
 ```
 $XDG_RUNTIME_DIR/screenpad/touchbar.sock
@@ -8,7 +8,7 @@ $XDG_RUNTIME_DIR/screenpad/touchbar.sock
 
 The directory is your user's own and the socket is mode `0600`; the daemon also checks that the connecting process runs as the same user. There is no other authentication: any program you run can use the bar.
 
-![A question in the touch bar, grown into a card: its text over the first two button spots, a Dismiss cross in the third, Cancel and Deploy in the shortcut spots, the page button and the grip at the right end](images/touchbar-ask.png)
+![A question in the touch bar, grown into a card: its text over the first two spots, a Dismiss cross in the third, Cancel and Deploy in the last three, the page button and the grip at the right end](images/touchbar-ask.png)
 
 *A question, as `screenpad-touchbar ask` below shows it: the bar grows into a card for it. Rendered by the extension in a headless GNOME Shell 50.1.*
 
@@ -33,7 +33,7 @@ It shows the question in the bar until you tap an answer, dismiss it or the time
 
 - **The bar grows into a card** for it: 456 px tall (about 29 mm, which leaves about 39 mm of touchpad below), or the bar's own height if that is taller. The growth is animated. It shrinks back once the question is answered, dismissed or timed out, or goes on to the next question.
 - **It grows only when no touchpad finger is in the band it is about to cover**, so it never draws a card under a finger moving the pointer. If one is there, it waits for it to leave, at most 0.3 s, then grows anyway. Either way the touchpad finger stays a touchpad finger to the end of its stroke; only new touches in that band are the card's.
-- The card covers the bar's button and shortcut spots: the title and text over the first two button spots, a **Dismiss** cross in the third, and the answers in the three shortcut spots, left to right. The page button stays and still turns the page, and the grip stays and still resizes the bar (its own height, which shows again when the card goes). A card shows the same way on both [pages](touchbar.md#the-two-pages).
+- The card covers the bar's six spots: the title and text over the first two, a **Dismiss** cross in the third, and the answers in the last three, left to right. The page button stays and still turns the page, and the grip stays and still resizes the bar (its own height, which shows again when the card goes). A card shows the same way on both [pages](touchbar.md#the-two-pages).
 - Tap an answer and lift on it (or within 60 px of it, as for tap buttons) to choose it. Sliding away before lifting cancels the tap. A touch on the text does nothing. Dismiss closes the card with no answer (`dismissed`).
 - **A touch that starts within 0.3 s of the card appearing does nothing**, counted from when the bar grew, so a tap already on its way to a button, or to where the touchpad was, cannot land on an answer.
 - A touch keeps what it started on: a push-to-talk button held when a question appears stays held until you lift, and a finger on an answer when its question goes away (answered elsewhere, timed out) chooses nothing.
@@ -113,20 +113,22 @@ The GNOME Shell extension mirrors GNOME's notifications through the same socket,
 
 ## Giving an app a spot
 
-A button spot becomes an app's tile with `tile` instead of `key` or `command` (see [configuration](configuration.md#settings)):
+An item with `tile` is an app's tile (see [items](configuration.md#items)), in a spot of the bar as a `[[bar]]` block, or in the apps page's home list as an `[[apps]]` block; the app's `welcome` lists it under `placed` either way, and its events are the same. A tile goes in one place only.
 
 ```toml
-[[button]]
+[[bar]]
 icon = "dialog-information-symbolic"
 label = "Agents"
 tile = "agents"
 ```
 
-While no app provides `agents`, the spot shows that icon (or label) dimmed and ignores touches.
+While no app provides `agents`, the spot shows that icon (or label) dimmed and ignores touches. On the apps page, a tile shows its `label`, `text`, `icon`, `badge` and `tone` in its cell of the home list; the app gets `down` when a finger goes down on it and `up` when it lifts, with `inside` true when it lifted on the cell (`false` for a slide away, a cancel, or the cell changing under the finger).
+
+A `page` item places one of an app's pages: in the home list at its own place, before the pages no item places, or on the bar, where a tap opens the apps page on it. Pages need nothing from the app for that.
 
 ## Pages on the apps page
 
-The [apps page](touchbar.md#the-two-pages) is the panel below the bar, swiped to from the bar. It opens on the **home page**, a list of the pages apps give it; tapping one opens it. An app's page has a header with **Home** (back to the list) and the page's title, and under it a grid of large widgets the app lays out. The daemon draws them through the extension, decides what each touch is, and tells the app.
+The [apps page](touchbar.md#the-two-pages) is the panel below the bar, swiped to from the bar. It opens on the **home page**, a list of the config's `[[apps]]` items and then the pages apps give it that no `page` item places; tapping a page opens it. An app's page has a header with **Home** (back to the list) and the page's title, and under it a grid of large widgets the app lays out. The daemon draws them through the extension, decides what each touch is, and tells the app.
 
 ![An app's page: Home and the page's title in the header, a widget of fixed-width lines across the top, then Allow once, Interrupt and Deny](images/touchbar-app-page.png)
 

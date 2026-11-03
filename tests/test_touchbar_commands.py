@@ -32,15 +32,43 @@ class ShortcutCommandTests(unittest.TestCase):
 
     def test_add_list_remove(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            # No file yet: the default's three keys, then the app.
             self.assertEqual(self.run_cli("add", "org.gnome.Nautilus")[0], 0)
             self.assertEqual(self.run_cli("add", "b.desktop", "--spot", "1")[0], 0)
             _code, out = self.run_cli("list")
-            self.assertEqual(out, "1  b.desktop\n2  org.gnome.Nautilus.desktop\n3  (empty)\n")
+            lines = out.splitlines()
+            self.assertEqual(len(lines), 6)
+            self.assertEqual(lines[0], "1  b.desktop")
+            self.assertTrue(lines[1].startswith("2  Push to talk, "), lines[1])
+            self.assertEqual(lines[4:], ["5  org.gnome.Nautilus.desktop", "6  (empty)"])
             self.assertEqual(self.run_cli("remove", "1")[0], 0)
-            self.assertEqual(load_config(path)[0].shortcuts, ["org.gnome.Nautilus.desktop"])
-            self.assertEqual(self.run_cli("remove", "3")[0], 2)
+            bar = load_config(path)[0].bar
+            self.assertEqual([i.name for i in bar], [None, None, None, "org.gnome.Nautilus.desktop"])
+            # Only an app: the keys are the file's.
+            self.assertEqual(self.run_cli("remove", "2")[0], 2)
+            self.assertEqual(self.run_cli("remove", "6")[0], 2)
+            self.assertEqual(self.run_cli("remove", "7")[0], 2)
             self.assertEqual(self.run_cli("add", "bad name")[0], 2)
-            self.assertEqual(self.run_cli("add", "c", "--spot", "4")[0], 2)
+            self.assertEqual(self.run_cli("add", "c", "--spot", "7")[0], 2)
+            self.assertEqual(len(load_config(path)[0].bar), 4)
+
+    def test_the_apps_page(self):
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            self.assertEqual(self.run_cli("add", "org.gnome.Settings", "--apps")[0], 0)
+            code, out = self.run_cli("add", "bitwarden", "--apps", "--spot", "1")
+            self.assertEqual((code, out), (0, "the apps page's apps: bitwarden.desktop, org.gnome.Settings.desktop\n"))
+            _code, out = self.run_cli("list", "--apps")
+            self.assertEqual(
+                out.splitlines()[:3], ["1  bitwarden.desktop", "2  org.gnome.Settings.desktop", "3  (empty)"]
+            )
+            self.assertEqual(len(out.splitlines()), 8)
+            c = load_config(path)[0]
+            self.assertEqual(
+                ([i.name for i in c.apps], len(c.bar)), (["bitwarden.desktop", "org.gnome.Settings.desktop"], 3)
+            )
+            self.assertEqual(self.run_cli("remove", "2", "--apps")[0], 0)
+            self.assertEqual([i.name for i in load_config(path)[0].apps], ["bitwarden.desktop"])
+            self.assertEqual(self.run_cli("add", "c", "--apps", "--spot", "9")[0], 2)
 
 
 class StatusTests(unittest.TestCase):

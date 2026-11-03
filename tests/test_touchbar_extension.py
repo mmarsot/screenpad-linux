@@ -43,7 +43,7 @@ from screenpad_touchbar.common import (
 from screenpad_touchbar.config_edit import with_height
 from screenpad_touchbar.daemon import Daemon
 from screenpad_touchbar.keys import KeyEmitter
-from screenpad_touchbar.scene import DIVIDER_X, TILE_CLASSES, TILE_STYLES
+from screenpad_touchbar.scene import TILE_CLASSES, TILE_STYLES
 
 # GNOME 50's LayoutManager chrome options (layout.js defaultParams). Params.parse
 # throws on any other key, after addChrome has already put the actor on the
@@ -340,13 +340,15 @@ class SceneTests(unittest.TestCase):
         out = js(
             "scene.js",
             "(() => { const g = m.barGeometry(v.s, v.monitor); const b = {x: 10, y: 4, width: 100};"
-            " return [m.dividerBox(v.s, g), m.dividerBox({...v.s, divider: null}, g),"
+            " return [m.dividerBox({...v.s, divider: 836}, g), m.dividerBox(v.s, g),"
             " m.badgeBox({badge: '3'}, b, g.iconSize), m.badgeBox({badge: ''}, b, g.iconSize), g.iconSize]; })()",
             s=state,
             monitor=MONITORS[1],
         )
         divider, none, badge, no_badge, icon = out
-        self.assertEqual(divider["x"], round(DIVIDER_X * MONITORS[1]["width"] / PANEL_W) - 1)
+        self.assertEqual(divider["x"], round(836 * MONITORS[1]["width"] / PANEL_W) - 1)
+        # The daemon draws none: any item goes in any spot.
+        self.assertIsNone(state["divider"])
         self.assertIsNone(none)
         self.assertEqual(badge, {"x": 110 - round(icon * 0.75), "y": 4, "fontSize": max(round(icon * 0.3), 8)})
         self.assertIsNone(no_badge)
@@ -379,22 +381,28 @@ class SceneTests(unittest.TestCase):
 
             state = scene()
             spot = {t["drop"]: t["x"] + 10 for t in state["tiles"] if t.get("drop")}
-            button, grip = state["tiles"][0]["x"] + 10, PANEL_W - 10
-            # Over shortcut spot 1: there. Over a button or the grip: the
-            # first free spot, 2.
-            self.assertEqual(drops(state, spot[1], button, grip), [[1, ["--spot", "1"]], [2, []], [2, []]])
+            # The app in spot 3 and the empty spots take drops; the key and
+            # the app's tile in spots 1 and 2 do not.
+            self.assertEqual(sorted(spot), [3, 4, 5, 6])
+            key, tile, grip = state["tiles"][0]["x"] + 10, state["tiles"][1]["x"] + 10, PANEL_W - 10
+            # Over the app: there, before it. Over the key or the grip: the
+            # first free spot, 4.
+            self.assertEqual(drops(state, spot[3], key, grip), [[3, ["--spot", "3"]], [4, []], [4, []]])
             # Those arguments put the app where the drop said.
-            [(_, args)] = drops(state, spot[1])
+            [(_, args)] = drops(state, spot[3])
             self.assertEqual(add("a.desktop", args), 0)
-            [(_, args)] = drops(scene(), button)
+            [(_, args)] = drops(scene(), key)
             self.assertEqual(add("b.desktop", args), 0)
-            state = scene()
-            self.assertEqual(apps(state), ["a.desktop", "files.desktop", "b.desktop"])
-            # A full bar takes a drop only on a spot, which it replaces.
-            self.assertEqual(drops(state, button, spot[2]), [None, [2, ["--spot", "2"]]])
-            [(_, args)] = drops(state, spot[2])
+            [(_, args)] = drops(scene(), tile)
             self.assertEqual(add("c.desktop", args), 0)
-            self.assertEqual(apps(scene()), ["a.desktop", "c.desktop", "b.desktop"])
+            state = scene()
+            self.assertEqual(apps(state), ["a.desktop", "files.desktop", "b.desktop", "c.desktop"])
+            self.assertEqual(state["tiles"][1]["label"], "Agents")
+            # A full bar takes a drop only on an app, which it replaces.
+            self.assertEqual(drops(state, key, spot[4]), [None, [4, ["--spot", "4"]]])
+            [(_, args)] = drops(state, spot[4])
+            self.assertEqual(add("d.desktop", args), 0)
+            self.assertEqual(apps(scene()), ["a.desktop", "d.desktop", "b.desktop", "c.desktop"])
 
 
 class StylesheetTests(unittest.TestCase):

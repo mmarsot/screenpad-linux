@@ -42,9 +42,11 @@ export function layoutKey(state, monitor) {
     ]);
 }
 
-// Only an app the bar shows as a tile can be opened over D-Bus.
+// Only an app shown as a tile, or as a widget of the apps page, can be
+// opened over D-Bus.
 export function canLaunch(state, id) {
-    return state?.tiles?.some(t => t.app === id) ?? false;
+    const shown = list => (Array.isArray(list) ? list : []).some(t => t?.app === id);
+    return shown(state?.tiles) || shown(state?.surface?.widgets);
 }
 
 // The bar's size on the monitor. Panel pixels become logical pixels; the

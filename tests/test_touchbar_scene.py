@@ -19,7 +19,7 @@ from screenpad_touchbar.common import (
 )
 from screenpad_touchbar.keys import KeyEmitter
 from screenpad_touchbar.protocol import parse_ask
-from screenpad_touchbar.scene import DISMISS, DIVIDER_X, TILE_CLASSES, TILE_STYLES, ask_option_at, ask_tiles, spot_tiles
+from screenpad_touchbar.scene import DISMISS, TILE_CLASSES, TILE_STYLES, ask_option_at, ask_tiles, spot_tiles
 
 
 class SceneTests(unittest.TestCase):
@@ -29,19 +29,19 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(
             [(x["id"], x["x"], x["width"], x["style"]) for x in tiles],
             [
-                ("button-0", 0, 272, "button"),
-                ("button-1", 272, 272, "button"),
-                ("button-2", 544, 272, "button"),
-                ("shortcut-0", 856, 272, "shortcut"),
-                ("shortcut-1", 1128, 272, "shortcut"),
-                ("shortcut-2", 1400, 272, "shortcut"),
+                ("item-0", 0, 272, "button"),
+                ("item-1", 272, 272, "button"),
+                ("item-2", 544, 272, "shortcut"),
+                ("item-3", 856, 272, "shortcut"),
+                ("item-4", 1128, 272, "shortcut"),
+                ("item-5", 1400, 272, "shortcut"),
                 ("grip", 1816, 104, "grip"),
             ],
         )
         self.assertEqual(
             tiles[0],
             {
-                "id": "button-0",
+                "id": "item-0",
                 "x": 0,
                 "width": 272,
                 "style": "button",
@@ -54,16 +54,46 @@ class SceneTests(unittest.TestCase):
         # No app provides "agents": its config label, dimmed.
         self.assertEqual(tiles[1]["classes"], ["tile", "offline"])
         self.assertEqual(tiles[1]["label"], "Agents")
-        self.assertEqual(tiles[2]["classes"], ["empty"])
+        # An app in the third spot takes drops, like the empty spots after it.
         self.assertEqual(
-            tiles[3],
-            {"id": "shortcut-0", "x": 856, "width": 272, "style": "shortcut", "drop": 1, "app": "files.desktop"},
+            tiles[2],
+            {"id": "item-2", "x": 544, "width": 272, "style": "shortcut", "drop": 3, "app": "files.desktop"},
         )
-        self.assertEqual(tiles[4]["classes"], ["empty"])
-        self.assertEqual((tiles[4]["icon"], tiles[4]["icon_scale"], tiles[4]["drop"]), ("list-add-symbolic", 0.6, 2))
-        self.assertTrue(tiles[4]["empty"])
+        self.assertNotIn("drop", tiles[0])
+        self.assertNotIn("drop", tiles[1])
+        self.assertEqual(tiles[3]["classes"], ["empty"])
+        self.assertEqual((tiles[3]["icon"], tiles[3]["icon_scale"], tiles[3]["drop"]), ("list-add-symbolic", 0.6, 4))
+        self.assertTrue(tiles[3]["empty"])
         self.assertEqual(tiles[6]["glyph"], "grip")
-        self.assertEqual(DIVIDER_X, 836)
+
+    def test_any_item_in_any_spot(self):
+        c = config(
+            '[[bar]]\napp = "files.desktop"\nlabel = "Files"\n'
+            '[[bar]]\nlabel = "Agents page"\npage = "agents"\n'
+            '[[bar]]\nlabel = "Run"\ncommand = "x"\n'
+            '[[bar]]\nlabel = "Agents"\ntile = "agents"\n'
+            '[[bar]]\nicon = "a-symbolic"\nkey = "micmute"\nmode = "hold"\n'
+        )
+        tiles = spot_tiles(c, page_to=APPS)
+        self.assertEqual(
+            [t.get("app") or t.get("label") or t.get("icon") for t in tiles[:6]][:5],
+            ["files.desktop", "Agents page", "Run", "Agents", "a-symbolic"],
+        )
+        self.assertEqual(
+            [t["style"] for t in tiles[:6]], ["shortcut", "button", "button", "button", "button", "shortcut"]
+        )
+        self.assertEqual(tiles[0]["label"], "Files")
+        self.assertEqual([t.get("classes") for t in tiles[2:6]], [["tap"], ["tile", "offline"], ["hold"], ["empty"]])
+        # A page item shows its page as the app gives it, while it can open.
+        self.assertEqual(tiles[1]["classes"], ["tile", "offline"])
+        page = {"agents": {"label": "Agents", "icon": "x-symbolic", "badge": "2", "tone": "warning"}}
+        tile = spot_tiles(c, page_to=APPS, pages=page)[1]
+        self.assertEqual(
+            {k: tile[k] for k in ("classes", "label", "icon", "badge")},
+            {"classes": ["tile", "tone-warning"], "label": "Agents", "icon": "x-symbolic", "badge": "2"},
+        )
+        # Drops go to an app's spot and the empty one only.
+        self.assertEqual([t.get("drop") for t in tiles[:6]], [1, None, None, None, None, 6])
 
     def test_page_button_tile(self):
         c = config(TILE_CONFIG)
@@ -94,14 +124,14 @@ class SceneTests(unittest.TestCase):
     def test_removing_and_app_tiles(self):
         c = config(TILE_CONFIG)
         tiles = spot_tiles(
-            c, pressed=[3], removing=[3], provided={"agents": {"tone": "warning", "label": "1 blocked", "badge": "3"}}
+            c, pressed=[2], removing=[2], provided={"agents": {"tone": "warning", "label": "1 blocked", "badge": "3"}}
         )
-        self.assertEqual(tiles[3]["classes"], ["removing"])
-        self.assertEqual(tiles[3]["icon"], "edit-delete-symbolic")
+        self.assertEqual(tiles[2]["classes"], ["removing"])
+        self.assertEqual(tiles[2]["icon"], "edit-delete-symbolic")
         self.assertEqual(
             tiles[1],
             {
-                "id": "button-1",
+                "id": "item-1",
                 "x": 272,
                 "width": 272,
                 "style": "button",
@@ -121,7 +151,7 @@ class SceneTests(unittest.TestCase):
             {"id": "q", "title": "T", "options": [{"id": "a", "label": "A", "tone": tone} for tone in TONES[:1]]},
             0,
         )
-        tiles = spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}}, page_to=APPS) + ask_tiles(ask)
+        tiles = spot_tiles(c, removing=[2], provided={"agents": {"tone": "accept"}}, page_to=APPS) + ask_tiles(ask)
         for tile in tiles:
             self.assertIn(tile["style"], TILE_STYLES)
             for name in tile.get("classes", []):

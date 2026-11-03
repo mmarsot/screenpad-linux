@@ -1,14 +1,15 @@
-"""Tests for keys, the config: parsing, tiles, writing in place and migration.
+"""Tests for keys and the config: its items of every kind on the bar and the apps page, tiles, loading.
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests"""
 
 import contextlib
 import io
 import os
+import re
 import tempfile
 import unittest
 
-from touchbar_support import REPO, SYN, TILE_CONFIG, ConfigHome, config
+from touchbar_support import SYN, TILE_CONFIG, ConfigHome, config
 
 from screenpad_touchbar.cli import main
 from screenpad_touchbar.codes import (
@@ -20,8 +21,8 @@ from screenpad_touchbar.common import (
     ConfigError,
 )
 from screenpad_touchbar.config import load_config
-from screenpad_touchbar.config_edit import add_shortcut, edit_config, migrate_config, with_height, with_shortcuts
 from screenpad_touchbar.defaults import EXAMPLE_CONFIG
+from screenpad_touchbar.items import app_label
 from screenpad_touchbar.keys import KeyEmitter, parse_key
 
 
@@ -85,20 +86,26 @@ class ConfigTests(unittest.TestCase):
         c = config(EXAMPLE_CONFIG)
         self.assertEqual(c.height, DEFAULT_HEIGHT)
         self.assertEqual(
-            [(b.label, b.icon, b.mode, b.keys) for b in c.buttons],
+            [(b.kind, b.label, b.icon, b.mode, b.keys) for b in c.bar],
             [
                 # Alt+K: Claude Code's "meta+k" push-to-talk binding.
-                ("Push to talk", "audio-input-microphone-symbolic", "hold", (56, 37)),
-                ("Mute microphone", "microphone-sensitivity-muted-symbolic", "tap", (248,)),
-                ("Screenshot", "applets-screenshooter-symbolic", "tap", (99,)),
+                ("key", "Push to talk", "audio-input-microphone-symbolic", "hold", (56, 37)),
+                ("key", "Mute microphone", "microphone-sensitivity-muted-symbolic", "tap", (248,)),
+                ("key", "Screenshot", "applets-screenshooter-symbolic", "tap", (99,)),
             ],
         )
-        self.assertEqual(c.shortcuts, [])
+        self.assertEqual(c.apps, [])
+        # Its commented examples are items too.
+        examples = "\n".join(re.findall(r"(?m)^# (\[\[(?:bar|apps)\]\]|(?:app|page) = .*)$", EXAMPLE_CONFIG))
+        self.assertEqual(
+            [(i.kind, i.name) for i in config(examples).bar + config(examples).apps],
+            [("app", "org.gnome.Nautilus.desktop"), ("app", "org.gnome.Settings.desktop"), ("page", "agents")],
+        )
 
     def test_default_icons_are_installed(self):
         # The icons the default config and the page button name, in GNOME's
         # own theme.
-        for icon in [b.icon for b in config(EXAMPLE_CONFIG).buttons] + list(PAGE_ICONS):
+        for icon in [b.icon for b in config(EXAMPLE_CONFIG).bar] + list(PAGE_ICONS):
             found = [
                 os.path.join(root, f)
                 for root, _, files in os.walk("/usr/share/icons/Adwaita")
@@ -109,10 +116,10 @@ class ConfigTests(unittest.TestCase):
                 self.skipTest("no Adwaita icon theme here")
             self.assertTrue(found, icon)
 
-    def test_empty_is_a_bar_without_buttons(self):
+    def test_empty_is_a_bar_without_items(self):
         c = config()
-        self.assertEqual((c.height, c.buttons, c.shortcuts), (DEFAULT_HEIGHT, [], []))
-        self.assertEqual([s.kind for s in c.spots], ["button"] * 3 + ["shortcut"] * 3 + ["grip", "page"])
+        self.assertEqual((c.height, c.bar, c.apps), (DEFAULT_HEIGHT, [], []))
+        self.assertEqual([s.kind for s in c.spots], ["item"] * 6 + ["grip", "page"])
         self.assertTrue(all(s.item is None for s in c.spots))
 
     def test_spots(self):
@@ -121,12 +128,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             spots,
             [
-                ("button", 0, 0, 272),
-                ("button", 1, 272, 272),
-                ("button", 2, 544, 272),
-                ("shortcut", 0, 856, 272),
-                ("shortcut", 1, 1128, 272),
-                ("shortcut", 2, 1400, 272),
+                ("item", 0, 0, 272),
+                ("item", 1, 272, 272),
+                ("item", 2, 544, 272),
+                ("item", 3, 856, 272),
+                ("item", 4, 1128, 272),
+                ("item", 5, 1400, 272),
                 ("grip", 0, 1816, 104),
                 ("page", 0, 1672, 144),
             ],
@@ -134,44 +141,70 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.spot_at(0, 0), 0)
         self.assertEqual(c.spot_at(271, 159), 0)
         self.assertEqual(c.spot_at(272, 10), 1)
-        self.assertIsNone(c.spot_at(830, 10))  # the gap between the groups
+        self.assertIsNone(c.spot_at(830, 10))  # the gap in the middle
         self.assertEqual(c.spot_at(856, 10), 3)
         self.assertEqual(c.spot_at(1672, 10), 7)
         self.assertEqual(c.spot_at(1815, 10), 7)
         self.assertEqual(c.spot_at(1919, 10), 6)
         self.assertIsNone(c.spot_at(100, 160))  # below the bar
 
-    def test_buttons_and_shortcuts(self):
+    def test_items_of_every_kind_in_both_places(self):
         c = config("""
 height = 200
-[[button]]
+[[bar]]
+app = "org.gnome.Nautilus.desktop"
+[[bar]]
 label = "Term"
 command = ["gnome-terminal", "--"]
-[[button]]
+[[bar]]
 icon = "~/icons/ptt.svg"
 mode = "hold"
 command = "pactl set-source-mute @DEFAULT_SOURCE@ 0"
 release_command = "pactl set-source-mute @DEFAULT_SOURCE@ 1"
-[[shortcut]]
-app = "org.gnome.Nautilus.desktop"
-[[shortcut]]
+[[bar]]
+page = "agents"
+[[apps]]
 app = "firefox_firefox"
+label = "Firefox"
+[[apps]]
+label = "Mute"
+key = "micmute"
+[[apps]]
+tile = "calls"
+[[apps]]
+page = "agents"
+icon = "x-symbolic"
 """)
-        term, ptt = c.buttons
-        self.assertEqual((term.mode, term.command, term.keys, term.icon), ("tap", ["gnome-terminal", "--"], None, None))
+        files, term, ptt, page = c.bar
+        self.assertEqual(
+            (files.kind, files.name, files.mode, files.looks()), ("app", "org.gnome.Nautilus.desktop", None, {})
+        )
+        self.assertEqual(
+            (term.kind, term.mode, term.command, term.keys, term.icon),
+            ("command", "tap", ["gnome-terminal", "--"], None, None),
+        )
         self.assertEqual(ptt.icon, os.path.expanduser("~/icons/ptt.svg"))
         self.assertEqual(ptt.command, ["/bin/sh", "-c", "pactl set-source-mute @DEFAULT_SOURCE@ 0"])
         self.assertEqual(ptt.release_command[2], "pactl set-source-mute @DEFAULT_SOURCE@ 1")
-        self.assertEqual(c.shortcuts, ["org.gnome.Nautilus.desktop", "firefox_firefox.desktop"])
+        self.assertEqual((page.kind, page.name, page.mode), ("page", "agents", None))
         self.assertEqual(
-            [s.item for s in c.spots if s.kind == "shortcut"],
-            ["org.gnome.Nautilus.desktop", "firefox_firefox.desktop", None],
+            [(i.kind, i.name, i.label) for i in c.apps],
+            [
+                ("app", "firefox_firefox.desktop", "Firefox"),
+                ("key", None, "Mute"),
+                ("tile", "calls", ""),
+                ("page", "agents", ""),
+            ],
         )
+        self.assertEqual([s.item for s in c.spots[:6]], c.bar + [None, None])
+        self.assertEqual(c.tiles(), ["calls"])
+        self.assertEqual(c.items("apps"), c.apps)
+        # Version 1's spots: apps are its shortcuts, the rest its buttons.
         self.assertEqual(
-            c.spots[1].public(),
+            c.spots[2].public(),
             {
                 "kind": "button",
-                "x": 272,
+                "x": 544,
                 "width": 272,
                 "label": "",
                 "icon": os.path.expanduser("~/icons/ptt.svg"),
@@ -179,58 +212,70 @@ app = "firefox_firefox"
             },
         )
         self.assertEqual(
-            c.spots[3].public(), {"kind": "shortcut", "x": 856, "width": 272, "app": "org.gnome.Nautilus.desktop"}
+            c.spots[0].public(), {"kind": "shortcut", "x": 0, "width": 272, "app": "org.gnome.Nautilus.desktop"}
+        )
+        self.assertEqual(
+            c.spots[5].public(), {"kind": "button", "x": 1400, "width": 272, "label": None, "icon": None, "mode": None}
         )
 
-    def test_first_version_x_and_width_are_ignored(self):
-        c = config('[[button]]\nlabel = "PTT"\nx = 0\nwidth = 480\nmode = "hold"\nkey = "F14"\n')
-        self.assertEqual((c.buttons[0].label, c.spots[0].item), ("PTT", c.buttons[0]))
-
     def test_errors(self):
-        button = '[[button]]\nlabel = "A"\nkey = "a"\n'
+        key = '[[bar]]\nlabel = "A"\nkey = "a"\n'
         bad = {
             "height = 0": "height",
             "height = 63": "height",
             "height = 541": "height",
             "height = 1.5": "whole number",
             "colour = 1": "unknown setting",
-            '[[button]]\nkey = "a"\n': "icon or a label",
-            '[[button]]\nlabel = "A"\n': "exactly one of key, command or tile",
-            button + 'tile = "x"\n': "exactly one",
-            '[[button]]\nlabel = "A"\ntile = "Agents"\n': "tile must be a name",
-            '[[button]]\nlabel = "A"\ntile = 3\n': "tile must be a name",
-            '[[button]]\nlabel = "A"\ntile = "a"\nmode = "hold"\n': "mode does not apply",
-            '[[button]]\nlabel = "A"\ntile = "a"\n[[button]]\nlabel = "B"\ntile = "a"\n': "already in another spot",
-            '[[button]]\nlabel = "A"\nkey = "a"\ncommand = "b"\n': "exactly one",
-            button + 'mode = "toggle"\n': "mode",
-            '[[button]]\nlabel = "A"\nkey = "nope"\n': "unknown key",
-            button + "size = 2\n": "unknown setting",
-            '[[button]]\nlabel = "A"\ncommand = []\n': "non-empty list",
-            button + 'release_command = "b"\n': "release_command",
-            button + 'icon = "icons/a.svg"\n': "must start with",
-            button + 'icon = ""\n': "icon must be",
-            button * 4: "at most 3",
-            "[[shortcut]]\n": "desktop file id",
-            '[[shortcut]]\napp = "a b"\n': "desktop file id",
-            '[[shortcut]]\napp = "../x.desktop"\n': "desktop file id",
-            '[[shortcut]]\napp = "a"\nicon = "x"\n': "unknown setting",
-            '[[shortcut]]\napp = "a"\n[[shortcut]]\napp = "a.desktop"\n': "already",
-            '[[shortcut]]\napp = "a"\n'
-            '[[shortcut]]\napp = "b"\n'
-            '[[shortcut]]\napp = "c"\n'
-            '[[shortcut]]\napp = "d"\n': "at most 3",
-            "shortcut = 1": "[[shortcut]] blocks",
+            '[[bar]]\nkey = "a"\n': "icon or a label",
+            '[[apps]]\ncommand = "a"\n': "icon or a label",
+            '[[bar]]\nlabel = "A"\n': "exactly one of key, command, app, tile or page",
+            key + 'tile = "x"\n': "exactly one",
+            '[[bar]]\nlabel = "A"\ntile = "Agents"\n': "tile must be a name",
+            '[[bar]]\nlabel = "A"\ntile = 3\n': "tile must be a name",
+            '[[bar]]\npage = "Agents"\n': "page must be a name",
+            '[[bar]]\nlabel = "A"\ntile = "a"\nmode = "hold"\n': "mode does not apply to a tile",
+            '[[bar]]\napp = "a"\nmode = "tap"\n': "mode does not apply to an app",
+            '[[apps]]\npage = "a"\nmode = "tap"\n': "mode does not apply to a page",
+            '[[bar]]\nlabel = "A"\ntile = "a"\n[[bar]]\nlabel = "B"\ntile = "a"\n': "already in another spot",
+            # One tile in one place: its events do not say where.
+            '[[bar]]\ntile = "a"\n[[apps]]\ntile = "a"\n': "already in another spot",
+            '[[bar]]\nlabel = "A"\nkey = "a"\ncommand = "b"\n': "exactly one",
+            key + 'mode = "toggle"\n': "mode",
+            '[[bar]]\nlabel = "A"\nkey = "nope"\n': "unknown key",
+            key + "size = 2\n": "unknown setting",
+            '[[bar]]\nlabel = "A"\ncommand = []\n': "non-empty list",
+            key + 'release_command = "b"\n': "release_command",
+            '[[bar]]\napp = "a"\nrelease_command = "b"\n': "release_command",
+            key + 'icon = "icons/a.svg"\n': "must start with",
+            key + 'icon = ""\n': "icon must be",
+            key * 7: "at most 6 [[bar]]",
+            '[[apps]]\napp = "a"\n' * 9: "at most 8 [[apps]]",
+            '[[bar]]\napp = ""\n': "desktop file id",
+            '[[bar]]\napp = "a b"\n': "desktop file id",
+            '[[apps]]\napp = "../x.desktop"\n': "desktop file id",
+            '[[bar]]\napp = "a"\n[[bar]]\napp = "a.desktop"\n': "already on the bar",
+            '[[apps]]\npage = "a"\n[[apps]]\npage = "a"\n': "already on the apps page",
+            "bar = 1": "[[bar]] blocks",
+            "apps = [1]": "must be a [[apps]] block",
+            # An earlier version's: migrate.py converts them.
+            '[[button]]\nlabel = "A"\nkey = "a"\n': "[[button]] blocks are from an earlier version",
+            '[[shortcut]]\napp = "a"\n': "[[shortcut]] blocks are from an earlier version",
             "height = ": "",
         }
         for text, what in bad.items():
             with self.assertRaises(ConfigError, msg=text) as cm:
                 config(text)
             self.assertIn(what, str(cm.exception), text)
+        # The same app may be in both places.
+        self.assertEqual(len(config('[[bar]]\napp = "a"\n[[apps]]\napp = "a"\n').apps), 1)
 
-    def test_error_names_the_button(self):
+    def test_error_names_the_item(self):
         with self.assertRaises(ConfigError) as cm:
-            config('[[button]]\nlabel = "PTT"\nkey = "nope"\n')
-        self.assertIn("button 1 (PTT)", str(cm.exception))
+            config('[[bar]]\nlabel = "PTT"\nkey = "nope"\n')
+        self.assertIn("bar item 1 (PTT)", str(cm.exception))
+        with self.assertRaises(ConfigError) as cm:
+            config('[[apps]]\napp = "a"\n[[apps]]\nkey = "a"\n')
+        self.assertIn("apps item 2", str(cm.exception))
 
     def test_load_order(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d):
@@ -246,12 +291,33 @@ app = "firefox_firefox"
                 load_config()
             self.assertIn(path, str(cm.exception))
 
+    def test_app_labels(self):
+        with tempfile.TemporaryDirectory() as d:
+            apps = os.path.join(d, "applications")
+            os.makedirs(apps)
+            with open(os.path.join(apps, "com.example.Tool.desktop"), "w") as f:
+                f.write("[Desktop Entry]\nName=Example Tool\nName[fr]=Outil\nExec=tool\n")
+            old = {k: os.environ.get(k) for k in ("XDG_DATA_HOME", "XDG_DATA_DIRS")}
+            os.environ.update(XDG_DATA_HOME=d, XDG_DATA_DIRS=os.path.join(d, "none"))
+            app_label.cache_clear()
+            try:
+                self.assertEqual(app_label("com.example.Tool.desktop"), "Example Tool")
+                # Without a desktop file, from its id.
+                self.assertEqual(app_label("org.gnome.Nautilus.desktop"), "Nautilus")
+                self.assertEqual(app_label("bitwarden.desktop"), "bitwarden")
+            finally:
+                for k, v in old.items():
+                    os.environ.pop(k, None) if v is None else os.environ.update({k: v})
+                app_label.cache_clear()
+
 
 class TileConfigTests(unittest.TestCase):
-    def test_tile_buttons(self):
+    def test_tile_items(self):
         c = config(TILE_CONFIG)
         self.assertEqual(c.tiles(), ["agents"])
-        self.assertEqual((c.buttons[1].tile, c.buttons[1].keys, c.buttons[1].command), ("agents", None, None))
+        self.assertEqual(
+            (c.bar[1].kind, c.bar[1].name, c.bar[1].keys, c.bar[1].command), ("tile", "agents", None, None)
+        )
 
     def test_check_lists_a_tile(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
@@ -261,157 +327,7 @@ class TileConfigTests(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(main(["check"]), 0)
-            self.assertIn("button   2  x  272..544  Agents, icon none, tile agents (an app draws it)", out.getvalue())
-
-    def test_migrate_the_default_before_tiles(self):
-        with open(os.path.join(REPO, "tests", "touchbar-v3-default.toml")) as f:
-            v3 = f.read()
-        self.assertNotIn("tile", v3)
-        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
-            os.makedirs(os.path.dirname(path))
-            with open(path, "w") as f:
-                f.write(v3)
-            self.assertTrue(migrate_config())
-            with open(path) as f:
-                self.assertEqual(f.read(), EXAMPLE_CONFIG)
-            self.assertFalse(migrate_config())
-            # An edited one keeps the edits and gains the 'tile' lines once.
-            with open(path, "w") as f:
-                f.write(v3.replace("height = 160", "height = 168") + '\n[[shortcut]]\napp = "bitwarden.desktop"\n')
-            self.assertTrue(migrate_config())
-            self.assertFalse(migrate_config())
-            c = load_config()[0]
-            self.assertEqual((c.height, c.shortcuts), (168, ["bitwarden.desktop"]))
-            with open(path) as f:
-                self.assertEqual(f.read().count("#   tile "), 1)
-
-
-class ConfigEditTests(unittest.TestCase):
-    def test_with_height_edits_only_that_line(self):
-        text = '# top\nheight = 160  # mine\n\n[[button]]\nlabel = "A"\nkey = "a"\n'
-        self.assertEqual(with_height(text, 240), text.replace("160  # mine", "240"))
-        # No height line yet: one goes in before the first table.
-        out = with_height('# top\n[[button]]\nlabel = "A"\nkey = "a"\n', 96)
-        self.assertEqual(out, '# top\nheight = 96\n\n[[button]]\nlabel = "A"\nkey = "a"\n')
-        self.assertEqual(with_height("", 96), "height = 96\n\n")
-        # A height inside a table is not the bar's.
-        self.assertEqual(config(with_height('[[shortcut]]\napp = "a"\n', 200)).height, 200)
-
-    def test_with_shortcuts_keeps_everything_else(self):
-        text = EXAMPLE_CONFIG
-        added = with_shortcuts(text, ["a.desktop", "b.desktop"])
-        self.assertTrue(added.startswith(text))
-        self.assertEqual(config(added).shortcuts, ["a.desktop", "b.desktop"])
-        removed = with_shortcuts(added, [])
-        self.assertEqual(removed, text)
-        # Repeated edits do not pile up blank lines.
-        again = with_shortcuts(with_shortcuts(added, ["b.desktop"]), ["a.desktop", "b.desktop"])
-        self.assertEqual(again, added)
-
-    def test_with_shortcuts_in_the_middle(self):
-        text = (
-            'height = 100\n[[shortcut]]\napp = "a.desktop"  # files\n\n# Buttons:\n[[button]]\nlabel = "A"\nkey = "a"\n'
-        )
-        out = with_shortcuts(text, ["c.desktop"])
-        self.assertEqual(
-            out, 'height = 100\n\n# Buttons:\n[[button]]\nlabel = "A"\nkey = "a"\n\n[[shortcut]]\napp = "c.desktop"\n'
-        )
-
-    def test_add_shortcut(self):
-        self.assertEqual(add_shortcut([], "a"), ["a"])
-        self.assertEqual(add_shortcut(["a"], "b"), ["a", "b"])
-        self.assertEqual(add_shortcut(["a", "b"], "c", 0), ["c", "a", "b"])
-        self.assertEqual(add_shortcut(["a"], "c", 2), ["a", "c"])
-        # Full: dropping on a spot replaces it; without a spot there is no room.
-        self.assertEqual(add_shortcut(["a", "b", "c"], "d", 1), ["a", "d", "c"])
-        with self.assertRaises(ConfigError):
-            add_shortcut(["a", "b", "c"], "d")
-        # One already on the bar moves.
-        self.assertEqual(add_shortcut(["a", "b", "c"], "a", 2), ["b", "c", "a"])
-        self.assertEqual(add_shortcut(["a", "b"], "a"), ["b", "a"])
-        with self.assertRaises(ConfigError):
-            add_shortcut([], "a", 3)
-
-    def test_edit_config(self):
-        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
-            # No file yet: it starts from the default.
-            c = edit_config(lambda c: (c.height, ["a.desktop"]))
-            self.assertEqual(c.shortcuts, ["a.desktop"])
-            with open(path) as f:
-                text = f.read()
-            self.assertTrue(text.startswith(EXAMPLE_CONFIG))
-            c = edit_config(lambda c: (320, c.shortcuts))
-            self.assertEqual((c.height, c.shortcuts), (320, ["a.desktop"]))
-            self.assertEqual(load_config()[0].height, 320)
-            # A broken file is not touched.
-            with open(path, "w") as f:
-                f.write("height = 'x'\n")
-            with self.assertRaises(ConfigError) as cm:
-                edit_config(lambda c: (200, c.shortcuts))
-            self.assertIn("fix this first", str(cm.exception))
-            with open(path) as f:
-                self.assertEqual(f.read(), "height = 'x'\n")
-
-    def test_edit_config_refuses_an_unsafe_edit(self):
-        # A [shortcut]-looking line inside a multi-line string would be cut.
-        text = 'height = 100\n[[button]]\nlabel = """\n[[shortcut]]\n"""\nkey = "a"\n'
-        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
-            os.makedirs(os.path.dirname(path))
-            with open(path, "w") as f:
-                f.write(text)
-            with self.assertRaises(ConfigError):
-                edit_config(lambda c: (c.height, ["a.desktop"]))
-            with open(path) as f:
-                self.assertEqual(f.read(), text)
-
-    def test_migrate_the_first_default(self):
-        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
-            self.assertFalse(migrate_config())
-            os.makedirs(os.path.dirname(path))
-            with open(os.path.join(REPO, "tests", "touchbar-v1-default.toml")) as f:
-                v1 = f.read()
-            with open(path, "w") as f:
-                f.write(v1)
-            self.assertTrue(migrate_config())
-            with open(path) as f:
-                self.assertEqual(f.read(), EXAMPLE_CONFIG)
-            # A changed one is the user's and stays, but for the F14
-            # push-to-talk block (see test_migrate_the_f14_push_to_talk).
-            with open(path, "w") as f:
-                f.write(v1.replace("height = 160", "height = 200"))
-            migrate_config()
-            self.assertEqual(load_config()[0].height, 200)
-
-    def test_migrate_the_f14_push_to_talk(self):
-        # The default the previous version wrote: F14, which terminals never
-        # receive, becomes Alt+K, and the user's other edits stay.
-        with open(os.path.join(REPO, "tests", "touchbar-v2-default.toml")) as f:
-            v2 = f.read()
-        self.assertIn('key = "F14"', v2)
-        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
-            os.makedirs(os.path.dirname(path))
-            with open(path, "w") as f:
-                f.write(v2)
-            self.assertTrue(migrate_config())
-            with open(path) as f:
-                self.assertEqual(f.read(), EXAMPLE_CONFIG)
-            self.assertFalse(migrate_config())
-
-            edited = v2.replace("height = 160", "height = 240") + '\n[[shortcut]]\napp = "discord.desktop"\n'
-            with open(path, "w") as f:
-                f.write(edited)
-            self.assertTrue(migrate_config())
-            c = load_config()[0]
-            self.assertEqual((c.height, c.shortcuts), (240, ["discord.desktop"]))
-            self.assertEqual(c.buttons[0].keys, (56, 37))
-            with open(path) as f:
-                self.assertNotIn("F14", f.read())
-
-            # A push-to-talk key the user chose stays.
-            with open(path, "w") as f:
-                f.write(v2.replace('key = "F14"', 'key = "ctrl+alt+p"'))
-            migrate_config()
-            self.assertEqual(load_config()[0].buttons[0].keys, (29, 56, 25))
+            self.assertIn("  spot  2  x  272..544  Agents, icon none, tile agents (an app draws it)", out.getvalue())
 
 
 if __name__ == "__main__":

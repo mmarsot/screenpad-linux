@@ -18,6 +18,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {loadInterfaceXML} from 'resource:///org/gnome/shell/misc/fileUtils.js';
@@ -298,6 +299,14 @@ export class Pages {
                     x_align: align,
                 }),
             );
+        } else if (parts.app) {
+            // An app on the apps page: its own icon, as the bar draws one.
+            const app = Shell.AppSystem.get_default().lookup_app(parts.app);
+            const icon = app
+                ? app.create_icon_texture(parts.iconSize)
+                : new St.Icon({icon_name: 'image-missing', icon_size: parts.iconSize});
+            icon.x_align = align;
+            column.add_child(icon);
         }
         const label = (value, styleClass, size, wrap) => {
             const l = new St.Label({
