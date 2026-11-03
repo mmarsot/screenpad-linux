@@ -22,6 +22,8 @@ BTN_TOOL_QUADTAP = 0x14F
 KEY_CNT = 0x300
 # What asus-nb-wmi sends for Fn+F6.
 KEY_TOUCHPAD_TOGGLE = 0x212
+MT_TOOL_FINGER = 0
+MT_TOOL_PEN = 1
 MT_TOOL_PALM = 2
 BUS_VIRTUAL = 0x06
 # BTN_TOOL_* for 1..5 fingers, as input_mt_report_finger_count() sends them.

@@ -31,6 +31,9 @@ from .codes import (
     INPUT_ID,
     KEY_CNT,
     MAX_KEY,
+    MT_TOOL_PALM,
+    MT_TOOL_PEN,
+    SYN_REPORT,
     UI_ABS_SETUP,
     UI_DEV_CREATE,
     UI_DEV_DESTROY,
@@ -44,7 +47,7 @@ from .codes import (
     UINPUT_SETUP,
     _ioc,
 )
-from .common import KEYS_NAME, PAD_NAME, SOURCE_PRODUCT, SOURCE_SUFFIX, SOURCE_VENDOR, SYS_INPUT, TouchbarError
+from .common import KEYS_NAME, PAD_NAME, SOURCE_PRODUCT, SOURCE_SUFFIX, SOURCE_VENDOR, SYS_INPUT, TouchbarError, log
 from .splitter import Axes
 
 
@@ -99,12 +102,41 @@ def write_events(fd, events):
         os.write(fd, b"".join(INPUT_EVENT.pack(0, 0, t, c, v) for t, c, v in events))
 
 
+def tool_reset(tool, ids):
+    """The events that leave the tool type the kernel keeps for each idle
+    slot at MT_TOOL_PEN, which a touchpad never reports; tool is the
+    ABS_MT_TOOL_TYPE absinfo (None without the axis), ids the slots'
+    tracking ids.
+
+    The kernel sends a slot's ABS_MT_TOOL_TYPE only when it changes, and
+    libinput keeps the last one it read for each slot, across touches and
+    across a resume. A palm libinput saw in a slot, then a finger there
+    while the daemon held the grab (or libinput had the touchpad off), and
+    every later finger in that slot is a palm to libinput: one finger no
+    longer moves the pointer, two do. With the pen value kept, the next
+    contact in every slot sends its own tool. The slots go in order, so
+    the kernel's current slot is left at the last one and a new contact in
+    slot 0 sends ABS_MT_SLOT too."""
+    if tool is None or not tool[1] <= MT_TOOL_PEN < MT_TOOL_PALM <= tool[2]:
+        return []
+    events = []
+    for slot, id in enumerate(ids):
+        if id == -1:
+            events += [(EV_ABS, ABS_MT_SLOT, slot), (EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PEN)]
+    return events + [(EV_SYN, SYN_REPORT, 0)] if events else []
+
+
 class Source:
     """The grabbed ScreenPad touchpad."""
 
     def __init__(self, path):
         self.path = path
-        self.fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        # Written to only by reset_tools(); a node that is not writable is
+        # still read.
+        try:
+            self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC)
+        except PermissionError:
+            self.fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
         try:
             buf = bytearray(INPUT_ID.size)
             fcntl.ioctl(self.fd, EVIOCGID, buf)
@@ -156,6 +188,17 @@ class Source:
         left = buf[BTN_LEFT // 8] >> (BTN_LEFT % 8) & 1
         return ids, xs, ys, tools, left, absinfo(self.fd, ABS_MT_SLOT)[0]
 
+    def reset_tools(self):
+        """Make the next contact in each idle slot send its tool type
+        (tool_reset()). Written while grabbed, only this reader sees it;
+        otherwise libinput reads it too, as a slot that is no palm. A failure
+        is logged: the touchpad works on without it."""
+        tool = self.abs.get(ABS_MT_TOOL_TYPE)
+        try:
+            write_events(self.fd, tool_reset(tool, self.mt_slots(ABS_MT_TRACKING_ID) if tool else []))
+        except OSError as e:
+            log("cannot reset the touchpad's tool types: %s" % e)
+
     def grab(self, on):
         fcntl.ioctl(self.fd, EVIOCGRAB, 1 if on else 0)
         self.grabbed = on
@@ -174,6 +217,19 @@ class Source:
 
     def close(self):
         os.close(self.fd)
+
+
+def reset_tools(path):
+    """Source.reset_tools() on the touchpad at path, which the daemon does not hold."""
+    try:
+        source = Source(path)
+    except (OSError, TouchbarError) as e:
+        log("cannot reset the touchpad's tool types: %s" % e)
+        return
+    try:
+        source.reset_tools()
+    finally:
+        source.close()
 
 
 def uinput_open():

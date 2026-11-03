@@ -38,7 +38,7 @@ from .common import (
 )
 from .config import config_path, load_config
 from .config_edit import edit_config, remove_app
-from .devices import Source, create_keys, create_pad, find_source, uinput_destroy, write_events
+from .devices import Source, create_keys, create_pad, find_source, reset_tools, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
 from .moves import BAR_LIST, Mover
@@ -332,6 +332,7 @@ class Daemon:
             while source.grabbed and source.touching() and time.monotonic() < deadline:
                 time.sleep(0.05)
                 source.read()
+            source.reset_tools()  # before libinput reads the touchpad again
             source.grab(False)
         except OSError:
             pass
@@ -454,6 +455,9 @@ class Daemon:
                     pass
             if self.toggle:
                 self.toggle.readable(ready)
+                # Fn+F6's (1) to (2): libinput reads the touchpad again.
+                if self.toggle.turned_on() and self.source is None and (path := self.device or find_source()):
+                    reset_tools(path)
             if self.source and self.source.fd in ready:
                 self.process()
                 if self.source is None:
