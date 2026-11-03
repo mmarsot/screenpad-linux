@@ -62,18 +62,17 @@ function textActor(tile, iconSize, height) {
     });
     const align = lines.start ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
     const line = (text, styleClass, size) => {
+        // St sets the wrapped lines' alignment from text-align.
+        const textAlign = lines.start ? 'left' : 'center';
         const label = new St.Label({
             text,
             x_align: align,
             style_class: styleClass,
-            style: `font-size: ${size}px;`,
+            style: `font-size: ${size}px; text-align: ${textAlign};`,
         });
         if (lines.wrap) {
             label.clutter_text.line_wrap = true;
             label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-            label.clutter_text.line_alignment = lines.start
-                ? Pango.Alignment.LEFT
-                : Pango.Alignment.CENTER;
         }
         box.add_child(label);
     };
