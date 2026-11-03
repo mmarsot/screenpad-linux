@@ -11,7 +11,10 @@ display. "Display off" is the ScreenPad's backlight off: 'screenpad light' and
 'screenpad dark', which the udev rule lets the input group run, leave the
 connector on, so the GPU still drives it and GNOME keeps it as a monitor. The
 daemon grabs the touchpad only while the display is on, so in (1) and (2) the
-bar draws nothing and the ScreenPad is a plain touchpad.
+bar draws nothing and the ScreenPad is a plain touchpad. GNOME's on-screen
+indicator knows only the touchpad, so for (2) to (3) it says the touchpad is
+off: the scene tells the extension when a press lights the display, and when
+the next one will, and it shows "ScreenPad on" in its place.
 """
 
 import os
@@ -291,6 +294,9 @@ class Toggle:
         self.hotkey: Hotkey | None = None
         self.hotkey_at = 0.0
         self.pending: Pending | None = None
+        # Presses that lit the display since the daemon started: the
+        # extension shows "ScreenPad on" each time this goes up.
+        self.lit = 0
 
     def screenpad_on(self):
         return os.path.exists(self.flag)
@@ -298,6 +304,22 @@ class Toggle:
     def display_on(self):
         """Whether the bar should be up: the display lit, or about to be."""
         return self.panel.wanted()
+
+    def lights_next(self):
+        """Whether the next press lights the display: state (2), with the
+        cycle working and no press still settling."""
+        return (
+            self.hotkey is not None
+            and self.pending is None
+            and self.setting.value is not None
+            and touchpad_on(self.setting.value)
+            and self.screenpad_on()
+            and not self.panel.wanted()
+        )
+
+    def shown(self):
+        """What the scene says of the cycle (touchbar.json's "fnkey")."""
+        return {"lit": self.lit, "lights_next": self.lights_next()}
 
     def fds(self):
         fds = [self.hotkey.fd] if self.hotkey else []
@@ -331,6 +353,8 @@ class Toggle:
         else:
             before = (touchpad_on(self.setting.value), self.panel.wanted())
             self.pending = Pending(next_state(*before), now + FLIP_WAIT)
+        if self.pending.target[1] and not self.panel.wanted():
+            self.lit += 1
         self.panel.set(self.pending.target[1])
 
     def tick(self):

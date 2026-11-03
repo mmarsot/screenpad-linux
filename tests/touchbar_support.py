@@ -1,7 +1,8 @@
 """What the touch bar tests share: the checkout on sys.path, the GDX1505's axes,
 events in device units, a Splitter fed whole frames, a config home, fake and
-real app connections, the extension's plain modules run under node, and an
-app's page for the apps surface."""
+real app connections, the extension's plain modules run under node, an
+app's page for the apps surface, and Fn+F6's GNOME setting, panel and
+hotkeys device."""
 
 import json
 import os
@@ -10,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import unittest
 from urllib.request import pathname2url
 
@@ -29,6 +31,7 @@ from screenpad_touchbar.codes import (
 )
 from screenpad_touchbar.common import HEADER_H, PANEL_H
 from screenpad_touchbar.config import parse_config
+from screenpad_touchbar.fnkey import Hotkey, Panel
 from screenpad_touchbar.splitter import BAR, PAD, Axes, Splitter
 
 # The GDX1505 as it reports itself: 3840x2160 units, 32 units/mm, 5 slots.
@@ -294,3 +297,72 @@ def hello(apps, name="fleet"):
     apps.connect(client)
     apps.handle(client, {"op": "hello", "app": name, "tiles": []})
     return client
+
+
+class FakeSetting:
+    """send-events as GNOME keeps it. flip() is what gsd-media-keys does on a
+    press: the change shows only when the monitor's line is read."""
+
+    def __init__(self, value="enabled"):
+        self.value = value
+        self.written = []
+        self.r, self.w = os.pipe()
+        self.lines = []
+
+    def start(self, now):
+        pass
+
+    def fd(self):
+        return self.r
+
+    def flip(self):
+        current = self.lines[-1] if self.lines else self.value
+        self.change("disabled" if current == "enabled" else "enabled")
+
+    def change(self, value):
+        self.lines.append(value)
+        os.write(self.w, b".")
+
+    def readable(self):
+        os.read(self.r, 64)
+        changes = 0
+        for value in self.lines:
+            if value != self.value:
+                self.value = value
+                changes += 1
+        self.lines = []
+        return changes
+
+    def set(self, value):
+        self.written.append(value)
+        self.value = value
+
+    def stop(self):
+        os.close(self.r)
+        os.close(self.w)
+
+
+class FakePanel(Panel):
+    """The panel, with 'screenpad light' and 'dark' done at once."""
+
+    def __init__(self, lit=True):
+        super().__init__(power="/nonexistent", command=["false"])
+        self.is_lit = lit
+        self.ran = []
+
+    def lit(self):
+        return self.is_lit
+
+    def spawn(self, on):
+        self.ran.append("light" if on else "dark")
+        self.is_lit = on
+
+
+def hotkey(test, toggle):
+    """A hotkeys device for toggle, a fifo; returns its writing end."""
+    path = os.path.join(test.enterContext(tempfile.TemporaryDirectory()), "event13")
+    os.mkfifo(path)
+    toggle.hotkey = Hotkey(path)
+    w = os.open(path, os.O_WRONLY)
+    test.addCleanup(os.close, w)
+    return w
