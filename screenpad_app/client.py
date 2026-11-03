@@ -31,13 +31,6 @@ class Touchbar:
     once it arrived (None before), protocol the version it said it speaks."""
 
     def __init__(self, path, app, tiles=(), protocol=PROTOCOL, timeout=2.0):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            self.sock.settimeout(timeout)
-            self.sock.connect(path)
-        except OSError:
-            self.sock.close()
-            raise
         self.speaks = protocol
         self.welcome = None
         self.protocol = None
@@ -47,7 +40,14 @@ class Touchbar:
         hello = {"op": "hello", "app": app, "tiles": list(tiles)}
         if protocol != 1:
             hello["protocol"] = protocol  # version 1's hello says no version
-        self.send(hello)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            self.sock.settimeout(timeout)
+            self.sock.connect(path)
+            self.send(hello)
+        except (OSError, TouchbarError):
+            self.sock.close()
+            raise
 
     def fileno(self):
         return self.sock.fileno()
@@ -213,7 +213,7 @@ class Link:
             return False
         try:
             self.touchbar = Touchbar(self.path, self.app, self.tiles, self.protocol, self.timeout)
-        except OSError:
+        except (OSError, TouchbarError):
             self._retry_at = self.clock() + self.retry
             return False
         return True

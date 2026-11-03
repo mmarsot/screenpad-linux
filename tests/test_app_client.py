@@ -7,6 +7,7 @@ nothing of the daemon.
 Run with: python3 -m unittest discover -s tests"""
 
 import select
+import socket
 import subprocess
 import sys
 import unittest
@@ -316,6 +317,26 @@ class LinkTests(unittest.TestCase):
             self.assertTrue(link.connect())
             self.assertEqual(self.receive(link, bool)[0]["op"], "welcome")
             self.assertIsNone(link.refused)
+
+    def test_a_hello_that_cannot_be_sent_is_retried(self):
+        b = bar(self)
+        link = self.link(b)
+        opened: list[socket.socket] = []
+
+        def broken(sock, data):
+            opened.append(sock)
+            raise BrokenPipeError(32, "Broken pipe")
+
+        with mock.patch.object(socket.socket, "sendall", broken):
+            with self.assertRaises(TouchbarGone):
+                Touchbar(b.path, "counter")
+            self.assertFalse(link.connect())
+        self.assertEqual([s.fileno() for s in opened], [-1, -1])
+        self.assertFalse(link.connected)
+        self.assertFalse(link.connect())  # not due yet
+        self.clock.now += 5
+        self.assertTrue(link.connect())
+        self.assertEqual(self.receive(link, bool)[0]["op"], "welcome")
 
     def test_no_daemon_is_quiet(self):
         b = bar(self)
