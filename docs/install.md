@@ -176,7 +176,7 @@ Apps of the touch bar install on their own: the agent app, for Herdr's coding ag
 
 ## Configuration
 
-The bar's height, buttons and shortcuts are in `~/.config/screenpad/touchbar.toml`. Changes apply within a second of saving. See [configuration.md](configuration.md), including how to use the Push to talk button with your voice app.
+The bar's height and the items of the bar and the apps page are in `~/.config/screenpad/touchbar.toml`. Changes apply within a second of saving. See [configuration.md](configuration.md), including how to use the Push to talk button with your voice app.
 
 ## Updating
 

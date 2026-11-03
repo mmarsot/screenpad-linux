@@ -107,7 +107,7 @@ Run `sudo screenpad grub remove` only if you applied the boot parameter. Run `su
 ## Follow-ups
 
 - **Full-panel touchscreen mode:** taps land on the panel's pixels everywhere. This needs the daemon to re-emit contacts as a direct touchscreen mapped to the ScreenPad output, and a way to switch to it (Fn+F6 already cycles the touchpad and the display).
-- **Touch bar extras:** a GNOME Quick Settings toggle for the bar; buttons that show state (for example the microphone's mute state); more than three buttons or shortcuts; files, folders or commands as shortcuts; dragging a shortcut off the bar to remove it.
+- **Touch bar extras:** a GNOME Quick Settings toggle for the bar; buttons that show state (for example the microphone's mute state); more than six items on the bar; files or folders as items; dragging an app off the bar to remove it.
 - **`screenpad brightness N`:** if a brightness level survives the relight (unverified), this command would set it and relight the panel.
 - A Quick Settings toggle for the ScreenPad's display (the session can already light and darken it without `sudo`, through `screenpad light` and `dark`).
 - Support for other first-generation ScreenPad models, given testers with the hardware.
