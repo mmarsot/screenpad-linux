@@ -1,5 +1,5 @@
 """Tests for the pages: the swipe along the bar and its thresholds, the page
-dots, the mode-aware zone split (contacts already down keep their kind, the
+button, the mode-aware zone split (contacts already down keep their kind, the
 apps page never reaches the virtual touchpad), the return to the touchpad,
 what the daemon publishes, and the [screensaver] and [pager] settings.
 
@@ -35,7 +35,14 @@ from screenpad_touchbar.common import (
 )
 from screenpad_touchbar.config_edit import edit_config, migrate_config
 from screenpad_touchbar.daemon import Daemon
-from screenpad_touchbar.defaults import EXAMPLE_CONFIG, LAYOUT_DOC, OLD_LAYOUT_DOC
+from screenpad_touchbar.defaults import (
+    DOTS_LAYOUT_DOC,
+    DOTS_PAGES_DOC,
+    EXAMPLE_CONFIG,
+    LAYOUT_DOC,
+    OLD_LAYOUT_DOC,
+    PAGES_DOC,
+)
 from screenpad_touchbar.keys import KeyEmitter
 from screenpad_touchbar.pager import Pager
 from screenpad_touchbar.splitter import Splitter
@@ -120,7 +127,7 @@ class SwipeTests(unittest.TestCase):
 
 
 class BarTests(unittest.TestCase):
-    """The page dots and swipes as the bar sees them."""
+    """The page button and swipes as the bar sees them."""
 
     def setUp(self):
         self.clock = Clock()
@@ -140,7 +147,7 @@ class BarTests(unittest.TestCase):
     def handle(self, *events):
         return self.bar.handle(self.pager.watch(list(events)))
 
-    def test_a_tap_on_the_dots_turns_the_page(self):
+    def test_a_tap_on_the_page_button_turns_the_page(self):
         self.assertTrue(self.handle(("begin", 0, 1700, 80)))
         self.assertEqual(self.bar.pressed(), [7])
         self.handle(("end", 0, 1710, 70))
@@ -151,7 +158,7 @@ class BarTests(unittest.TestCase):
         self.handle(("begin", 0, 1700, 80), ("move", 0, 1500, 80), ("end", 0, 1500, 80))
         self.assertEqual(self.pager.page, HOME)
 
-    def test_dots_not_drawn_are_nothing(self):
+    def test_a_page_button_not_drawn_is_nothing(self):
         self.pager.can_show = lambda: False
         self.assertFalse(self.handle(("begin", 0, 1700, 80)))
         self.handle(("end", 0, 1700, 80))
@@ -165,7 +172,7 @@ class BarTests(unittest.TestCase):
         self.handle(("end", 0, 1450, 76))
         self.assertEqual((self.pager.page, self.resized, self.bar.base_height()), (APPS, [], 160))
 
-    def test_the_dots_stay_beside_a_card(self):
+    def test_the_page_button_stays_beside_a_card(self):
         self.apps.asks.set_available(True)
         client = type("C", (), {"send": lambda self, msg: None, "name": None})()
         self.apps.connect(client)
@@ -321,16 +328,18 @@ class PublishTests(unittest.TestCase):
     def test_the_touchpad_page(self):
         state = self.published()
         self.assertEqual((state["page"], state["screensaver"], state["surface"]), ("touchpad", {"clock": True}, None))
-        self.assertEqual(state["tiles"][-1]["style"], "dots")
-        # The version 1 spots an older extension draws have no dots.
-        self.assertNotIn("dots", [s["kind"] for s in state["spots"]])
+        self.assertEqual((state["tiles"][-1]["style"], state["tiles"][-1]["icon"]), ("page", "view-app-grid-symbolic"))
+        # The version 1 spots an older extension draws have no page button.
+        self.assertNotIn("page", [s["kind"] for s in state["spots"]])
 
     def test_the_apps_page(self):
         state = self.published(page=APPS)
         self.assertEqual(state["page"], "apps")
         self.assertEqual(state["surface"]["title"], "Apps")
         self.assertIn("%d s" % RETURN_AFTER, state["surface"]["hint"])
-        self.assertEqual((state["tiles"][-1]["page"], state["tiles"][-1]["text"]), (1, "apps"))
+        self.assertEqual(
+            (state["tiles"][-1]["icon"], state["tiles"][-1]["label"]), ("input-touchpad-symbolic", "Go to the touchpad")
+        )
 
     def test_settings(self):
         state = self.published(BAR_CONFIG + "[screensaver]\nclock = false\n[pager]\nreturn_after = 3\n", APPS)
@@ -391,7 +400,7 @@ class ConfigTests(unittest.TestCase):
             self.assertIn(
                 "pages: screensaver black with a clock; apps page back to the touchpad after 5 s", out.getvalue()
             )
-            self.assertIn("dots     1  x 1672..1816 tap or swipe the bar to turn the page", out.getvalue())
+            self.assertIn("page     1  x 1672..1816 tap to go to the other page, or swipe the bar", out.getvalue())
             # Adding a shortcut keeps the table.
             c = edit_config(lambda c: (c.height, c.shortcuts + ["web.desktop"]))
             self.assertEqual(c.pages.return_after, 5)
@@ -415,6 +424,28 @@ class ConfigTests(unittest.TestCase):
             with open(path) as f:
                 text = f.read()
             self.assertEqual((text.count(LAYOUT_DOC), text.count(OLD_LAYOUT_DOC)), (1, 0))
+            self.assertIn("height = 200", text)
+            self.assertFalse(migrate_config())
+
+    def test_migrate_the_default_with_the_page_dots(self):
+        with open(os.path.join(REPO, "tests", "touchbar-v6-default.toml")) as f:
+            v6 = f.read()
+        self.assertEqual((v6.count(DOTS_LAYOUT_DOC), v6.count(DOTS_PAGES_DOC)), (1, 1))
+        with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(v6)
+            self.assertTrue(migrate_config())
+            with open(path) as f:
+                self.assertEqual(f.read(), EXAMPLE_CONFIG)
+            self.assertFalse(migrate_config())
+            # An edited one gets the page button's descriptions, once.
+            with open(path, "w") as f:
+                f.write(v6.replace("height = 160", "height = 200"))
+            self.assertTrue(migrate_config())
+            with open(path) as f:
+                text = f.read()
+            self.assertEqual((text.count(LAYOUT_DOC), text.count(PAGES_DOC), text.count("dots")), (1, 1, 0))
             self.assertIn("height = 200", text)
             self.assertFalse(migrate_config())
 

@@ -141,23 +141,16 @@
     font-weight: bold;
 }
 
-/* The page dots: one per page, the page shown white and bigger, the page's
-   name under them; lighter while a finger is on them. */
-.screenpad-touchbar-dots {
+/* The page button: only the icon of the page a tap goes to (an app grid
+   on the touchpad page, a touchpad on the apps page), framed apart from
+   the buttons; lighter while a finger is on it. */
+.screenpad-touchbar-page {
     background-color: #202024;
     border: 2px solid #4a4a56;
 }
 
-.screenpad-touchbar-dots:active {
+.screenpad-touchbar-page:active {
     background-color: #3a3a40;
-}
-
-.screenpad-touchbar-dot {
-    background-color: #6a6a72;
-}
-
-.screenpad-touchbar-dot.current {
-    background-color: #ffffff;
 }
 
 /* The touchpad page: black below the bar, behind windows, with a faint

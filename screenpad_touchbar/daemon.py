@@ -15,11 +15,11 @@ from .common import (
     ACTIVE_FLAG,
     ASKS_PROTOCOL,
     CARD_HEIGHT,
-    DOTS,
     GRIP,
     HOME,
     LAUNCH,
     LIFT_WAIT,
+    PAGE,
     PAGES_PROTOCOL,
     PANEL_H,
     PANEL_W,
@@ -93,7 +93,7 @@ class Daemon:
             can_draw=lambda: self.renderer_protocol() >= WIDGETS_PROTOCOL,
             click=self._click,
         )
-        self.dots_shown = False
+        self.page_button_shown = False
         # Presses the bar and the surface accepted since the daemon started:
         # the extension plays a click each time this goes up.
         self.clicks = 0
@@ -148,12 +148,12 @@ class Daemon:
         """The tiles to draw: a question over the spots while one shows."""
         pressed = self.bar.pressed() if self.bar else []
         removing = self.bar.removing() if self.bar else []
-        dots = self.pager.dots() if self.pager.available() else None
-        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), dots)
+        page_to = self.pager.target() if self.pager.available() else None
+        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to)
         ask = self.apps.asks.shown()
         if ask is not None:
             tiles = ask_tiles(ask, self.bar.ask_pressed(ask) if self.bar else (), len(self.apps.asks.queue) - 1) + [
-                t for t in tiles if t["style"] in (GRIP, DOTS)
+                t for t in tiles if t["style"] in (GRIP, PAGE)
             ]
         return tiles
 
@@ -184,7 +184,7 @@ class Daemon:
             # Version 1: the extension loaded before tiles keeps drawing the
             # bar from these until the next login (GNOME loads new extension
             # code only then). It shows no app tiles and no questions.
-            "spots": [s.public() for s in self.config.spots if s.kind != DOTS],
+            "spots": [s.public() for s in self.config.spots if s.kind != PAGE],
             "pressed": self.bar.pressed() if self.bar else [],
             "removing": self.bar.removing() if self.bar else [],
         }
@@ -416,9 +416,9 @@ class Daemon:
             self.apps.asks.refresh()
             self.apps.asks.tick()
             # Back to the touchpad page after a while without a touch, and
-            # the dots shown or hidden as the extension comes and goes.
-            if self.pager.tick() or self.pager.available() != self.dots_shown:
-                self.dots_shown = self.pager.available()
+            # the page button shown or hidden as the extension comes and goes.
+            if self.pager.tick() or self.pager.available() != self.page_button_shown:
+                self.page_button_shown = self.pager.available()
                 self.publish()
             if self.surface.tick():
                 self.publish()

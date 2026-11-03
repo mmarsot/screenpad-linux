@@ -42,19 +42,46 @@ TILE_DOC = """\
 #                    icon or label shows, dimmed, while no app provides it.
 """
 
-# How the default config described the bar before the page dots.
+# How the default config described the bar before the page dots, and with
+# them (before the page button).
 OLD_LAYOUT_DOC = """\
 # The bar, left to right: three button spots, three shortcut spots, and a
 # grip at the right end. Units are ScreenPad pixels as you see the panel
 # with the laptop open: 1920 wide, 1080 tall, the top being the edge
 # nearest the screen hinge. 16 pixels are about 1 mm.
 """
-LAYOUT_DOC = """\
+DOTS_LAYOUT_DOC = """\
 # The bar, left to right: three button spots, three shortcut spots, the
 # page dots and a grip at the right end. Units are ScreenPad pixels as you
 # see the panel with the laptop open: 1920 wide, 1080 tall, the top being
 # the edge nearest the screen hinge. 16 pixels are about 1 mm.
 """
+LAYOUT_DOC = """\
+# The bar, left to right: three button spots, three shortcut spots, the
+# page button and a grip at the right end. Units are ScreenPad pixels as
+# you see the panel with the laptop open: 1920 wide, 1080 tall, the top
+# being the edge nearest the screen hinge. 16 pixels are about 1 mm.
+"""
+
+# How the default config described the pages with the page dots, and now.
+DOTS_PAGES_DOC = """\
+# Two pages, shown by the page dots. The touchpad page is the usual one:
+# below the bar a touchpad, drawn black behind your windows (black pixels;
+# the brightness stays as it is), with a faint clock. A swipe along the bar
+# (one finger, at least 25 mm, quickly, moving left) or a tap on the dots
+# turns to the apps page: below the bar, touches go to apps and never move
+# the pointer. A swipe to the right, a tap on the dots, or %(return_after)d seconds
+# without a touch bring the touchpad back. To change that:
+""" % {"return_after": RETURN_AFTER}
+PAGES_DOC = """\
+# Two pages. The touchpad page is the usual one: below the bar a touchpad,
+# drawn black behind your windows (black pixels; the brightness stays as
+# it is), with a faint clock. The page button (an app grid) or a swipe
+# along the bar (one finger, at least 25 mm, quickly, moving left) turns
+# to the apps page: below the bar, touches go to apps and never move the
+# pointer. The page button (now a touchpad), a swipe to the right, or %(return_after)d
+# seconds without a touch bring the touchpad back. To change that:
+""" % {"return_after": RETURN_AFTER}
 
 EXAMPLE_CONFIG = """\
 # ScreenPad touch bar. Edit and save: the daemon picks changes up within a
@@ -119,19 +146,13 @@ key = "printscreen"
 # allow = ["org.gnome.Calendar.desktop"]     # only these apps
 # timeout = %(notify_timeout)d                               # seconds a card shows
 
-# Two pages, shown by the page dots. The touchpad page is the usual one:
-# below the bar a touchpad, drawn black behind your windows (black pixels;
-# the brightness stays as it is), with a faint clock. A swipe along the bar
-# (one finger, at least 25 mm, quickly, moving left) or a tap on the dots
-# turns to the apps page: below the bar, touches go to apps and never move
-# the pointer. A swipe to the right, a tap on the dots, or %(return_after)d seconds
-# without a touch bring the touchpad back. To change that:
-# [screensaver]
+%(pages)s# [screensaver]
 # clock = false                              # black, without the clock
 # [pager]
 # return_after = %(return_after)d                           # seconds before the touchpad
 """ % {
     "layout": LAYOUT_DOC,
+    "pages": PAGES_DOC,
     "return_after": RETURN_AFTER,
     "height": DEFAULT_HEIGHT,
     "min": MIN_HEIGHT,
@@ -151,6 +172,8 @@ OLD_DEFAULTS = {
     "d6137e89e4ace61da259ef3accf7645b090baee1863076db4145bc08d54d8456",
     # Before the pages (tests/touchbar-v5-default.toml).
     "f1c38e99d337195743b369674044d2f71053781a51822ebf10797d7dccf7d53c",
+    # With the page dots, before the page button (tests/touchbar-v6-default.toml).
+    "0b366d9742cefa53c6734fb4f0ed757c0605990ad6e256492fb53db42d2be112",
 }
 
 # Default blocks earlier versions wrote, each with its current text. A config
@@ -172,5 +195,9 @@ OLD_BLOCKS = (
     # The blank line after it marks the block without 'tile' yet, so this
     # applies once.
     (COMMAND_DOC + "\n", COMMAND_DOC + TILE_DOC + "\n"),
-    (OLD_LAYOUT_DOC, LAYOUT_DOC),
+    # In this order, so a config from before the page dots ends with the
+    # page button's.
+    (OLD_LAYOUT_DOC, DOTS_LAYOUT_DOC),
+    (DOTS_LAYOUT_DOC, LAYOUT_DOC),
+    (DOTS_PAGES_DOC, PAGES_DOC),
 )

@@ -119,7 +119,7 @@ mirror = false
 
 ## Pages
 
-The bar's page dots show two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A swipe along the bar or a tap on the dots turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock and the wait (after the `[[button]]` and `[[shortcut]]` blocks):
+The bar has two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A tap on the bar's page button, which shows the page it goes to (an app grid or a touchpad), or a swipe along the bar turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock and the wait (after the `[[button]]` and `[[shortcut]]` blocks):
 
 ```toml
 [screensaver]
@@ -169,4 +169,4 @@ The first version placed buttons with `x` and `width`. Those keys are now ignore
 When the daemon or `screenpad-touchbar on` starts:
 
 - A config that is still exactly an earlier version's default is replaced by the current default.
-- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`, the settings comment gains the lines about `tile`, and the comment describing the bar gains the page dots. The rest of the file is yours and is left as it is.
+- In any other config, the earlier default Push to talk block (its comment and `key = "F14"`, word for word) is updated to `alt+k`, the settings comment gains the lines about `tile`, and the comments describing the bar and the pages gain the page button (replacing the page dots of the version before). The rest of the file is yours and is left as it is.

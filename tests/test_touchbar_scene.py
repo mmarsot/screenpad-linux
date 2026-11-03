@@ -12,7 +12,9 @@ from screenpad_touchbar.codes import (
     EV_KEY,
 )
 from screenpad_touchbar.common import (
+    APPS,
     ASK_ARM,
+    HOME,
     TONES,
 )
 from screenpad_touchbar.keys import KeyEmitter
@@ -63,27 +65,31 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(tiles[6]["glyph"], "grip")
         self.assertEqual(DIVIDER_X, 836)
 
-    def test_page_dots_tile(self):
+    def test_page_button_tile(self):
         c = config(TILE_CONFIG)
-        tiles = spot_tiles(c, pressed=[7], dots={"page": 1, "pages": 2})
+        # Only where a tap goes, as an icon: apps from the touchpad page.
+        tiles = spot_tiles(c, pressed=[7], page_to=APPS)
         self.assertEqual(
             tiles[-1],
             {
-                "id": "dots",
+                "id": "page",
                 "x": 1672,
                 "width": 144,
-                "style": "dots",
+                "style": "page",
                 "pressed": True,
-                "glyph": "dots",
-                "page": 1,
-                "pages": 2,
-                "text": "apps",
-                "label": "Page 2 of 2, apps",
+                "glyph": "page",
+                "icon": "view-app-grid-symbolic",
+                "label": "Go to apps",
             },
         )
+        # The touchpad from the apps page.
+        self.assertEqual(
+            {k: spot_tiles(c, page_to=HOME)[-1][k] for k in ("icon", "label")},
+            {"icon": "input-touchpad-symbolic", "label": "Go to the touchpad"},
+        )
         # Without the pager (an extension that cannot draw
-        # the pages), no dots.
-        self.assertNotIn("dots", [t["style"] for t in spot_tiles(c)])
+        # the pages), no page button.
+        self.assertNotIn("page", [t["style"] for t in spot_tiles(c)])
 
     def test_removing_and_app_tiles(self):
         c = config(TILE_CONFIG)
@@ -115,9 +121,7 @@ class SceneTests(unittest.TestCase):
             {"id": "q", "title": "T", "options": [{"id": "a", "label": "A", "tone": tone} for tone in TONES[:1]]},
             0,
         )
-        tiles = spot_tiles(
-            c, removing=[3], provided={"agents": {"tone": "accept"}}, dots={"page": 0, "pages": 2}
-        ) + ask_tiles(ask)
+        tiles = spot_tiles(c, removing=[3], provided={"agents": {"tone": "accept"}}, page_to=APPS) + ask_tiles(ask)
         for tile in tiles:
             self.assertIn(tile["style"], TILE_STYLES)
             for name in tile.get("classes", []):

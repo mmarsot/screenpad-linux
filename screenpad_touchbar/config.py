@@ -8,9 +8,6 @@ from .common import (
     BUTTON,
     DEFAULT_CONFIG,
     DEFAULT_HEIGHT,
-    DOTS,
-    DOTS_W,
-    DOTS_X,
     GRIP,
     GRIP_X,
     MAX_ASK_TIMEOUT,
@@ -20,6 +17,9 @@ from .common import (
     MAX_SHORTCUTS,
     MIN_HEIGHT,
     NOTIFY_TIMEOUT,
+    PAGE,
+    PAGE_W,
+    PAGE_X,
     PANEL_W,
     RETURN_AFTER,
     SHORTCUT,
@@ -126,7 +126,7 @@ class Config:
             + [Spot(GRIP, 0, GRIP_X, PANEL_W - GRIP_X)]
             # Last, so the other spots keep the numbers an extension from
             # before the pages knows them by.
-            + [Spot(DOTS, 0, DOTS_X, DOTS_W)]
+            + [Spot(PAGE, 0, PAGE_X, PAGE_W)]
         )
 
     def spot_at(self, px, py, height=None):
