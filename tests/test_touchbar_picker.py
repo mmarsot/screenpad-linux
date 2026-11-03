@@ -227,7 +227,11 @@ class WritingTests(unittest.TestCase):
         self.assertEqual(key_spec((56, 29, 20)), "ctrl+alt+t")
         self.assertEqual(key_spec((125, 109)), "super+pagedown")
         self.assertEqual(key_spec((99,)), "printscreen")
-        self.assertEqual(key_spec(parse_key("29+42+2")), "ctrl+shift+1")
+        # evdev's KEY_1 is code 2, and parse_key reads a bare digit as a code.
+        self.assertEqual(key_spec((29, 2)), "ctrl+2")
+        self.assertEqual(parse_key("ctrl+2"), (29, 2))
+        for code in range(1, 256):
+            self.assertEqual(parse_key(key_spec((code,))), (code,), code)
 
     def test_the_dock_favourites(self):
         def run(out):
@@ -261,16 +265,13 @@ class CommandLineTests(unittest.TestCase):
                 self.run_cli("add-key", "Terminal", "56+29+20", "--apps"), (0, "added Terminal to the apps page\n", "")
             )
             self.assertEqual(
-                self.run_cli("add-command", "Hi", "notify-send hi", "--hold", "--icon", "dialog-information-symbolic")[
-                    0
-                ],
-                0,
+                self.run_cli("add-command", "Hi", "notify-send hi"), (0, "added Hi to the bar\n", "")
             )
             c = load_config()[0]
             self.assertEqual((c.apps[-1].key, c.apps[-1].mode), ("ctrl+alt+t", "tap"))
             self.assertEqual(
                 (c.bar[-1].command, c.bar[-1].mode, c.bar[-1].icon),
-                (["/bin/sh", "-c", "notify-send hi"], "hold", "dialog-information-symbolic"),
+                (["/bin/sh", "-c", "notify-send hi"], "tap", None),
             )
             with open(path) as f:
                 self.assertTrue(f.read().startswith(CONFIG.split("\n\n")[0]))

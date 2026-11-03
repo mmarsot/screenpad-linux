@@ -105,10 +105,12 @@ def _key_names():
 
 KEY_NAMES = _key_names()
 # The name a code is written with (key_spec()): its first name above, the
-# modifiers by their short names.
+# modifiers by their short names. The digit keys have none: parse_key() reads
+# "1" as code 1, so they are written as their codes.
 CODE_NAMES: dict[int, str] = {}
 for _name, _code in KEY_NAMES.items():
-    CODE_NAMES.setdefault(_code, _name)
+    if not _name.isdigit():
+        CODE_NAMES.setdefault(_code, _name)
 CODE_NAMES.update({1: "esc", 29: "ctrl", 42: "shift", 56: "alt", 99: "printscreen", 100: "altgr", 125: "super"})
 # The modifiers, in the order a combo is written with them: first.
 MODIFIERS = (29, 97, 42, 54, 56, 100, 125, 126)

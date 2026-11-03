@@ -66,7 +66,7 @@ export function comboText(mods, keyName) {
 // {args}: the arguments of 'screenpad-touchbar' that add the item (after
 // the program), or {error}: what is missing, a name, and a combination
 // (codes) or a command. A combination wins over a command.
-export function addArgs(place, {label, codes, command, hold}) {
+export function addArgs(place, {label, codes, command}) {
     const name = (label ?? '').trim();
     const line = (command ?? '').trim();
     if (!Object.hasOwn(PLACES, place)) return {error: `no place ${place}`};
@@ -75,7 +75,6 @@ export function addArgs(place, {label, codes, command, hold}) {
     if (codes?.length) args = ['shortcut', 'add-key', name, codes.join('+')];
     else if (line) args = ['shortcut', 'add-command', name, line];
     else return {error: 'Press a key combination, or type a command.'};
-    if (hold) args.push('--hold');
     if (place === 'apps') args.push('--apps');
     return {args};
 }

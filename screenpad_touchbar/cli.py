@@ -274,9 +274,7 @@ def cmd_shortcut(args):
             def change(c):
                 return {where: add_app(c.items(where), app, spot, limit)}
         elif args.action in ("add-key", "add-command"):
-            block = {"label": args.label, "mode": "hold" if args.hold else "tap"}
-            if args.icon:
-                block["icon"] = args.icon
+            block = {"label": args.label}
             if args.action == "add-key":
                 block["key"] = key_spec(parse_key(args.key))
             else:
@@ -409,14 +407,11 @@ def parse_args(argv):
         "spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
     )
     add_key = actions.add_parser("add-key", help="add a key or combo in the first free spot")
-    add_key.add_argument("label", help="its name, shown when there is no icon")
+    add_key.add_argument("label", help="its name, shown on the item")
     add_key.add_argument("key", help='a key or combo, such as "ctrl+alt+t" (evdev names, or key codes)')
     add_command = actions.add_parser("add-command", help="add a command in the first free spot")
-    add_command.add_argument("label", help="its name, shown when there is no icon")
+    add_command.add_argument("label", help="its name, shown on the item")
     add_command.add_argument("run", metavar="command", help="the command, run by sh")
-    for a in (add_key, add_command):
-        a.add_argument("--icon", help="an icon name or the path of an image")
-        a.add_argument("--hold", action="store_true", help="down while the finger is (the default: one press on lift)")
     for a in (listing, add, remove, add_key, add_command):
         a.add_argument("--apps", action="store_true", help="the apps page's items ([[apps]]) instead of the bar's")
     ask = sub.add_parser(

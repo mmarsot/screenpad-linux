@@ -130,7 +130,7 @@ It writes the default config to `~/.config/screenpad/touchbar.toml` if there is 
 | `screenpad-touchbar status` | config, touchpad node, ScreenPad on/off, `/dev/uinput` access, unit and daemon state, the page shown |
 | `screenpad-touchbar check` | validates the config and lists every spot |
 | `screenpad-touchbar shortcut list\|add APP [--spot N]\|remove N [--apps]` | the apps on the bar, or with `--apps` on the apps page, from a terminal |
-| `screenpad-touchbar shortcut add-key LABEL KEY\|add-command LABEL COMMAND [--icon NAME] [--hold] [--apps]` | adds a key or combo (`ctrl+alt+t`, or key codes such as `29+56+20`, written by name) or a command, in the first free spot of the bar, or with `--apps` of the apps page |
+| `screenpad-touchbar shortcut add-key LABEL KEY\|add-command LABEL COMMAND [--apps]` | adds a tap key or combo (`ctrl+alt+t`, or key codes such as `29+56+20`, written by name) or a command, with no icon, in the first free spot of the bar, or with `--apps` of the apps page |
 | `screenpad-touchbar probe` | prints where touches land (panel pixels, bar or pad, which spot) without grabbing; stop the daemon first (`screenpad-touchbar off`), whose grab keeps every other reader from seeing touches |
 | `screenpad-touchbar ask TITLE --option ID=LABEL ...` | asks a question in the bar and prints the chosen answer's id; see the [app API](app-api.md#asking-from-a-shell) |
 | `screenpad-touchbar run` | the daemon itself, in the foreground (what the unit runs) |

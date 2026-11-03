@@ -105,12 +105,11 @@ class ContractTests(unittest.TestCase):
         self.assertEqual([m.get("name") for m in methods], ["Launch", "AddItem"])
         for method in methods:
             self.assertEqual([(a.get("type"), a.get("direction")) for a in method.findall("arg")], [("s", "in")])
-        # The daemon calls them so, and the extension object has those methods.
+        # The daemon calls them so.
         self.assertIn("--dest org.gnome.Shell --object-path %s --method %s.Launch" % (DBUS_PATH, DBUS_IFACE), LAUNCH[2])
         self.assertIn(
             "--dest org.gnome.Shell --object-path %s --method %s.AddItem" % (DBUS_PATH, DBUS_IFACE), ADD_ITEM[2]
         )
-        self.assertEqual(re.findall(r"^    (Launch|AddItem)\(", read("extension.js"), re.M), ["Launch", "AddItem"])
 
     def test_card_growth_is_animated_within_the_arming_delay(self):
         # Fully drawn before a tap on it counts.

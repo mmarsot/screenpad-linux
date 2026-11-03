@@ -60,13 +60,13 @@ class ShortcutTests(unittest.TestCase):
         built = js(
             "shortcut.js",
             "[m.addArgs('apps', {label: ' Terminal ', codes: [29, 56, 20], command: 'x'}),"
-            " m.addArgs('bar', {label: 'Hi', command: ' notify-send \"hi there\" ', hold: true})]",
+            " m.addArgs('bar', {label: 'Hi', command: ' notify-send \"hi there\" '})]",
         )
         self.assertEqual(
             [b["args"] for b in built],
             [
                 ["shortcut", "add-key", "Terminal", "29+56+20", "--apps"],
-                ["shortcut", "add-command", "Hi", 'notify-send "hi there"', "--hold"],
+                ["shortcut", "add-command", "Hi", 'notify-send "hi there"'],
             ],
         )
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:
@@ -78,7 +78,7 @@ class ShortcutTests(unittest.TestCase):
                     self.assertEqual(main(b["args"]), 0)
             c = load_config()[0]
             self.assertEqual((c.apps[0].label, c.apps[0].key), ("Terminal", "ctrl+alt+t"))
-            self.assertEqual((c.bar[0].command, c.bar[0].mode), (["/bin/sh", "-c", 'notify-send "hi there"'], "hold"))
+            self.assertEqual((c.bar[0].command, c.bar[0].mode), (["/bin/sh", "-c", 'notify-send "hi there"'], "tap"))
 
 
 if __name__ == "__main__":

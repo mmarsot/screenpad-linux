@@ -134,7 +134,7 @@ label = "Screenshot"
 key = "printscreen"
 ```
 
-From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar. `screenpad-touchbar shortcut add-key Terminal ctrl+alt+t` adds a key (by name, or by key codes such as `29+56+20`, which it writes by name), and `shortcut add-command Hello "notify-send hello"` a command, in the first free spot (`--apps` on the apps page, `--icon NAME`, `--hold` for mode `"hold"`).
+From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar. `screenpad-touchbar shortcut add-key Terminal ctrl+alt+t` adds a key (by name, or by key codes such as `29+56+20`, which it writes by name), and `shortcut add-command Hello "notify-send hello"` a command, in the first free spot (`--apps` on the apps page); items added so are tap items with no icon. Number keys are written by code (`ctrl+2` is Ctrl+1), as a bare digit is a key code.
 
 ## Notifications
 
