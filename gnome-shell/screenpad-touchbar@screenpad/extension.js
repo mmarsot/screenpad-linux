@@ -27,7 +27,9 @@
 //   'screenpad-touchbar shortcut add' put them in a shortcut spot;
 // - opens a shortcut when the daemon asks over D-Bus (Launch), raising the
 //   app if it is already open, as the dock does;
-// - plays a soft click each time the daemon accepts a press (feedback.js).
+// - plays a soft click each time the daemon accepts a press (feedback.js);
+// - keeps the pointer, windows and the overview off the ScreenPad's
+//   monitor (keepout.js, what goes where in fence.js).
 //
 // What it agrees on with the daemon is in contract.js, and where tiles go
 // in scene.js; both are plain modules the tests run. tiles.js builds one
@@ -59,6 +61,7 @@ import {
     rendererJson,
 } from './contract.js';
 import {CLICK_NAME, Clicker} from './feedback.js';
+import {KeepOut} from './keepout.js';
 import {NotificationMirror} from './notifications.js';
 import {Pages} from './pages.js';
 import {RepaintSafeguard} from './safeguard.js';
@@ -107,6 +110,7 @@ export default class ScreenpadTouchbar extends Extension {
             this._clicker = null;
         }
         this._safeguard = new RepaintSafeguard();
+        this._keepOut = new KeepOut();
 
         this._fileMonitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
         this._fileMonitor.connect('changed', (_monitor, file, other) => {
@@ -188,6 +192,8 @@ export default class ScreenpadTouchbar extends Extension {
         this._fileMonitor = null;
         this._safeguard.destroy();
         this._safeguard = null;
+        this._keepOut.destroy();
+        this._keepOut = null;
         this._pages.release();
         this._pages = null;
         this._clicker = null;
@@ -250,7 +256,11 @@ export default class ScreenpadTouchbar extends Extension {
 
     _sync() {
         const state = this._state;
-        const monitor = state?.active ? this._screenpad(state.monitor) : null;
+        // The desktop is kept off the ScreenPad's monitor whenever it is
+        // there, not only while the bar is drawn on it.
+        const screenpad = state ? this._screenpad(state.monitor) : null;
+        this._keepOut.update(screenpad);
+        const monitor = state?.active ? screenpad : null;
         if (!monitor) {
             this._pages.update(null, null, null, 0);
             this._destroyBar();
