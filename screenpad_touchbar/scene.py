@@ -21,8 +21,8 @@ from .common import GRIP, GROUP_GAP, SHORTCUT, SHORTCUTS_X, SPOT_W, TONES
 
 TILE_STYLES = ("button", "shortcut", "grip", "ask-text", "option")
 # Every CSS class a tile can carry besides its style. The stylesheet has a
-# rule for each but "tap", which is the plain button (tests/test_touchbar.py
-# checks it).
+# rule for each but "tap", which is the plain button
+# (tests/test_touchbar_scene.py checks it).
 TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline") + tuple("tone-" + tone for tone in TONES)
 DIVIDER_X = SHORTCUTS_X - GROUP_GAP // 2
 # A question (an attention card): its title and text over the first two

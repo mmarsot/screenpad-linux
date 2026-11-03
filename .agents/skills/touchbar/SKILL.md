@@ -30,6 +30,6 @@ Read first:
 
 ## Tests
 
-- `tests/test_touchbar.py`: the split, config parsing, writing and migration, the bar, the scene, questions, apps and the socket, device discovery, `status`. `tests/test_touchbar_cards.py`: attention cards and notifications, and static checks that the extension matches the daemon's constants.
+- One file per area, sharing `tests/touchbar_support.py` (the checkout on `sys.path`, axes, events, `Split`, `ConfigHome`, `FakeClient`, `Conn`, the bar and notify fixtures): `test_touchbar_config.py` (keys, parsing, writing, migration), `test_touchbar_bar.py` (the split, the bar), `test_touchbar_scene.py` (tiles, questions and app tiles in the bar), `test_touchbar_apps.py` (apps, the socket, the daemon), `test_touchbar_cards.py` (attention cards), `test_touchbar_notify.py` (notifications), `test_touchbar_commands.py` (`shortcut`, `status`, device discovery, the monitor), `test_touchbar_extension.py` (the extension against the daemon's constants). A new test goes in the file of its area.
 - They run with no root, no hardware and no uinput: events are fed as tuples, `ConfigHome` points `XDG_CONFIG_HOME` and `XDG_RUNTIME_DIR` at a temporary directory for the config, the state files and the socket.
 - [docs/development.md](../../../docs/development.md#tests) lists what the touch bar tests cover; keep it in step.

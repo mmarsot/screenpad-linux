@@ -27,5 +27,5 @@ Read first:
 
 ## Tests
 
-- `tests/test_touchbar.py` and `tests/test_touchbar_cards.py` check the source statically: chrome options, `GROW_MS` against `ASK_ARM`, the handshake and D-Bus interface, the notify fields and names, the grip drawn by its own code, a press not rebuilding the bar, no tile kinds, and a stylesheet rule for every style and class.
+- `tests/test_touchbar_extension.py` checks the source statically, and `tests/test_touchbar_scene.py` the stylesheet: chrome options, `GROW_MS` against `ASK_ARM`, the handshake and D-Bus interface, the notify fields and names, the grip drawn by its own code, a press not rebuilding the bar, no tile kinds, and a stylesheet rule for every style and class.
 - Nothing runs the extension in CI. Check a visible change in a headless GNOME Shell 50 under `dbus-run-session` with its own `HOME` and `XDG_*` directories ([docs/development.md](../../../docs/development.md#tests)), never by reloading the extension in your own session, and refresh the screenshots in `docs/images/` when the bar's look changes.

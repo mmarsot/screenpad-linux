@@ -77,7 +77,7 @@ Changes go through the [no-mistakes](https://github.com/kunchenguid/no-mistakes)
 make test   # or: python3 -m unittest discover -s tests
 ```
 
-They need no root and no hardware. `tests/test_screenpad.py` covers the display CLI and `install.sh`, `tests/test_touchbar.py` the touch bar, `tests/test_touchbar_cards.py` its attention cards (the elastic bar and notifications) and `tests/test_skills.py` the skills (their front matter, the index in `AGENTS.md`, the `.claude/skills` link, and that their links and repository paths resolve). The display tests build a fake sysfs/debugfs/procfs/`/etc` tree in a temporary directory and replace the i2c reads and `update-grub`. They cover:
+They need no root and no hardware. There is one file per area: `tests/test_screenpad.py`, `test_screenpad_panel.py` and `test_screenpad_grub.py` cover the display CLI, `test_install.py` `install.sh`, `test_touchbar_config.py`, `test_touchbar_bar.py`, `test_touchbar_scene.py`, `test_touchbar_apps.py`, `test_touchbar_cards.py`, `test_touchbar_notify.py`, `test_touchbar_commands.py` and `test_touchbar_extension.py` the touch bar, and `tests/test_skills.py` the skills (their front matter, the index in `AGENTS.md`, the `.claude/skills` link, and that their links and repository paths resolve). `screenpad_support.py` and `touchbar_support.py` hold what each program's tests share. The display tests build a fake sysfs/debugfs/procfs/`/etc` tree in a temporary directory and replace the i2c reads and `update-grub`. They cover:
 
 - checksum fixing: a synthetic EDID with a wrong CTA checksum, and the known single-byte `0x3e` → `0x6f` case;
 - DMI refusal;

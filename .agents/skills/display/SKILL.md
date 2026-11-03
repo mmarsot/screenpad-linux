@@ -1,6 +1,6 @@
 ---
 name: display
-description: Load before changing the display CLI - screenpad.py and the screenpad_display package (the EDID checksum fix and capture, NVIDIA card, connector, DDC and debugfs discovery, the asus_screenpad backlight light/darken sequence, kernel lockdown and drm.edid_firmware, the active flag, status, the grub subcommand) or tests/test_screenpad.py.
+description: Load before changing the display CLI - screenpad.py and the screenpad_display package (the EDID checksum fix and capture, NVIDIA card, connector, DDC and debugfs discovery, the asus_screenpad backlight light/darken sequence, kernel lockdown and drm.edid_firmware, the active flag, status, the grub subcommand) or its tests (tests/test_screenpad*.py).
 ---
 
 # Display CLI
@@ -24,5 +24,5 @@ Read first:
 
 ## Tests
 
-- `tests/test_screenpad.py` covers checksums, DMI refusal, discovery, the exact writes `on`, `off` and `replug` make on unlocked and locked-down kernels, the panel through a fake asus-wmi and compositor, lockdown and the command line, the DDC retry, `grub`, and `install.sh` against a fake root. No root or hardware; the `install.sh` tests are skipped when run as root.
+- `tests/test_screenpad.py` covers checksums, DMI refusal, discovery, the exact writes `on`, `off` and `replug` make on unlocked and locked-down kernels, and the command line; `test_screenpad_panel.py` lockdown, the panel through a fake asus-wmi and compositor, and the DDC retry; `test_screenpad_grub.py` `grub`. They share `tests/screenpad_support.py` (`FakeSys`, `FakeAsusWmi`, `FakeClock`, `Base`). No root or hardware. `install.sh` has its own tests (the [install](../install/SKILL.md) skill).
 - [docs/development.md](../../../docs/development.md#tests) lists what they cover; keep it in step.
