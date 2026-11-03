@@ -22,6 +22,7 @@ from touchbar_support import EXT, TILE_CONFIG, ConfigHome, FakeClient, config, j
 
 from screenpad_touchbar.cli import main
 from screenpad_touchbar.common import (
+    ADD_ITEM,
     APPS,
     ASK_ARM,
     CARD_HEIGHT,
@@ -100,12 +101,15 @@ class ContractTests(unittest.TestCase):
         node = ET.fromstring(self.c["DBUS_XML"])
         [iface] = node.findall("interface")
         self.assertEqual(iface.get("name"), DBUS_IFACE)
-        [method] = iface.findall("method")
-        self.assertEqual(method.get("name"), "Launch")
-        self.assertEqual([(a.get("type"), a.get("direction")) for a in method.findall("arg")], [("s", "in")])
-        # The daemon calls it so, and the extension object has that method.
+        methods = iface.findall("method")
+        self.assertEqual([m.get("name") for m in methods], ["Launch", "AddItem"])
+        for method in methods:
+            self.assertEqual([(a.get("type"), a.get("direction")) for a in method.findall("arg")], [("s", "in")])
+        # The daemon calls them so.
         self.assertIn("--dest org.gnome.Shell --object-path %s --method %s.Launch" % (DBUS_PATH, DBUS_IFACE), LAUNCH[2])
-        self.assertEqual(re.findall(r"^    (Launch)\(", read("extension.js"), re.M), ["Launch"])
+        self.assertIn(
+            "--dest org.gnome.Shell --object-path %s --method %s.AddItem" % (DBUS_PATH, DBUS_IFACE), ADD_ITEM[2]
+        )
 
     def test_card_growth_is_animated_within_the_arming_delay(self):
         # Fully drawn before a tap on it counts.

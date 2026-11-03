@@ -1,6 +1,6 @@
 """Tests for the pages: the swipe along the bar and its thresholds, the page
-button, the mode-aware zone split (contacts already down keep their kind, the
-apps page never reaches the virtual touchpad), the return to the touchpad,
+button, the mode-aware zone split (contacts already down keep their kind,
+still touches on the apps page never reach the virtual touchpad), the return to the touchpad,
 what the daemon publishes, and the [screensaver] and [pager] settings.
 
 Run with: python3 -m unittest discover -s tests
@@ -193,7 +193,7 @@ class RoutingTests(unittest.TestCase):
         self.enterContext(ConfigHome(self.enterContext(tempfile.TemporaryDirectory())))
         self.clock = Clock()
         self.daemon = d = Daemon(config(BAR_CONFIG), None)
-        d.pager.clock = self.clock
+        d.pager.clock = d.surface.clock = self.clock
         d.pager.can_show = lambda: True
         d.bar = d.new_bar(KeyEmitter(lambda ev: None))
         d.bar.clock = self.clock
@@ -243,39 +243,40 @@ class RoutingTests(unittest.TestCase):
         self.swipe(3000, 2000)
         self.assertEqual(self.daemon.pager.page, APPS)
         self.assertTrue(self.frame(touch(0, None, 2100, 1250)))
-        # A new contact below the bar is the surface's: the touchpad never
-        # hears of it, not even as a second finger.
-        self.assertEqual(self.frame(touch(1, 2, 1000, 1500)), [])
-        self.assertEqual(self.frame(touch(1, None, 1100, 1600)), [])
-        self.assertEqual(codes(self.frame(lift(0)), EV_ABS, ABS_MT_TRACKING_ID), [-1])
-        # Back on the touchpad page with the surface contact still down: it
-        # stays the surface's, while a new one is the touchpad's.
+        # A new contact below the bar with a touchpad finger down is a
+        # second finger: the touchpad's (two fingers scroll).
+        self.assertEqual(codes(self.frame(touch(1, 2, 1000, 1500)), EV_ABS, ABS_MT_TRACKING_ID), [2])
+        self.assertEqual(codes(self.frame(lift(0), lift(1)), EV_ABS, ABS_MT_TRACKING_ID), [-1, -1])
+        # One alone, still, waits for what it is: the touchpad hears nothing.
+        self.assertEqual(self.frame(touch(1, 5, 1000, 1500)), [])
+        # Back on the touchpad page with that contact still down: it stays
+        # the apps page's, while a new one is the touchpad's.
         self.swipe(1000, 2000)
         self.assertEqual(self.daemon.pager.page, HOME)
-        self.assertEqual(self.frame(touch(1, None, 1200, 1700)), [])
+        self.assertEqual(self.frame(touch(1, None, 1010, 1500)), [])
         self.assertEqual(codes(self.frame(touch(2, 3, 2500, 1500)), EV_ABS, ABS_MT_TRACKING_ID), [3])
         self.assertEqual(self.frame(lift(1)), [])
         # Bar contacts are the bar's on both pages.
         self.assertEqual(self.frame(touch(3, 4, 600, 100)), [])
         self.assertEqual(self.daemon.bar.pressed(), [1])
 
-    def test_the_apps_page_never_reaches_the_virtual_touchpad(self):
+    def test_still_touches_and_palms_on_the_apps_page_never_reach_the_virtual_touchpad(self):
+        # Moves, a second finger and the pad's button are the pointer's
+        # (test_touchbar_decide.py); taps, presses and palms are not.
         self.swipe(3000, 2000)
         frames = [
             [touch(0, 1, 1000, 1000)],
-            [touch(1, 2, 3000, 2000), touch(0, None, 1200, 1100)],
-            [touch(2, 3, 2000, 1500), [(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)]],
-            [touch(0, None, 1300, 400)],  # up into the bar: still the surface's
+            [touch(0, None, 1020, 1010)],  # under 2.5 mm: still
             [lift(0)],
-            [lift(1), lift(2)],
+            [touch(2, 3, 2000, 1500), [(EV_ABS, ABS_MT_TOOL_TYPE, MT_TOOL_PALM)]],
+            [lift(2)],
+            [touch(1, 4, 1000, 1000)],
         ]
         for groups in frames:
             self.assertEqual(self.frame(*groups), [])
-        # A click with only surface fingers down reaches nothing either.
-        self.frame(touch(0, 5, 1000, 1000))
-        self.assertEqual(self.frame(left=True), [])
-        self.assertEqual(self.frame(left=False), [])
-        self.assertEqual(self.frame(lift(0)), [])
+        self.clock.now += 1
+        self.daemon.settle()
+        self.assertEqual(self.frame(lift(1)), [])
         self.assertEqual(self.daemon.splitter.sent, {})
 
     def test_back_to_the_touchpad_after_a_while_without_a_touch(self):
@@ -367,11 +368,15 @@ class ConfigTests(unittest.TestCase):
     def test_defaults_and_settings(self):
         p = config().pages
         self.assertEqual((p.clock, p.return_after), (True, RETURN_AFTER))
-        p = config("[screensaver]\nclock = false\n[pager]\nreturn_after = 3600\n").pages
-        self.assertEqual((p.clock, p.return_after), (False, 3600))
-        self.assertEqual(p.describe(), "screensaver black; apps page back to the touchpad after 3600 s")
+        self.assertEqual((p.tap_time, p.tap_move), (0.4, 2.5))
+        p = config("[screensaver]\nclock = false\n[pager]\nreturn_after = 3600\ntap_time = 1\ntap_move = 4.5\n").pages
+        self.assertEqual((p.clock, p.return_after, p.tap_time, p.tap_move), (False, 3600, 1.0, 4.5))
         self.assertEqual(
-            config().pages.describe(), "screensaver black with a clock; apps page back to the touchpad after 8 s"
+            p.describe(), "screensaver black; apps page back to the touchpad after 3600 s, taps 1 s and 4.5 mm"
+        )
+        self.assertEqual(
+            config().pages.describe(),
+            "screensaver black with a clock; apps page back to the touchpad after 8 s, taps 0.4 s and 2.5 mm",
         )
 
     def test_errors(self):
@@ -385,6 +390,12 @@ class ConfigTests(unittest.TestCase):
             ("[pager]\nreturn_after = 3601\n", "return_after must be"),
             ("[pager]\nreturn_after = 2.5\n", "return_after must be"),
             ("[pager]\nreturn_after = true\n", "return_after must be"),
+            ("[pager]\ntap_time = 0.05\n", "pager: tap_time must be a number of seconds, 0.1 to 2"),
+            ("[pager]\ntap_time = 3\n", "tap_time must be"),
+            ("[pager]\ntap_time = true\n", "tap_time must be"),
+            ('[pager]\ntap_time = "0.4"\n', "tap_time must be"),
+            ("[pager]\ntap_move = 0.2\n", "pager: tap_move must be a number of millimetres, 0.5 to 10"),
+            ("[pager]\ntap_move = 11\n", "tap_move must be"),
         ):
             with self.subTest(text), self.assertRaises(ConfigError) as e:
                 config(text)
@@ -399,7 +410,9 @@ class ConfigTests(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 self.assertEqual(main(["check"]), 0)
             self.assertIn(
-                "pages: screensaver black with a clock; apps page back to the touchpad after 5 s", out.getvalue()
+                "pages: screensaver black with a clock; apps page back to the touchpad after 5 s, taps 0.4 s and 2.5"
+                " mm",
+                out.getvalue(),
             )
             self.assertIn("  page  1  x 1672..1816 tap to go to the other page, or swipe the bar", out.getvalue())
             # Adding an app keeps the table.

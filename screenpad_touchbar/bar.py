@@ -56,6 +56,8 @@ class Bar:
     - a page item: a tap opens that app's page on the apps page
       (open_page(name)), while the pages turn and an app gives it
       (tiles.pages);
+    - an empty spot: a tap opens the picker (add_spot(), picker.py) while
+      the pages turn; otherwise it does nothing;
     - grip: dragging it up or down resizes the bar, saved on lift;
     - page: a tap turns the page (pager.tap()), while the pager is
       available (pager.available()); otherwise the spot is empty;
@@ -95,6 +97,7 @@ class Bar:
         click=None,
         open_page=None,
         mover=None,
+        add_spot=None,
     ):
         self.config = config
         self.keys = keys  # KeyEmitter
@@ -109,6 +112,7 @@ class Bar:
         self.click = click or (lambda: None)
         self.open_page = open_page or (lambda name: None)
         self.mover = mover
+        self.add_spot = add_spot or (lambda: None)
         self.touch = {}  # slot -> Touch
         self.ask_touch = {}  # slot -> AskTouch
         self.preview = None  # the height while the grip moves
@@ -143,7 +147,7 @@ class Bar:
                 if t.inert:
                     continue
                 near = self.config.near_spot(t.spot, px, py, self.touch_height())
-                if (s.kind == PAGE or not s.item.hold()) and near != t.armed:
+                if (s.item is None or not s.item.hold()) and near != t.armed:
                     t.armed = near
                     changed = True
                 continue
@@ -165,6 +169,9 @@ class Bar:
             elif s.kind == PAGE:
                 if lifted:
                     self.pager.tap()
+            elif s.item is None:
+                if lifted:
+                    self.add_spot()
             elif s.item.kind == APP:
                 if lifted and t.removing:
                     self.remove(s.index)
@@ -203,13 +210,12 @@ class Bar:
         if i is None:
             return False
         s = self.config.spots[i]
-        if s.kind == PAGE:
+        if s.kind == PAGE or (s.item is None and s.kind != GRIP):
+            # The page button, or an empty spot's +: only while the pages turn.
             if not (self.pager and self.pager.available()):
                 return False
             self.touch[slot] = Touch(i, self.clock())
             return True
-        if s.item is None and s.kind != GRIP:
-            return False
         if s.kind == GRIP:
             if any(self.spot(t).kind == GRIP for t in self.touch.values()):
                 return False

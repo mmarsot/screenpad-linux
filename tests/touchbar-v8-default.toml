@@ -1,0 +1,107 @@
+# ScreenPad touch bar. Edit and save: the daemon picks changes up within a
+# second. 'screenpad-touchbar check' validates this file. The bar writes
+# here too, when you resize it or add or remove an app on it; it changes
+# only the height line and those apps' blocks and keeps the rest as it is.
+#
+# The bar, left to right: six spots for items, the page button and a grip
+# at the right end. Units are ScreenPad pixels as you see the panel with
+# the laptop open: 1920 wide, 1080 tall, the top being the edge nearest
+# the screen hinge. 16 pixels are about 1 mm.
+
+# Height of the bar at the top of the panel, 64 to 540. Touches that
+# start in it never move the pointer or click; everything below stays a
+# touchpad. Drag the grip at the bar's right end down or up to change it.
+height = 160
+
+# Items: up to six [[bar]] blocks fill the bar's spots left to right, and
+# up to eight [[apps]] blocks the apps page's home list, before the pages
+# apps give it. Any item goes in either place. Each has one of:
+#   key              a key or combo: "alt+k", "ctrl+alt+t", "super+space",
+#                    "micmute", "playpause" (evdev names, KEY_ optional;
+#                    "meta" and "super" are the Super key, not Alt)
+#   command          a command to run, as a string for sh or a list of
+#                    arguments. With mode "hold" it runs on touch, and
+#                    release_command (optional) runs on release.
+#   app              an app, by its desktop file id: a tap opens it (or
+#                    raises it). Drag an app from the dock or the app grid
+#                    onto the bar to add it; hold it for a second, until
+#                    it turns red, and lift to remove it.
+#                    'screenpad-touchbar shortcut' does the same from a
+#                    terminal, for the apps page too.
+#   tile             the name of a tile that an app draws and handles (an
+#                    app that talks to the bar's socket; see app-api.md in
+#                    the docs)
+#   page             the name of a page an app gives the apps page: a tap
+#                    opens it
+# and how it shows:
+#   icon             a symbolic icon name from the icon theme, such as
+#                    "audio-input-microphone-symbolic" (the names are the
+#                    files in /usr/share/icons/Adwaita/symbolic), or the
+#                    path of an image file (SVG or PNG). An app shows its
+#                    own icon, a tile or page what its app draws.
+#   label            its name; drawn instead when there is no icon. A tile
+#                    or page shows its icon or label, dimmed, while no app
+#                    provides it.
+#   mode             for a key or a command: "hold": keys down on touch,
+#                    up on release; "tap" (the default): one key press
+#                    when you lift the finger on it
+
+# Push to talk. Alt+K, held while you hold the button: Claude Code's voice
+# push-to-talk when ~/.claude/keybindings.json binds "meta+k" (Claude
+# Code's name for Alt+K) to "voice:pushToTalk" in the "Chat" context.
+# Terminals send Alt+K, unlike F13 and up. For another voice app, set key
+# to the push-to-talk key it uses.
+[[bar]]
+icon = "audio-input-microphone-symbolic"
+label = "Push to talk"
+mode = "hold"
+key = "alt+k"
+
+# Mutes and unmutes the microphone, like a keyboard's mic mute key.
+[[bar]]
+icon = "microphone-sensitivity-muted-symbolic"
+label = "Mute microphone"
+mode = "tap"
+key = "micmute"
+
+# GNOME's screenshot tool, like the Print Screen key.
+[[bar]]
+icon = "applets-screenshooter-symbolic"
+label = "Screenshot"
+mode = "tap"
+key = "printscreen"
+
+# An app on the bar, for example:
+# [[bar]]
+# app = "org.gnome.Nautilus.desktop"
+# The apps page lists its [[apps]] items, then the pages apps give it that
+# no item places. For example Settings, and an app's page:
+# [[apps]]
+# app = "org.gnome.Settings.desktop"
+# [[apps]]
+# page = "agents"
+
+# GNOME notifications that have buttons (Join, Reply, ...), and urgent ones,
+# show in the bar: it grows into a card with the notification's text and
+# buttons, and shrinks back when you tap one, dismiss it or it times out.
+# Tapping a button presses the notification's own button. Dismissing only
+# closes the card; the notification stays in GNOME's list. Nothing shows
+# while Do Not Disturb is on, except what GNOME itself shows then (critical
+# notifications). To change that, a [notifications] table:
+# [notifications]
+# mirror = false                             # no cards for notifications
+# deny = ["org.gnome.Evolution.desktop"]     # never these apps
+# allow = ["org.gnome.Calendar.desktop"]     # only these apps
+# timeout = 20                               # seconds a card shows
+
+# Two pages. The touchpad page is the usual one: below the bar a touchpad,
+# drawn black behind your windows (black pixels; the brightness stays as
+# it is), with a faint clock. The page button (an app grid) or a swipe
+# along the bar (one finger, at least 25 mm, quickly, moving left) turns
+# to the apps page: below the bar, touches go to apps and never move the
+# pointer. The page button (now a touchpad), a swipe to the right, or 8
+# seconds without a touch bring the touchpad back. To change that:
+# [screensaver]
+# clock = false                              # black, without the clock
+# [pager]
+# return_after = 8                           # seconds before the touchpad

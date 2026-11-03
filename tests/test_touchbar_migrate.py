@@ -76,7 +76,7 @@ class MigrateTests(unittest.TestCase):
             return f.read(), changed
 
     def test_every_earlier_default_becomes_the_current_one(self):
-        for version in range(1, 8):
+        for version in range(1, 9):
             out, changed = self.migrate(default(version))
             self.assertTrue(changed, version)
             self.assertEqual(out, EXAMPLE_CONFIG, version)
@@ -86,7 +86,7 @@ class MigrateTests(unittest.TestCase):
         # The two last defaults with their height changed become the
         # current default with that change, block by block.
         expected = EXAMPLE_CONFIG.replace("height = 160", "height = 200")
-        for version in (6, 7):
+        for version in (6, 7, 8):
             out, changed = self.migrate(default(version).replace("height = 160", "height = 200"))
             self.assertTrue(changed, version)
             self.assertEqual(out, expected, version)

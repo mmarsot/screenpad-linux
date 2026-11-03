@@ -4,7 +4,7 @@ The touch bar reads `~/.config/screenpad/touchbar.toml`. `screenpad-touchbar on`
 
 - **Applying changes:** save the file. The daemon reloads it within a second (or on `systemctl --user reload screenpad-touchbar`). No restart or re-login is needed.
 - **Errors:** if the new file has an error, the daemon keeps the current bar and logs why (`journalctl --user -u screenpad-touchbar`). `screenpad-touchbar check` shows the error too, and lists every spot when the file is valid.
-- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
+- **The bar edits it too:** resizing with the grip writes the `height` line, and adding or removing an app (dragged onto the bar, held to remove, or with `screenpad-touchbar shortcut`) adds or removes that app's block, or moves it. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. An item added with a `+` ([adding items](touchbar.md#adding-items-with-a-)), or with `screenpad-touchbar shortcut add-key` or `add-command`, gets a block of its own after that list's last one. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
 
 ## The default
 
@@ -134,7 +134,7 @@ label = "Screenshot"
 key = "printscreen"
 ```
 
-From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar.
+From a terminal, `screenpad-touchbar shortcut add org.gnome.Settings --apps` adds an app to the apps page (`--spot N` at a place, `remove N --apps` takes one away, `list --apps` shows them); without `--apps` the same commands act on the bar. `screenpad-touchbar shortcut add-key Terminal ctrl+alt+t` adds a key (by name, or by key codes such as `29+56+20`, which it writes by name), and `shortcut add-command Hello "notify-send hello"` a command, in the first free spot (`--apps` on the apps page); items added so are tap items with no icon. Number keys are written by code (`ctrl+2` is Ctrl+1), as a bare digit is a key code.
 
 ## Notifications
 
@@ -160,7 +160,7 @@ mirror = false
 
 ## Pages
 
-The bar has two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps and never move the pointer. A tap on the bar's page button, which shows the page it goes to (an app grid or a touchpad), or a swipe along the bar turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock and the wait (after the items):
+The bar has two pages: the touchpad page, with a black screensaver below the bar, and the apps page, where touches below the bar go to apps: one finger still moves the pointer there, and a still tap or press acts on what is under it. A tap on the bar's page button, which shows the page it goes to (an app grid or a touchpad), or a swipe along the bar turns the page, and the apps page goes back to the touchpad by itself; see [The two pages](touchbar.md#the-two-pages). The black and the pages are always on; two tables change the clock, the wait and what makes a tap on the apps page (after the items):
 
 ```toml
 [screensaver]
@@ -168,12 +168,16 @@ clock = false
 
 [pager]
 return_after = 15
+tap_time = 0.5
+tap_move = 3
 ```
 
 | Setting | Meaning |
 |---|---|
 | `[screensaver]` `clock` | `false`: no clock on the black (the battery level stays). Default `true` |
 | `[pager]` `return_after` | how many seconds without a touch on the panel the apps page waits before going back to the touchpad, 1 to 3600. Default 8 |
+| `[pager]` `tap_time` | on the apps page, the longest tap, in seconds, 0.1 to 2: a touch lifted sooner, without moving, taps what is under it; one held still that long on a widget or an item presses it (to hold a key, long-press a widget or drag an item to the bar). Default 0.4 ([touches on the apps page](touchbar.md#touches-on-the-apps-page)) |
+| `[pager]` `tap_move` | on the apps page, how far, in millimetres, 0.5 to 10, a touch may move before it is the pointer's: within `tap_time`, a touch that moves farther moves the pointer and presses nothing. Default 2.5 |
 
 `screenpad-touchbar check` prints what applies (`pages:`).
 

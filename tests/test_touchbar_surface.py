@@ -42,6 +42,7 @@ from screenpad_touchbar.common import (
     MAX_PAGES,
     PANEL_W,
     RENDERER_NAME,
+    TAP_TIME,
     WIDGETS_PROTOCOL,
     runtime_file,
     state_path,
@@ -451,6 +452,9 @@ class DaemonTests(unittest.TestCase):
         with open(state_path()) as f:
             return json.load(f)
 
+    def widget(self, wid):
+        return next(w for w in self.published()["surface"]["widgets"] if w["id"] == wid)
+
     def test_touches_on_the_apps_page_reach_the_widgets(self):
         d = self.daemon
         d.pager.turn(APPS)
@@ -465,7 +469,11 @@ class DaemonTests(unittest.TestCase):
         self.clock.now += ASK_ARM
         deny_y = (GRID_Y + GRID_H * 3 // 4) * 2
         self.frame(touch(0, 2, 3400, deny_y))
-        self.assertTrue(next(w for w in self.published()["surface"]["widgets"] if w["id"] == "agents/deny")["pressed"])
+        # Drawn pressed once still for the tap time: a press.
+        self.assertNotIn("pressed", self.widget("agents/deny"))
+        self.clock.now += TAP_TIME
+        self.assertTrue(d.settle())
+        self.assertTrue(self.widget("agents/deny")["pressed"])
         self.frame(lift(0))
         self.assertEqual(
             [m["type"] for m in self.client.sent if m["op"] == "event"],

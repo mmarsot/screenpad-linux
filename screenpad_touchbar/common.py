@@ -33,6 +33,15 @@ LAUNCH = [
     ' >/dev/null 2>&1 || exec gtk-launch "$1"' % (DBUS_PATH, DBUS_IFACE),
     "sh",
 ]
+# The picker's custom shortcut: the extension's window on the main screen,
+# for a place ("bar" or "apps"); only with an extension at CUSTOM_PROTOCOL.
+ADD_ITEM = [
+    "/bin/sh",
+    "-c",
+    'gdbus call --session --dest org.gnome.Shell --object-path %s --method %s.AddItem "$1" >/dev/null'
+    % (DBUS_PATH, DBUS_IFACE),
+    "sh",
+]
 ACTIVE_FLAG = "/run/screenpad/active"
 DEFAULT_CONFIG = "/usr/local/share/screenpad/touchbar.toml"
 # The EDID 'screenpad on' hands the kernel for the ScreenPad's connector.
@@ -60,15 +69,17 @@ SCENE_VERSION = 2
 # version 1 spots and could not show them, a bar not drawn (no ScreenPad
 # monitor found) shows nothing, and a touch must never answer a question
 # nobody can see.
-RENDERER_PROTOCOL = 4
+RENDERER_PROTOCOL = 5
 # What each feature needs of the renderer: questions came with protocol 2,
 # the pages (the black screensaver, the page button and the apps page) with 3,
-# apps' widgets on the apps page with 4. An extension GNOME keeps from
+# apps' widgets on the apps page with 4, the picker's custom shortcut
+# window (its D-Bus AddItem) with 5. An extension GNOME keeps from
 # before an update until the next login keeps showing what it knows; the
 # rest waits for the new one.
 ASKS_PROTOCOL = 2
 PAGES_PROTOCOL = 3
 WIDGETS_PROTOCOL = 4
+CUSTOM_PROTOCOL = 5
 RENDERER_NAME = "renderer.json"
 SOCKET_NAME = "touchbar.sock"
 # The app protocol on that socket (docs/app-api.md#the-protocol-version): an
@@ -152,6 +163,16 @@ SWIPE_TIME = 0.4
 # Seconds without a touch before the apps page goes back to the touchpad.
 RETURN_AFTER = 8
 MAX_RETURN_AFTER = 3600
+# On the apps page one finger moves the pointer (decide.py): a touch that
+# moves more than TAP_MOVE mm before TAP_TIME seconds is the pointer's; one
+# lifted nearly still within TAP_TIME is a tap; one still that long on a
+# widget or an item is a press. [pager] tap_move and tap_time change them,
+# within these bounds.
+PX_PER_MM = 16
+TAP_TIME = 0.4
+TAP_TIMES = (0.1, 2.0)
+TAP_MOVE = 2.5
+TAP_MOVES = (0.5, 10.0)
 # The apps page below the bar: a header strip (9 mm, a fingertip) with the
 # page's title and, on an app's page, Home; under it the page's grid of
 # widgets, at most MAX_COLUMNS by MAX_ROWS cells. The home page lists the

@@ -169,13 +169,13 @@ A widget must show something: a `label`, `text`, `lines` or an `icon`. Each `pag
 **What a touch does.**
 
 - The grid fills the panel below the header, which sits under the bar's own height: a taller bar makes the cells shorter. A card growing out of the bar covers the top of the page for as long as it shows; touches there are the card's.
-- A finger on a widget sends `down`; lifting on it (or within 60 px of it) sends `tap`. Sliding away and lifting sends `cancel`.
-- A `long` widget held for 0.8 s gets a white edge: lifting then sends `long` instead of `tap`. Sliding away still cancels.
+- One finger moving there moves the pointer, and its widget hears nothing ([touches on the apps page](touchbar.md#touches-on-the-apps-page)). Only a still touch is the widget's: a quick tap (lifted within 0.4 s without moving) sends `down` and `tap` together as it lifts; a finger held still for 0.4 s sends `down` then, and lifting on the widget (or within 60 px of it) sends `tap`. Sliding away and lifting sends `cancel`.
+- A `long` widget held for 0.8 s (from the touch) gets a white edge: lifting then sends `long` instead of `tap`. Sliding away still cancels.
 - **A touch that starts within 0.3 s of a widget appearing does nothing**: the page opening or the apps page turning to, the widget being new, changed by a `page` or moved (the bar resized), or a card growing over the page or going. A tap already on its way when the page changed lands on nothing.
 - **A widget that changes or goes while a finger is on it sends `cancel`**, and that finger chooses nothing, even if the new version has the same id. So a widget's meaning cannot change under a finger: answer only `tap` and `long`, and only for what the page showed then.
 - A touch keeps what it started on, as on the bar: one that started on a widget stays that widget's (or nothing) until it lifts, and a page turning to the touchpad under it cancels it.
 
-The pages need the extension of this version (`renderer.json` protocol 4). An older extension, still loaded until you log out and in, shows only that the apps page needs it, and touches there do nothing.
+The pages need the extension of this version (`renderer.json` protocol 4 or later). An older extension, still loaded until you log out and in, shows only that the apps page needs it, and touches there do nothing.
 
 ## A minimal app
 

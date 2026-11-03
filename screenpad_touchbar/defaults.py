@@ -1,6 +1,6 @@
 """The default touchbar.toml, and what earlier versions wrote by default, for migrate_config()."""
 
-from .common import DEFAULT_HEIGHT, MAX_HEIGHT, MIN_HEIGHT, NOTIFY_TIMEOUT, RETURN_AFTER
+from .common import DEFAULT_HEIGHT, MAX_HEIGHT, MIN_HEIGHT, NOTIFY_TIMEOUT, RETURN_AFTER, TAP_MOVE, TAP_TIME
 
 # The push-to-talk button's block in the default config before items
 # (V7_PTT_BLOCK), and now.
@@ -162,7 +162,8 @@ APPS_DOC = """\
 # page = "agents"
 """
 
-# How the default config described the pages with the page dots, and now.
+# How the default config described the pages with the page dots, with the
+# page button before one finger moved the pointer on the apps page, and now.
 DOTS_PAGES_DOC = """\
 # Two pages, shown by the page dots. The touchpad page is the usual one:
 # below the bar a touchpad, drawn black behind your windows (black pixels;
@@ -172,7 +173,7 @@ DOTS_PAGES_DOC = """\
 # the pointer. A swipe to the right, a tap on the dots, or %(return_after)d seconds
 # without a touch bring the touchpad back. To change that:
 """ % {"return_after": RETURN_AFTER}
-PAGES_DOC = """\
+V8_PAGES_DOC = """\
 # Two pages. The touchpad page is the usual one: below the bar a touchpad,
 # drawn black behind your windows (black pixels; the brightness stays as
 # it is), with a faint clock. The page button (an app grid) or a swipe
@@ -181,6 +182,34 @@ PAGES_DOC = """\
 # pointer. The page button (now a touchpad), a swipe to the right, or %(return_after)d
 # seconds without a touch bring the touchpad back. To change that:
 """ % {"return_after": RETURN_AFTER}
+PAGES_DOC = """\
+# Two pages. The touchpad page is the usual one: below the bar a touchpad,
+# drawn black behind your windows (black pixels; the brightness stays as
+# it is), with a faint clock. The page button (an app grid) or a swipe
+# along the bar (one finger, at least 25 mm, quickly, moving left) turns
+# to the apps page: below the bar, the apps page's items and apps' pages.
+# One finger still moves the pointer there; a quick tap, without moving,
+# opens what is under it, and a finger held still on it presses it (and
+# then drags an item to the bar). The page button (now a touchpad), a
+# swipe to the right, or %(return_after)d seconds without a touch bring the touchpad
+# back. To change that:
+""" % {"return_after": RETURN_AFTER}
+
+# The [pager] example lines before tap_time and tap_move, and now (with
+# return_after after them, so the old lines are not in the new ones).
+V8_PAGER_DOC = (
+    """\
+# [pager]
+# return_after = %d                           # seconds before the touchpad
+"""
+    % RETURN_AFTER
+)
+PAGER_DOC = """\
+# [pager]
+# tap_time = %g                             # seconds: a longer touch taps nothing
+# tap_move = %g                             # mm a tap may move; more moves the pointer
+# return_after = %d                           # seconds before the touchpad
+""" % (TAP_TIME, TAP_MOVE, RETURN_AFTER)
 
 EXAMPLE_CONFIG = """\
 %(header)s#
@@ -222,15 +251,13 @@ key = "printscreen"
 
 %(pages)s# [screensaver]
 # clock = false                              # black, without the clock
-# [pager]
-# return_after = %(return_after)d                           # seconds before the touchpad
-""" % {
+%(pager)s""" % {
     "header": HEADER,
     "layout": LAYOUT_DOC,
     "items": ITEMS_DOC,
     "apps": APPS_DOC,
     "pages": PAGES_DOC,
-    "return_after": RETURN_AFTER,
+    "pager": PAGER_DOC,
     "height": DEFAULT_HEIGHT,
     "min": MIN_HEIGHT,
     "max": MAX_HEIGHT,
@@ -252,6 +279,8 @@ OLD_DEFAULTS = {
     "0b366d9742cefa53c6734fb4f0ed757c0605990ad6e256492fb53db42d2be112",
     # Buttons and shortcuts, before items (tests/touchbar-v7-default.toml).
     "32f53a3f3fef9f684f9296f7bbeda468f65ff37f0ecd99177d2109a31051987d",
+    # Before one finger moved the pointer on the apps page (tests/touchbar-v8-default.toml).
+    "ed23f3bbd1bf476ef816fad8f5406d82a5fcb24349d5034934a1c79cd4c495ba",
 }
 
 # Default blocks earlier versions wrote, each with its current text. A config
@@ -277,11 +306,14 @@ OLD_BLOCKS = (
     # page button's.
     (OLD_LAYOUT_DOC, DOTS_LAYOUT_DOC),
     (DOTS_LAYOUT_DOC, V7_LAYOUT_DOC),
-    (DOTS_PAGES_DOC, PAGES_DOC),
+    (DOTS_PAGES_DOC, V8_PAGES_DOC),
     # Last, the comments about buttons and shortcuts become the ones about
     # items; migrate.py then turns the blocks themselves into [[bar]] items.
     (V7_HEADER, HEADER),
     (V7_LAYOUT_DOC, LAYOUT_DOC),
     (V7_BUTTONS_DOC, ITEMS_DOC),
     (V7_SHORTCUTS_DOC, APPS_DOC),
+    # One finger moving the pointer on the apps page, and its settings.
+    (V8_PAGES_DOC, PAGES_DOC),
+    (V8_PAGER_DOC, PAGER_DOC),
 )

@@ -205,6 +205,14 @@
     background-color: #1c1c21;
 }
 
+/* A free cell of the apps page's home list: a faint +, as on an empty
+   spot of the bar. After the tones, so it wins over tone-neutral. */
+.screenpad-touchbar-widget.empty {
+    background-color: transparent;
+    border: 2px solid #3a3a40;
+    color: #5a5a62;
+}
+
 .screenpad-touchbar-widget.long {
     border: 2px solid #9a9aa2;
 }
@@ -232,4 +240,19 @@
     background-color: rgba(53, 132, 228, 0.3);
     border: 2px solid #3584e4;
     color: #ffffff;
+}
+
+/* The custom shortcut window, on the main screen: a name, the key
+   combination recorded or a command, and what went wrong. */
+.screenpad-touchbar-custom-box {
+    spacing: 12px;
+    min-width: 420px;
+}
+
+.screenpad-touchbar-custom-title {
+    font-weight: bold;
+}
+
+.screenpad-touchbar-custom-error {
+    color: #ff7b63;
 }

@@ -25,7 +25,11 @@ from .common import (
     RETURN_AFTER,
     SPOT_W,
     SPOT_X,
+    TAP_MOVE,
+    TAP_MOVES,
     TAP_SLOP,
+    TAP_TIME,
+    TAP_TIMES,
     TILE,
     ConfigError,
 )
@@ -80,17 +84,22 @@ class NotifyPolicy:
 class Pages:
     """The pages' settings: [screensaver] and [pager]."""
 
-    def __init__(self, clock=True, return_after=RETURN_AFTER):
+    def __init__(self, clock=True, return_after=RETURN_AFTER, tap_time=TAP_TIME, tap_move=TAP_MOVE):
         self.clock = clock  # a faint clock on the black below the bar
         self.return_after = return_after
+        # On the apps page: the longest tap (seconds), and how far a touch
+        # moves (mm) before it is the pointer's (decide.py).
+        self.tap_time, self.tap_move = tap_time, tap_move
 
     def spec(self):
-        return (self.clock, self.return_after)
+        return (self.clock, self.return_after, self.tap_time, self.tap_move)
 
     def describe(self):
-        return "screensaver black%s; apps page back to the touchpad after %d s" % (
+        return "screensaver black%s; apps page back to the touchpad after %d s, taps %g s and %g mm" % (
             " with a clock" if self.clock else "",
             self.return_after,
+            self.tap_time,
+            self.tap_move,
         )
 
 
@@ -290,11 +299,20 @@ def _bool(table, name, key):
 
 def _pages(data):
     saver = _table(data, "screensaver", {"clock"})
-    pager = _table(data, "pager", {"return_after"})
+    pager = _table(data, "pager", {"return_after", "tap_time", "tap_move"})
     after = pager.get("return_after", RETURN_AFTER)
     if isinstance(after, bool) or not isinstance(after, int) or not 1 <= after <= MAX_RETURN_AFTER:
         raise ConfigError("pager: return_after must be a whole number of seconds, 1 to %d" % MAX_RETURN_AFTER)
-    return Pages(_bool(saver, "screensaver", "clock"), after)
+    tap_time = _number(pager, "tap_time", TAP_TIME, TAP_TIMES, "seconds")
+    tap_move = _number(pager, "tap_move", TAP_MOVE, TAP_MOVES, "millimetres")
+    return Pages(_bool(saver, "screensaver", "clock"), after, tap_time, tap_move)
+
+
+def _number(table, key, default, bounds, unit):
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not bounds[0] <= value <= bounds[1]:
+        raise ConfigError("pager: %s must be a number of %s, %g to %g" % (key, unit, *bounds))
+    return float(value)
 
 
 def config_path():

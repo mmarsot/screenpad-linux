@@ -63,6 +63,7 @@ import {
     STRUT_CHROME,
     rendererJson,
 } from './contract.js';
+import {CustomShortcut} from './custom.js';
 import {CLICK_NAME, Clicker} from './feedback.js';
 import {KeepOut} from './keepout.js';
 import {NotificationMirror} from './notifications.js';
@@ -81,6 +82,7 @@ import {
     sceneFrom,
     tileBox,
 } from './scene.js';
+import {PLACES} from './shortcut.js';
 import {tileActor} from './tiles.js';
 
 export default class ScreenpadTouchbar extends Extension {
@@ -188,6 +190,8 @@ export default class ScreenpadTouchbar extends Extension {
         this._mirror = null;
         this._dbus?.unexport();
         this._dbus = null;
+        this._custom?.destroy();
+        this._custom = null;
         Main.overview.disconnectObject(this);
         DND.removeDragMonitor(this._dragMonitor);
         this._dragMonitor = null;
@@ -218,6 +222,15 @@ export default class ScreenpadTouchbar extends Extension {
         if (!app) throw new Error(`${id} is not an app on the touch bar`);
         if (Main.overview.visible) Main.overview.hide();
         app.activate();
+    }
+
+    // D-Bus: the picker's "Custom shortcut…" (the daemon calls this on a
+    // tap): the window that adds a key or a command to place.
+    AddItem(place) {
+        if (!Object.hasOwn(PLACES, place)) throw new Error(`no place ${place} on the touch bar`);
+        this._custom?.destroy();
+        this._custom = new CustomShortcut(place);
+        this._custom.open();
     }
 
     _load() {

@@ -49,10 +49,11 @@ class Slot:
 
 
 class Contact:
-    __slots__ = ("id", "kind", "order", "tool", "x", "y")
+    __slots__ = ("id", "kind", "order", "tool", "x", "x0", "y", "y0")
 
     def __init__(self, id, kind, x, y, tool, order):
         self.id, self.kind, self.x, self.y, self.tool, self.order = id, kind, x, y, tool, order
+        self.x0, self.y0 = x, y  # where it went down
 
 
 class Splitter:
@@ -71,6 +72,9 @@ class Splitter:
     stays out of the pad, and a pad contact that slides up stays a pad contact,
     so the pointer never sees a touch appear or vanish mid-stroke; a zone that
     changes (the bar growing, the page turning) applies to new contacts only.
+    The one change is handoff(): a SURFACE contact the apps page decided is
+    the pointer's (decide.py) becomes a PAD contact, before the virtual
+    touchpad ever saw it.
     """
 
     def __init__(self, axes, nslots, zone, cur=0):
@@ -166,6 +170,36 @@ class Splitter:
                 out[c.kind].append(("move", s) + self.axes.panel(c.x, c.y))
             c.tool = slot.tool
         return self.pad_frames(), bar, surface
+
+    def pad_down(self):
+        """Whether a touchpad contact is down."""
+        return any(c.kind == PAD for c in self.contacts.values())
+
+    def pressing(self):
+        """Whether the pad's button is pressed (a physical click)."""
+        return self.src_left
+
+    def handoff(self, slots):
+        """Make these SURFACE contacts PAD contacts: the virtual touchpad's
+        frames that start them where they went down, then move them to
+        where they are, so libinput sees all their motion (and so no tap),
+        with the button if it is pressed. Other slots are left alone."""
+        moved = [s for s in slots if s in self.contacts and self.contacts[s].kind == SURFACE]
+        if not moved:
+            return []
+        for s in moved:
+            self.contacts[s].kind = PAD
+        if self.src_left and not self.sent_left:
+            self.left_changed = True
+        start = self.wanted()
+        for s in moved:
+            c = self.contacts[s]
+            start[s] = (c.id, c.x0, c.y0, c.tool)
+        # The first frame is made up: no timestamp of its own.
+        timestamp, self.timestamp = self.timestamp, None
+        events = self.pad_frames(start)
+        self.timestamp = timestamp
+        return events + self.pad_frames()
 
     def wanted(self):
         return {s: (c.id, c.x, c.y, c.tool) for s, c in self.contacts.items() if c.kind == PAD}

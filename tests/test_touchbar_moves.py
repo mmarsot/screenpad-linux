@@ -26,6 +26,7 @@ from screenpad_touchbar.common import (
     RENDERER_NAME,
     SPOT_W,
     SPOT_X,
+    TAP_TIME,
     WIDGETS_PROTOCOL,
     runtime_file,
     state_path,
@@ -133,10 +134,15 @@ class MovesTests(unittest.TestCase):
             return json.load(f)
 
     def down(self, at, slot=0):
-        """A finger down at a point, in panel pixels (twice that in device units)."""
+        """A finger down at a point, in panel pixels (twice that in device
+        units), and held still for the tap time: on the apps page, a press,
+        which moves the item it is on when it slides (a quick slide there
+        moves the pointer)."""
         self.clock.now += ASK_ARM
         self.contact += 1
         self.frame(touch(slot, self.contact, at[0] * 2, at[1] * 2))
+        self.clock.now += TAP_TIME
+        self.daemon.settle()
 
     def move(self, at, slot=0):
         self.frame(touch(slot, None, at[0] * 2, at[1] * 2))

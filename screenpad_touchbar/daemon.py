@@ -13,19 +13,17 @@ from .bar import Bar
 from .codes import ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT
 from .common import (
     ACTIVE_FLAG,
+    ADD_ITEM,
     ASKS_PROTOCOL,
     CARD_HEIGHT,
-    GRIP,
+    CUSTOM_PROTOCOL,
     HOME,
     LAUNCH,
     LIFT_WAIT,
-    PAGE,
     PAGES_PROTOCOL,
-    PANEL_H,
-    PANEL_W,
     POLL,
+    PX_PER_MM,
     RENDERER_NAME,
-    SCENE_VERSION,
     SOCKET_NAME,
     WIDGETS_PROTOCOL,
     ConfigError,
@@ -36,20 +34,22 @@ from .common import (
     runtime_file,
     state_path,
 )
-from .config import config_path, load_config
-from .config_edit import edit_config, remove_app
+from .config import LISTS, config_path, load_config
+from .config_edit import append_item, edit_config, remove_app
+from .decide import Decider
 from .devices import Source, create_keys, create_pad, find_source, reset_tools, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
 from .moves import BAR_LIST, Mover
 from .pager import Pager
-from .scene import ask_tiles, page_look, spot_tiles
+from .picker import Picker, read_favourites
+from .publish import scene, state
 from .splitter import BAR, PAD, RESYNC, SURFACE, Splitter
 from .surface import Surface
 
 
 class Daemon:
-    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG, toggle=None):
+    def __init__(self, config, config_file, device=None, flag=ACTIVE_FLAG, toggle=None, favourites=None):
         self.config = config
         self.config_file = config_file
         self.config_mtime = self._mtime()
@@ -103,6 +103,23 @@ class Daemon:
         # Items dragged between the bar and the apps page's home list.
         self.mover = Mover(lambda: self.config, self.surface.drop_cell, self.apps.asks, self.edit, self._click)
         self.surface.mover = self.mover
+        # What a + adds; the dock's favourites only from main() (tests
+        # never run gsettings) unless a test passes its own.
+        self.picker = Picker(
+            lambda: self.config,
+            self.add_item,
+            custom=lambda place: self.run_command(ADD_ITEM + [place]),
+            can_custom=lambda: self.renderer_protocol() >= CUSTOM_PROTOCOL,
+            favourites=favourites,
+        )
+        self.surface.picker = self.picker
+        # Which apps page touches move the pointer and which press: on the
+        # surface's clock.
+        self.decider = Decider(
+            lambda: (self.config.pages.tap_time, self.config.pages.tap_move * PX_PER_MM),
+            self.surface.holdable,
+            clock=lambda: self.surface.clock(),
+        )
         self.page_button_shown = False
         # Presses the bar and the surface accepted since the daemon started:
         # the extension plays a click each time this goes up.
@@ -148,64 +165,20 @@ class Daemon:
 
     def scene(self):
         """The tiles to draw: a question over the spots while one shows."""
-        pressed, removing = (self.bar.pressed(), self.bar.removing()) if self.bar else ([], [])
-        page_to = self.pager.target() if self.pager.available() else None
-        # Page items open their page only while the apps page can show.
-        pages = {n: page_look(p) for n, p in self.apps.pages.items()} if page_to is not None else {}
-        marks = self.mover.marks(BAR_LIST)  # an item dragged from or to the bar
-        tiles = spot_tiles(self.config, pressed, removing, self.apps.provided(), page_to, pages, marks)
-        ask = self.apps.asks.shown()
-        if ask is not None:
-            height = self.bar.card_height() if self.bar else max(self.config.height, CARD_HEIGHT)
-            pressed_ask = self.bar.ask_pressed(ask) if self.bar else ()
-            tiles = ask_tiles(ask, height, pressed_ask, len(self.apps.asks.queue) - 1) + [
-                t for t in tiles if t["style"] in (GRIP, PAGE)
-            ]
-        return tiles
+        return scene(self)
 
     # The state file the GNOME Shell extension draws from.
     def publish(self):
-        state = {
-            "version": SCENE_VERSION,
-            "pid": os.getpid(),
-            "active": self.source is not None and self.source.grabbed,
-            "monitor": self.monitor,
-            "panel": [PANEL_W, PANEL_H],
-            # Drawn: CARD_HEIGHT while a card shows. The strut (the work
-            # area windows avoid) is the bar's own height: a card covers
-            # windows for a moment rather than resizing them.
-            "height": self.bar.height() if self.bar else self.config.height,
-            "strut": self.bar.base_height() if self.bar else self.config.height,
-            "tiles": self.scene(),
-            # No line between groups of spots: any item goes in any spot.
-            "divider": None,
-            "apps": self.apps.names(),
-            # The page shown, black below the bar on the touchpad page (and
-            # whether with a clock), and what the apps page shows there.
-            "page": self.pager.name(),
-            "screensaver": {"clock": self.config.pages.clock},
-            "surface": self.surface.scene(),
-            # Presses accepted so far (Bar and Surface click()): the
-            # extension plays its click when this goes up.
-            "clicks": self.clicks,
-            # Fn+F6 (Toggle.shown()): the extension shows "ScreenPad on".
-            "fnkey": self.toggle.shown() if self.toggle else None,
-            # Version 1: the extension loaded before tiles keeps drawing the
-            # bar from these until the next login (GNOME loads new extension
-            # code only then). It shows no app tiles and no questions.
-            "spots": [s.public() for s in self.config.spots if s.kind != PAGE],
-            "pressed": self.bar.pressed() if self.bar else [],
-            "removing": self.bar.removing() if self.bar else [],
-        }
-        if state == self.published:
+        state_ = state(self)
+        if state_ == self.published:
             return
         path = state_path()
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
-            json.dump(state, f)
+            json.dump(state_, f)
         os.replace(tmp, path)
-        self.published = state
+        self.published = state_
 
     def unpublish(self):
         try:
@@ -238,6 +211,11 @@ class Daemon:
     def resize(self, height):
         return self.edit(lambda c: {"height": height}, "resize the bar")
 
+    def add_item(self, place, item):
+        """The picker's choice: item at the end of place's items."""
+
+        return self.edit(lambda c: {place: append_item(c.items(place), item, LISTS[place])}, "add the item")
+
     def item_act(self, item, kind):
         """A touch on an item of the apps page (Bar.act())."""
         if self.bar is not None:
@@ -257,6 +235,7 @@ class Daemon:
             click=self._click,
             open_page=self.surface.open_page,
             mover=self.mover,
+            add_spot=lambda: self.surface.open_picker(BAR_LIST),
         )
 
     def reap(self):
@@ -324,7 +303,7 @@ class Daemon:
             pad, bar, surface = self.splitter.release_all()
             self.bar.handle(bar)
             self.bar.release_all()
-            self.surface.handle(surface)
+            self.surface.handle(self.decider.feed(surface)[0])
             self.surface.release_all()
             write_events(self.pad, pad)
         except OSError as e:
@@ -366,13 +345,23 @@ class Daemon:
     def route(self, pad, bar, surface):
         """One frame's contacts: the touchpad's to the virtual touchpad, the
         bar's through the pager (which takes swipes) to the bar, the apps
-        surface's to it. True if the bar changed."""
+        surface's through the decider, which hands the pointer's to the
+        virtual touchpad, to it. True if the bar changed."""
         assert self.splitter is not None and self.bar is not None
         write_events(self.pad, pad)
         changed = self.bar.handle(self.pager.watch(bar))
+        surface, pointer = self.decider.feed(surface, self.splitter.pad_down(), self.splitter.pressing())
+        if pointer:
+            write_events(self.pad, self.splitter.handoff(pointer))
         changed |= self.surface.handle(surface)
         self.pager.touching(bool(self.splitter.contacts))
         return changed
+
+    def settle(self):
+        """Apps page touches still for tap_time on a widget or an item
+        become presses; True if the surface changed."""
+        events = self.decider.settle()
+        return bool(events) and self.surface.handle(events)
 
     def check_config(self):
         mtime = self._mtime()
@@ -428,11 +417,12 @@ class Daemon:
             if self.pager.tick() or self.pager.available() != self.page_button_shown:
                 self.page_button_shown = self.pager.available()
                 self.publish()
-            if self.surface.tick():
+            if self.surface.tick() | self.settle():
                 self.publish()
             for deadline in (
                 self.bar.deadline() if self.bar else None,
                 self.surface.deadline(),
+                self.decider.deadline(),
                 self.apps.asks.deadline(),
                 self.pager.deadline(),
                 self.toggle.deadline() if self.toggle else None,
@@ -495,6 +485,7 @@ class Daemon:
             log("apps cannot use the bar: %s" % e)
         if self.toggle is None:
             self.toggle = Toggle(TouchpadSetting(), Panel(), flag=self.flag)
+        self.picker.read_favourites = read_favourites
         try:
             self.loop()
         finally:
