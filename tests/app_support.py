@@ -2,11 +2,12 @@
 clock, and the daemon's own Apps served on its AppServer in a thread."""
 
 import os
+import select
 import tempfile
 import threading
 import time
 
-from touchbar_support import REPO, pump
+from touchbar_support import REPO
 
 from screenpad_touchbar import common
 from screenpad_touchbar.apps import Apps, AppServer
@@ -26,7 +27,12 @@ class Clock:
 
 class DaemonBar:
     """The daemon's own Apps (or apps, a subclass) on its AppServer, served
-    in a thread. Hold lock to look at or drive apps."""
+    in a thread. Hold lock to look at or drive apps.
+
+    The thread waits in select without the lock and takes it only to handle
+    what is ready. Holding it across the wait and taking it again at once
+    starves the test's thread on Python before 3.13, whose locks are not
+    fair: tests stalled for minutes on CI there."""
 
     def __init__(self, test, placed=("counter",), apps=None):
         tmp = tempfile.TemporaryDirectory(dir="/tmp")
@@ -45,15 +51,28 @@ class DaemonBar:
     def serve(self):
         while not self.stop.is_set():
             with self.lock:
-                pump(self.server)
+                rfds, wfds = self.server.rfds(), self.server.wfds()
+            try:
+                ready, _, _ = select.select(rfds, wfds, [], 0.01)
+            except (OSError, ValueError):
+                continue  # drop() closed a client meanwhile
+            with self.lock:
+                for fd in ready:
+                    if self.server.owns(fd):
+                        self.server.readable(fd)
+                self.server.flush()
 
     def wait(self, check, timeout=2.0):
         """Wait until check() holds, called under the lock."""
         end = time.monotonic() + timeout
-        while time.monotonic() < end:
-            with self.lock:
+        while (left := end - time.monotonic()) > 0:
+            if not self.lock.acquire(timeout=left):
+                break
+            try:
                 if check():
                     return
+            finally:
+                self.lock.release()
             time.sleep(0.01)
         raise AssertionError("never held")
 
