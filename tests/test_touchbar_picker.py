@@ -264,9 +264,7 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(
                 self.run_cli("add-key", "Terminal", "56+29+20", "--apps"), (0, "added Terminal to the apps page\n", "")
             )
-            self.assertEqual(
-                self.run_cli("add-command", "Hi", "notify-send hi"), (0, "added Hi to the bar\n", "")
-            )
+            self.assertEqual(self.run_cli("add-command", "Hi", "notify-send hi"), (0, "added Hi to the bar\n", ""))
             c = load_config()[0]
             self.assertEqual((c.apps[-1].key, c.apps[-1].mode), ("ctrl+alt+t", "tap"))
             self.assertEqual(
