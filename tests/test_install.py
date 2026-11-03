@@ -10,6 +10,7 @@ import sys
 import unittest
 
 from screenpad_support import PARAM, REPO, UBUNTU_GRUB, Base, repo_file, tsb_edid
+from touchbar_support import js
 
 
 @unittest.skipIf(os.geteuid() == 0, "runs install.sh, so never as root")
@@ -144,6 +145,18 @@ class InstallTests(Base):
             )
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertTrue(run.stdout.startswith("usage: %s " % prog), run.stdout)
+
+    def test_extension_fallback_command_is_installed(self):
+        # The extension adds dropped apps with CLI_FALLBACK when the command
+        # is not on its PATH, so the install must put the command there.
+        cli, fallback = js("contract.js", "[m.CLI, m.CLI_FALLBACK]")
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = self.s.p(fallback.lstrip("/"))
+        self.assertTrue(os.access(path, os.X_OK), fallback)
+        run = subprocess.run([sys.executable, "-I", path, "--help"], cwd=self.tmp.name, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(run.stdout.startswith("usage: %s " % cli), run.stdout)
 
     def test_install_without_saved_edid(self):
         r = self.install()

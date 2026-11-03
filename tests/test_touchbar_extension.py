@@ -18,7 +18,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from touchbar_support import EXT, REPO, TILE_CONFIG, ConfigHome, FakeClient, config, js, read
+from touchbar_support import EXT, TILE_CONFIG, ConfigHome, FakeClient, config, js, read
 
 from screenpad_touchbar.cli import main
 from screenpad_touchbar.common import (
@@ -89,11 +89,6 @@ class ContractTests(unittest.TestCase):
             (c["STATE_NAME"], c["RENDERER_NAME"], c["RENDERER_PROTOCOL"], c["SOCKET_NAME"]),
             (os.path.basename(state_path()), RENDERER_NAME, RENDERER_PROTOCOL, SOCKET_NAME),
         )
-        # The extension adds dropped apps with the installed command.
-        with open(os.path.join(REPO, "install.sh")) as f:
-            installed = re.search(r"^TOUCHBAR=(\S+)$", f.read(), re.M).group(1)
-        self.assertEqual(c["CLI_FALLBACK"], installed)
-        self.assertEqual(os.path.basename(installed), c["CLI"])
 
     def test_dbus_interface_matches_the_daemon(self):
         self.assertEqual(self.c["DBUS_PATH"], DBUS_PATH)

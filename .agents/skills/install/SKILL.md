@@ -15,7 +15,7 @@ Read first:
 ## Rules
 
 - **The installed paths are a contract**: the variables at the top of `install.sh` (`BIN`, `LIB`, `TOUCHBAR`, `UNIT`, `HOOK`, `TOUCHBAR_UNIT`, `EXTENSION`, `UDEV_RULE`, `FIRMWARE`, `INITRAMFS_HOOK`, `DOC`, `STATE`) must match the `ExecStart`/`ExecStop` lines of the units, the resume hook, the extension's `CLI_FALLBACK`, the docs and the tests. Moving one updates all of them in the same change, and `uninstall` must remove the new and the old location so an update leaves nothing behind.
-- **`install.sh` is POSIX `sh`, run as root, and refuses another machine** (`PRODUCT`, the same model as `screenpad.py`'s `SUPPORTED_DMI`). Every path is prefixed with `DESTDIR` (`$R`) so the tests can install into a fake root.
+- **`install.sh` is POSIX `sh`, run as root, and refuses another machine** (`PRODUCT`, the same model as `SUPPORTED_DMI` in `screenpad_display/common.py`). Every path is prefixed with `DESTDIR` (`$R`) so the tests can install into a fake root.
 - **It never edits GRUB and never starts the panel**: it enables `screenpad.service` without starting it, and `uninstall` refuses while GRUB still loads the EDID file (`screenpad grub remove` first). The touch bar is turned on per user with `screenpad-touchbar on`, never by `install.sh`.
 - **The saved EDID survives**: `uninstall` keeps `/var/lib/screenpad`; only `purge` deletes it. An update (`install.sh` again) keeps the EDID, the boot parameter and the user's touch bar config.
 - **The initramfs hook is installed only when nvidia-drm is in the initramfs**, so the EDID file is there when the driver probes early; `uninstall` removes it and rebuilds the initramfs.

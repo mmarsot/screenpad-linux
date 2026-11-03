@@ -12,6 +12,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+# Keep root from leaving root-owned __pycache__ directories in the checkout.
+sys.dont_write_bytecode = True
 
 from screenpad_touchbar.cli import main
 
