@@ -11,7 +11,7 @@ from .asks import Asks
 from .common import MAX_APPS, MAX_LINE, MAX_NOTIFY_WAITING, MAX_OUT, TILE_NAME, TouchbarError
 from .config import NotifyPolicy
 from .notify import mirror_refusal, notification_ask, parse_notify
-from .protocol import ProtocolError, _known, _printable, _tone, parse_ask
+from .protocol import ProtocolError, known_fields, parse_ask, text_field, tone_field
 
 
 class Apps:
@@ -93,7 +93,7 @@ class Apps:
             elif op == "notify":
                 self._notify(client, msg)
             elif op == "cancel":
-                _known(msg, {"id"})
+                known_fields(msg, {"id"})
                 if not self.asks.cancel(client, msg.get("id")):
                     raise ProtocolError("no waiting question %r" % msg.get("id"))
             else:
@@ -105,7 +105,7 @@ class Apps:
             client.send(reply)
 
     def _hello(self, client, msg):
-        _known(msg, {"app", "tiles"})
+        known_fields(msg, {"app", "tiles"})
         if client.name is not None:
             raise ProtocolError("hello was already said")
         name = msg.get("app")
@@ -162,11 +162,11 @@ class Apps:
             self.asks.add(ask)
 
     def _set(self, client, msg):
-        _known(msg, {"tile", "icon", "label", "text", "badge", "tone"})
+        known_fields(msg, {"tile", "icon", "label", "text", "badge", "tone"})
         tile = msg.get("tile")
         if self.owner.get(tile) is not client:
             raise ProtocolError("tile %r is not yours; provide it in hello" % tile)
-        look = {"tone": _tone(msg.get("tone"))}
+        look = {"tone": tone_field(msg.get("tone"))}
         icon = msg.get("icon")
         if icon is not None:
             if not isinstance(icon, str) or not (
@@ -176,7 +176,7 @@ class Apps:
                 raise ProtocolError("icon must be an icon name or an absolute image path")
             look["icon"] = icon
         for key, limit in (("label", 32), ("text", 48), ("badge", 4)):
-            value = _printable(msg.get(key), key, limit, required=False)
+            value = text_field(msg.get(key), key, limit, required=False)
             if value:
                 look[key] = value
         if look != self.look.get(tile):

@@ -5,7 +5,7 @@ Normalizing them, the mirror rules, and the question a mirrored one becomes.
 
 from .common import MAX_OPTIONS, OPTION_ID, URGENCIES, ConfigError
 from .config import app_id
-from .protocol import Ask, ProtocolError, _known
+from .protocol import Ask, ProtocolError, known_fields
 
 # The extension forwards each notification GNOME's message tray asks a banner
 # for, normalized, as one "notify" message:
@@ -58,7 +58,7 @@ def mirror_refusal(card, policy):
 
 def parse_notify(msg):
     """The normalized notification of a "notify" message."""
-    _known(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners", "dnd", "acknowledged"})
+    known_fields(msg, {"id", "app", "source", "title", "text", "urgency", "actions", "banners", "dnd", "acknowledged"})
     if not isinstance(msg.get("id"), str) or not OPTION_ID.fullmatch(msg["id"]):
         raise ProtocolError('id must be a name like "n1" (letters, digits, . _ -, at most 32)')
     app = msg.get("app")

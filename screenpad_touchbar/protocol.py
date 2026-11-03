@@ -26,7 +26,7 @@ class ProtocolError(Exception):
     pass
 
 
-def _printable(value, what, limit, required=True):
+def text_field(value, what, limit, required=True):
     if value is None and not required:
         return None
     if not isinstance(value, str) or not value.strip() or len(value) > limit or not value.isprintable():
@@ -34,13 +34,13 @@ def _printable(value, what, limit, required=True):
     return value.strip()
 
 
-def _known(msg, allowed):
+def known_fields(msg, allowed):
     unknown = set(msg) - allowed - {"op"}
     if unknown:
         raise ProtocolError("unknown field(s): %s" % ", ".join(sorted(unknown)))
 
 
-def _tone(value):
+def tone_field(value):
     if value is None:
         return "neutral"
     if value not in TONES:
@@ -62,12 +62,12 @@ class Ask:
 
 def parse_ask(client, msg, now):
     """An Ask from an "ask" message; ProtocolError if it is not one."""
-    _known(msg, {"id", "title", "text", "options", "timeout"})
+    known_fields(msg, {"id", "title", "text", "options", "timeout"})
     ask_id = msg.get("id")
     if not isinstance(ask_id, str) or not OPTION_ID.fullmatch(ask_id):
         raise ProtocolError('id must be a name like "q1" (letters, digits, . _ -, at most 32)')
-    title = _printable(msg.get("title"), "title", 80)
-    text = _printable(msg.get("text"), "text", 200, required=False)
+    title = text_field(msg.get("title"), "title", 80)
+    text = text_field(msg.get("text"), "text", 200, required=False)
     options = msg.get("options")
     if not isinstance(options, list) or not 1 <= len(options) <= MAX_OPTIONS:
         raise ProtocolError("options must be a list of 1 to %d answers" % MAX_OPTIONS)
@@ -75,13 +75,13 @@ def parse_ask(client, msg, now):
     for o in options:
         if not isinstance(o, dict):
             raise ProtocolError("each option is an object with id and label")
-        _known(o, {"id", "label", "tone"})
+        known_fields(o, {"id", "label", "tone"})
         if not isinstance(o.get("id"), str) or not OPTION_ID.fullmatch(o["id"]):
             raise ProtocolError('option id must be a name like "allow"')
         if o["id"] in [c["id"] for c in clean]:
             raise ProtocolError("option id %s appears twice" % o["id"])
         clean.append(
-            {"id": o["id"], "label": _printable(o.get("label"), "option label", 24), "tone": _tone(o.get("tone"))}
+            {"id": o["id"], "label": text_field(o.get("label"), "option label", 24), "tone": tone_field(o.get("tone"))}
         )
     timeout = msg.get("timeout", ASK_TIMEOUT)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= MAX_ASK_TIMEOUT:
