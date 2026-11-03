@@ -51,7 +51,7 @@ One command each; none needs root or the hardware. `make` installs the npm tools
 
 - `tests/` holds stdlib `unittest` tests: `test_screenpad.py` (the display CLI and `install.sh`), `test_touchbar.py` (the touch bar), `test_touchbar_cards.py` (attention cards and notifications, plus static checks of the extension), `test_skills.py` (the skills and this index).
 - They import the programs from the checkout (`sys.path` set to the repository root). A new test goes in the file of its area; a new area gets its own file.
-- Some tests read the extension's source with regular expressions to check it against the daemon's constants. After reformatting or restructuring the extension, run `make test`, not only the JavaScript checks.
+- Some tests are source contract checks: they read the extension's source with regular expressions to compare it with the daemon's constants. They are a known weakness, not a pattern to copy: they show only that text is in the file, and a refactor can break them. Replace them with behavioral tests of the extension's logic when you can, add no new ones, and after reformatting or restructuring the extension run `make test`, not only the JavaScript checks.
 
 ## Skills are part of the code
 

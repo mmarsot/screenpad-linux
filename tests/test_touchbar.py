@@ -873,11 +873,13 @@ class ExtensionTests(unittest.TestCase):
         # Fully drawn before a tap on it counts.
         self.assertLess(grow, t.ASK_ARM * 1000)
 
-    def test_grip_drawn_at_every_height(self):
-        # The grip is narrow (104 px); insets and icons scaled by the
-        # height alone left it 1 px wide on a tall bar.
-        src = self.source()
-        self.assertIn("if (tile.glyph === 'grip') {\n            child = this._grip(width, height);", src)
+    def test_grip_source_contract(self):
+        # Source contract check, not a behavioral test: it only shows the
+        # extension's text routes the grip to its own drawing code. The
+        # grip is narrow (104 px); insets and icons scaled by the height
+        # alone left it 1 px wide on a tall bar.
+        src = " ".join(self.source().split())
+        self.assertIn("if (tile.glyph === 'grip') { child = this._grip(width, height);", src)
         self.assertIn("Math.round(narrowest * MAX_INSET)", src)
         self.assertNotIn("list-drag-handle-symbolic", src)
         css_path = os.path.join(REPO, "gnome-shell", "screenpad-touchbar@screenpad", "stylesheet.css")

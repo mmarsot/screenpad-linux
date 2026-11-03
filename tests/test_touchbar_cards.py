@@ -518,16 +518,19 @@ class NotifyConfigTests(unittest.TestCase):
 class ExtensionMirrorTests(unittest.TestCase):
     """The extension's messages against the daemon's protocol."""
 
-    def test_messages_match_the_daemon(self):
+    def test_messages_source_contract(self):
+        # Source contract check, not a behavioral test: it compares the
+        # constants and notify fields written in the extension's text with
+        # the daemon's protocol.
         src = read("notifications.js")
         names = re.search(r"const URGENCY = \[([^\]]*)\];", src).group(1)
         self.assertEqual(tuple(re.findall(r"'(\w+)'", names)), t.URGENCIES)
         self.assertTrue(t.TILE_NAME.fullmatch(re.search(r"const APP = '([^']+)';", src).group(1)))
         action = re.search(r"const ACTION = /(.*)/;", src).group(1)
         self.assertRegex("action-%d" % (t.MAX_OPTIONS - 1), action)
-        body = src[src.index("op: 'notify',") :]
-        body = body[: body.index("});")]
-        keys = set(re.findall(r"^\s*(\w+)[:,]", body, re.M)) - {"op"} | {"id"}
+        body = src[re.search(r"op:\s*'notify'\s*,", src).end() :]
+        body = body[: re.search(r"}\s*\)", body).start()]
+        keys = set(re.findall(r"^\s*(\w+)\s*[:,]", body, re.M)) | {"id"}
         self.assertEqual(keys, set(t.parse_notify(notify())))
         ext = read("extension.js")
         self.assertEqual(re.search(r"const SOCKET_NAME = '([^']+)';", ext).group(1), t.SOCKET_NAME)
