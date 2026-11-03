@@ -166,7 +166,7 @@ export default class ScreenpadTouchbar extends Extension {
         Main.layoutManager.disconnect(this._monitorsChangedId);
         this._fileMonitor.cancel();
         this._fileMonitor = null;
-        this._pages.destroy();
+        this._pages.release();
         this._pages = null;
         this._destroyBar();
         this._state = null;

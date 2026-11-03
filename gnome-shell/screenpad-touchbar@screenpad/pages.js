@@ -46,6 +46,7 @@ export class Pages {
         this._power = null;
         this._powerId = 0;
         this._powerCancel = null;
+        this._powerStarted = false;
         this._surface = null;
         this._widgets = [];
         this._key = null;
@@ -82,16 +83,12 @@ export class Pages {
             parent.set_child_below_sibling(this._surface, bar);
     }
 
+    // Takes the pages down; UPower's proxy stays for the next screensaver.
     destroy() {
         if (this._clockId) GLib.source_remove(this._clockId);
         this._clockId = 0;
         this._clock = null;
         this._interface = null;
-        this._powerCancel?.cancel();
-        this._powerCancel = null;
-        if (this._powerId) this._power.disconnect(this._powerId);
-        this._powerId = 0;
-        this._power = null;
         this._battery = null;
         if (this._saver) {
             this._saver.get_parent()?.remove_child(this._saver);
@@ -105,6 +102,17 @@ export class Pages {
         this._surface = null;
         this._widgets = [];
         this._key = null;
+    }
+
+    // Takes the pages down and lets UPower's proxy go, for good.
+    release() {
+        this.destroy();
+        this._powerCancel?.cancel();
+        this._powerCancel = null;
+        if (this._powerId) this._power.disconnect(this._powerId);
+        this._powerId = 0;
+        this._power = null;
+        this._powerStarted = false;
     }
 
     _buildSaver(saver, monitor) {
@@ -154,8 +162,10 @@ export class Pages {
     }
 
     // The battery level in the bottom left corner, hidden until UPower
-    // says there is a battery. UPower signals every change of its
-    // properties; the label changes only when the text shown does.
+    // says there is a battery. One proxy, started with the first
+    // screensaver, serves every one after it until release(); UPower
+    // signals every change of its properties, and the label changes only
+    // when the text shown does.
     _watchBattery(size) {
         this._battery = new St.Label({
             style_class: 'screenpad-touchbar-battery',
@@ -167,20 +177,24 @@ export class Pages {
             y_expand: true,
         });
         this._saver.add_child(this._battery);
+        this._showBattery();
+        if (this._powerStarted) return;
+        this._powerStarted = true;
         const cancel = new Gio.Cancellable();
         this._powerCancel = cancel;
-        this._power = new PowerProxy(
+        new PowerProxy(
             Gio.DBus.system,
             UPOWER_NAME,
             UPOWER_DISPLAY,
             (proxy, error) => {
-                // Cancelled when the screensaver went away first.
+                // Cancelled when released first.
                 if (cancel.is_cancelled()) return;
                 this._powerCancel = null;
                 if (error) {
                     console.warn(`screenpad-touchbar: no battery level: ${error.message}`);
                     return;
                 }
+                this._power = proxy;
                 this._powerId = proxy.connect('g-properties-changed', () => this._showBattery());
                 this._showBattery();
             },
@@ -189,6 +203,7 @@ export class Pages {
     }
 
     _showBattery() {
+        if (!this._battery) return;
         const text = batteryText(this._power);
         if (text === this._battery.text && this._battery.visible === (text !== '')) return;
         this._battery.text = text;
