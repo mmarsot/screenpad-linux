@@ -227,7 +227,8 @@ export function pagesFrom(state) {
 }
 
 // The font sizes in px the pages use on a monitor this many logical pixels
-// tall: the screensaver's clock and the apps page's title, text and hint.
+// tall: the screensaver's clock (and its battery level, drawn like it) and
+// the apps page's title, text and hint.
 export function pageSizes(monitorHeight) {
     const size = fraction => Math.max(Math.round(monitorHeight * fraction), 8);
     return {clock: size(0.06), title: size(0.045), text: size(0.03), hint: size(0.026)};
@@ -236,4 +237,28 @@ export function pageSizes(monitorHeight) {
 // How long until the clock next changes, in ms, at a Date: the next minute.
 export function msToNextMinute(date) {
     return 60000 - (date.getSeconds() * 1000 + date.getMilliseconds());
+}
+
+// The states of UPower's devices (UPower.DeviceState) on external power:
+// charging, fully charged, and plugged in but not charging (held at a
+// charge threshold).
+const ON_POWER = new Set([1, 4, 5]);
+
+// The mark after the level on external power: the high voltage sign in its
+// text presentation (U+FE0E), so it is drawn in the label's colour, not as
+// a colour emoji.
+export const CHARGING_MARK = '\u26a1\ufe0e';
+
+// What the screensaver's bottom left corner shows, from UPower's display
+// device (the one GNOME Shell's power indicator reads; its IsPresent,
+// Percentage and State): the level in whole percent, with CHARGING_MARK on
+// external power. '' (nothing shown) without a battery, or before UPower
+// answers. It changes only with the shown level or the power, so the black
+// is redrawn only then.
+export function batteryText(device) {
+    const percent = device?.Percentage;
+    if (device?.IsPresent !== true || typeof percent !== 'number' || !Number.isFinite(percent))
+        return '';
+    const level = `${Math.min(Math.max(Math.round(percent), 0), 100)}%`;
+    return ON_POWER.has(device.State) ? `${level} ${CHARGING_MARK}` : level;
 }

@@ -131,7 +131,7 @@ return_after = 15
 
 | Setting | Meaning |
 |---|---|
-| `[screensaver]` `clock` | `false`: no clock on the black. Default `true` |
+| `[screensaver]` `clock` | `false`: no clock on the black (the battery level stays). Default `true` |
 | `[pager]` `return_after` | how many seconds without a touch on the panel the apps page waits before going back to the touchpad, 1 to 3600. Default 8 |
 
 `screenpad-touchbar check` prints what applies (`pages:`).

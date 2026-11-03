@@ -161,7 +161,8 @@
 }
 
 /* The touchpad page: black below the bar, behind windows, with a faint
-   clock in the corner. Black is drawn, the backlight stays as it is. */
+   clock in the bottom right corner and the battery level in the bottom left
+   one. Black is drawn, the backlight stays as it is. */
 .screenpad-touchbar-screensaver {
     background-color: #000000;
 }
@@ -170,6 +171,12 @@
     color: #26262c;
     font-weight: bold;
     padding: 0 48px 32px 0;
+}
+
+.screenpad-touchbar-battery {
+    color: #26262c;
+    font-weight: bold;
+    padding: 0 0 32px 48px;
 }
 
 /* The apps page: over windows and under the bar, every touch below the bar

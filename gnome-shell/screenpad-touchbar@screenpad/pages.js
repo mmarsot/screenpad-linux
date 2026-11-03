@@ -1,9 +1,10 @@
 // The pages below the bar on the ScreenPad's monitor, as GNOME Shell
 // actors:
 // - the touchpad page's black screensaver: drawn behind windows, just above
-//   the desktop background, with a faint clock in the corner. It is black
-//   pixels only; the panel's brightness is never touched. It stays while
-//   the bar is drawn, under the apps page too;
+//   the desktop background, with a faint clock in the bottom right corner
+//   and the battery level in the bottom left one. It is black pixels only;
+//   the panel's brightness is never touched. It stays while the bar is
+//   drawn, under the apps page too;
 // - the apps page's surface: over windows and under the bar, the widgets
 //   of the page shown (the home page's list of apps, or an app's page),
 //   or, from a daemon before widgets, the page's title, text and the hint
@@ -19,12 +20,21 @@ import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {loadInterfaceXML} from 'resource:///org/gnome/shell/misc/fileUtils.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {BAR_CHROME} from './contract.js';
-import {msToNextMinute, pageSizes, pagesFrom} from './scene.js';
+import {batteryText, msToNextMinute, pageSizes, pagesFrom} from './scene.js';
 import {iconFor} from './tiles.js';
 import {surfaceWidgets, widgetBox, widgetClasses, widgetParts, widgetsKey} from './widgets.js';
+
+// UPower's display device, which GNOME Shell's power indicator reads
+// (ui/status/system.js), with the shell's own copy of its interface.
+const UPOWER_NAME = 'org.freedesktop.UPower';
+const UPOWER_DISPLAY = '/org/freedesktop/UPower/devices/DisplayDevice';
+const PowerProxy = Gio.DBusProxy.makeProxyWrapper(
+    loadInterfaceXML('org.freedesktop.UPower.Device'),
+);
 
 export class Pages {
     constructor() {
@@ -32,6 +42,11 @@ export class Pages {
         this._clock = null;
         this._clockId = 0;
         this._interface = null;
+        this._battery = null;
+        this._power = null;
+        this._powerId = 0;
+        this._powerCancel = null;
+        this._powerStarted = false;
         this._surface = null;
         this._widgets = [];
         this._key = null;
@@ -68,11 +83,13 @@ export class Pages {
             parent.set_child_below_sibling(this._surface, bar);
     }
 
+    // Takes the pages down; UPower's proxy stays for the next screensaver.
     destroy() {
         if (this._clockId) GLib.source_remove(this._clockId);
         this._clockId = 0;
         this._clock = null;
         this._interface = null;
+        this._battery = null;
         if (this._saver) {
             this._saver.get_parent()?.remove_child(this._saver);
             this._saver.destroy();
@@ -85,6 +102,17 @@ export class Pages {
         this._surface = null;
         this._widgets = [];
         this._key = null;
+    }
+
+    // Takes the pages down and lets UPower's proxy go, for good.
+    release() {
+        this.destroy();
+        this._powerCancel?.cancel();
+        this._powerCancel = null;
+        if (this._powerId) this._power.disconnect(this._powerId);
+        this._powerId = 0;
+        this._power = null;
+        this._powerStarted = false;
     }
 
     _buildSaver(saver, monitor) {
@@ -103,10 +131,12 @@ export class Pages {
         if (background?.get_parent() === global.window_group)
             global.window_group.insert_child_above(this._saver, background);
         else global.window_group.insert_child_at_index(this._saver, 0);
+        const size = `font-size: ${pageSizes(monitor.height).clock}px;`;
+        this._watchBattery(size);
         if (!saver.clock) return;
         this._clock = new St.Label({
             style_class: 'screenpad-touchbar-clock',
-            style: `font-size: ${pageSizes(monitor.height).clock}px;`,
+            style: size,
             x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.END,
             x_expand: true,
@@ -129,6 +159,55 @@ export class Pages {
             this._tick();
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    // The battery level in the bottom left corner, hidden until UPower
+    // says there is a battery. One proxy, started with the first
+    // screensaver, serves every one after it until release(); UPower
+    // signals every change of its properties, and the label changes only
+    // when the text shown does.
+    _watchBattery(size) {
+        this._battery = new St.Label({
+            style_class: 'screenpad-touchbar-battery',
+            style: size,
+            visible: false,
+            x_align: Clutter.ActorAlign.START,
+            y_align: Clutter.ActorAlign.END,
+            x_expand: true,
+            y_expand: true,
+        });
+        this._saver.add_child(this._battery);
+        this._showBattery();
+        if (this._powerStarted) return;
+        this._powerStarted = true;
+        const cancel = new Gio.Cancellable();
+        this._powerCancel = cancel;
+        new PowerProxy(
+            Gio.DBus.system,
+            UPOWER_NAME,
+            UPOWER_DISPLAY,
+            (proxy, error) => {
+                // Cancelled when released first.
+                if (cancel.is_cancelled()) return;
+                this._powerCancel = null;
+                if (error) {
+                    console.warn(`screenpad-touchbar: no battery level: ${error.message}`);
+                    return;
+                }
+                this._power = proxy;
+                this._powerId = proxy.connect('g-properties-changed', () => this._showBattery());
+                this._showBattery();
+            },
+            cancel,
+        );
+    }
+
+    _showBattery() {
+        if (!this._battery) return;
+        const text = batteryText(this._power);
+        if (text === this._battery.text && this._battery.visible === (text !== '')) return;
+        this._battery.text = text;
+        this._battery.visible = text !== '';
     }
 
     _buildSurface(surface, monitor, own) {
