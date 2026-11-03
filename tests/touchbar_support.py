@@ -106,6 +106,7 @@ class FakeClient:
     def __init__(self):
         self.sent = []
         self.name = None
+        self.protocol = None
 
     def send(self, msg):
         self.sent.append(msg)

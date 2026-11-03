@@ -14,9 +14,10 @@ a queue (and a pipe that wakes its select):
   takes seconds, so neither reader waits on it, and opens the decisions board
   (firstmate.py) when Captain's Call is tapped.
 
-The loop keeps the connection to the touch bar (retrying every RECONNECT
-seconds while the daemon is not running), sends the page and tiles when what
-they show changed, and turns touches into work for the threads: a tap on an
+The loop keeps the connection to the touch bar through the client library's
+Link (retrying every RECONNECT seconds while the daemon is not running or
+refuses the app's protocol version), sends the page and tiles when what
+they show changed (all of them again after a reconnect), and turns touches into work for the threads: a tap on an
 agent's widget opens its card (fleet.py, card.py), whose buttons focus,
 interrupt and answer; a tap on the agents tile focuses the first blocked
 agent; a tap on Captain's Call reads firstmate again and opens firstmate's
@@ -32,9 +33,11 @@ import sys
 import threading
 import time
 
+from screenpad_app import Link, clip
+from screenpad_app.common import MAX_TEXT
+
 from . import card as cards
-from .client import Touchbar, TouchbarGone
-from .common import BOARD_CARD_TIMEOUT, CALLS_TILE, FLEET_TILE, MAX_TEXT, PAGE, RECONNECT, clip
+from .common import APP, BOARD_CARD_TIMEOUT, CALLS_TILE, FLEET_TILE, PAGE, RECONNECT
 from .firstmate import FirstmateError
 from .fleet import CALLS_WIDGET, Fleet
 from .herdr import HerdrError
@@ -55,8 +58,7 @@ class App:
         self._wake_r, self._wake_w = os.pipe()
         os.set_blocking(self._wake_r, False)
         os.set_blocking(self._wake_w, False)
-        self.touchbar = None
-        self._retry_at = 0.0
+        self.link = Link(socket_path, APP, self.fleet.tiles(), retry=RECONNECT, log=self.log, clock=clock)
         self._threads = []
         self._told = set()
         self._dirty = False
@@ -176,36 +178,18 @@ class App:
     def step(self, timeout):
         """One turn of the loop: connect if due, wait up to timeout, then
         handle what the threads and the touch bar sent."""
-        if self.touchbar is None and self.clock() >= self._retry_at:
-            self._connect()
-        fds = [self._wake_r] + ([self.touchbar.fileno()] if self.touchbar else [])
-        ready, _, _ = select.select(fds, [], [], timeout)
+        if self.link.connect():
+            self._dirty = True  # a new connection has shown nothing yet
+            self._asked = None  # nor asked anything
+        fd = self.link.fileno()
+        ready, _, _ = select.select([self._wake_r] + ([fd] if fd is not None else []), [], [], timeout)
         changed = self._drain()
-        if self.touchbar is not None:
-            try:
-                if self.touchbar.fileno() in ready:
-                    for msg in self.touchbar.receive():
-                        self.handle(msg)
-                if changed or self._dirty:
-                    self._dirty = False
-                    self.touchbar.show(self.fleet.messages())
-            except TouchbarGone as e:
-                self.log("lost the touch bar (%s); retrying every %g s" % (e, RECONNECT))
-                self._disconnect()
-
-    def _connect(self):
-        try:
-            self.touchbar = Touchbar(self.socket_path, self.fleet.tiles())
-            self.touchbar.show(self.fleet.messages())
-        except (OSError, TouchbarGone):
-            self._disconnect()
-
-    def _disconnect(self):
-        if self.touchbar is not None:
-            self.touchbar.close()
-        self.touchbar = None
-        self._asked = None
-        self._retry_at = self.clock() + RECONNECT
+        if fd is not None and fd in ready:
+            for msg in self.link.receive():
+                self.handle(msg)
+        if (changed or self._dirty) and self.link.connected:
+            self._dirty = False
+            self.link.show(self.fleet.messages())
 
     def _drain(self):
         try:
@@ -267,19 +251,15 @@ class App:
     def _ask(self, title, text):
         """Show title and text in the bar as a card with one answer, OK,
         in place of the last one if it is still up. The answer does nothing."""
-        if self.touchbar is None:
+        if not self.link.connected:
             return
-        try:
-            if self._asked is not None:
-                self.touchbar.send({"op": "cancel", "id": self._asked})
-            self._asks += 1
-            self._asked = "board.%d" % self._asks
-            msg = {"op": "ask", "id": self._asked, "title": title, "text": clip(text, MAX_TEXT)}
-            msg.update({"options": [{"id": "ok", "label": "OK"}], "timeout": BOARD_CARD_TIMEOUT})
-            self.touchbar.send(msg)
-        except TouchbarGone as e:
-            self.log("lost the touch bar (%s); retrying every %g s" % (e, RECONNECT))
-            self._disconnect()
+        if self._asked is not None:
+            self.link.send({"op": "cancel", "id": self._asked})
+        self._asks += 1
+        self._asked = "board.%d" % self._asks
+        msg = {"op": "ask", "id": self._asked, "title": title, "text": clip(text, MAX_TEXT)}
+        msg.update({"options": [{"id": "ok", "label": "OK"}], "timeout": BOARD_CARD_TIMEOUT})
+        self.link.send(msg)
 
     def _answered(self, pane, answer, why, fresh):
         card = self.fleet.card
@@ -395,7 +375,7 @@ class App:
         self._read_firstmate.set()
         self._jobs.put(None)
         self._control.put(None)
-        self._disconnect()
+        self.link.close()
         for t in self._threads:
             t.join(timeout=2.0)
         # A thread still running could write to a reused descriptor number,

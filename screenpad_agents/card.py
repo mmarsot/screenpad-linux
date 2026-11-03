@@ -13,7 +13,9 @@ on them, and a tap names the very screen it was made on. Pure: the loop
 (app.py) does the reading and the sending.
 """
 
-from .common import MAX_LABEL, MAX_TEXT, clip
+from screenpad_app import clip
+from screenpad_app.common import MAX_LABEL, MAX_TEXT
+
 from .keymap import ALWAYS, DENY, ONCE, harness, offered
 
 COLUMNS, ROWS = 5, 4

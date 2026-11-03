@@ -50,7 +50,7 @@ class AppsTests(unittest.TestCase):
         self.apps.handle(self.a, {"op": "hello", "app": "fleet", "tiles": ["agents", "ci"]})
         self.assertEqual(
             self.a.last("welcome"),
-            {"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": ["ci"], "taken": []},
+            {"op": "welcome", "app": "fleet", "placed": ["agents"], "unplaced": ["ci"], "taken": [], "protocol": 1},
         )
         self.apps.handle(self.b, {"op": "hello", "app": "other", "tiles": ["agents"]})
         self.assertEqual(self.b.last("welcome")["taken"], ["agents"])

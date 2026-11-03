@@ -1,12 +1,13 @@
 """The app socket's messages: validation, and questions (asks) as apps send them."""
 
-from .common import ASK_TIMEOUT, MAX_ASK_TIMEOUT, MAX_OPTIONS, OPTION_ID, TONES
+from .common import APP_PROTOCOL, ASK_TIMEOUT, MAX_ASK_TIMEOUT, MAX_OPTIONS, MIN_APP_PROTOCOL, OPTION_ID, TONES
 
 # Programs use the bar through a Unix socket next to touchbar.json
 # (SOCKET_NAME, in the user's own runtime directory), one JSON object per
 # line each way. docs/app-api.md is the reference. In short, an app sends:
 #
-#   {"op": "hello", "app": NAME, "tiles": [TILE, ...]}   the tiles it draws
+#   {"op": "hello", "app": NAME, "tiles": [TILE, ...], "protocol": N}
+#                                    the tiles it draws, the version it speaks
 #   {"op": "set", "tile": TILE, "icon": .., "label": .., "text": ..,
 #    "badge": .., "tone": ..}                              what a tile shows
 #   {"op": "ask", "id": ID, "title": .., "text": .., "timeout": SECONDS,
@@ -17,17 +18,25 @@ from .common import ASK_TIMEOUT, MAX_ASK_TIMEOUT, MAX_OPTIONS, OPTION_ID, TONES
 #   {"op": "cancel", "id": ID}  and  {"op": "ping"}
 #   {"op": "notify", ...}   a GNOME notification (the extension; see below)
 #
-# and gets back "welcome" (which of its tiles have a spot), "event" (a touch
+# and gets back "welcome" (which of its tiles have a spot, and the protocol
+# version spoken), "event" (a touch
 # on its tile: "down", then "up" with "inside" when the finger lifted on
 # it; on a widget of its page: "down", then "tap", "long" or "cancel"),
 # "answer" (the chosen option id, or null with the reason: "dismissed" when
 # the user closed the card, "timeout", "unavailable" when the bar
 # cannot show questions, "cancelled", or "ignored" with "why" for a
-# notification the bar does not mirror), "pong" and "error".
+# notification the bar does not mirror), "pong" and "error" (with "code"
+# "unsupported-protocol" for a version the daemon does not speak).
 
 
 class ProtocolError(Exception):
-    pass
+    """A message refused. fields go into the error sent back: "code" names
+    an error an app is expected to act on (only "unsupported-protocol" so
+    far), with what it needs to."""
+
+    def __init__(self, message, **fields):
+        super().__init__(message)
+        self.fields = fields
 
 
 def text_field(value, what, limit, required=True):
@@ -49,6 +58,29 @@ def tone_field(value):
         return "neutral"
     if value not in TONES:
         raise ProtocolError("tone must be one of %s" % ", ".join(TONES))
+    return value
+
+
+def protocol_field(value):
+    """The app protocol version a hello says it speaks (1 when it says none);
+    ProtocolError, with code "unsupported-protocol", for one not spoken here."""
+    if value is None:
+        return 1
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ProtocolError("protocol must be a version number (1 or more)")
+    if not MIN_APP_PROTOCOL <= value <= APP_PROTOCOL:
+        raise ProtocolError(
+            "app protocol %d is not supported: this touch bar speaks %d to %d; %s"
+            % (
+                value,
+                MIN_APP_PROTOCOL,
+                APP_PROTOCOL,
+                "update screenpad-linux" if value > APP_PROTOCOL else "update the app",
+            ),
+            code="unsupported-protocol",
+            protocol=value,
+            supported={"min": MIN_APP_PROTOCOL, "max": APP_PROTOCOL},
+        )
     return value
 
 

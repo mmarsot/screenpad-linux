@@ -103,7 +103,7 @@ sudo systemctl start screenpad
 | `/etc/initramfs-tools/hooks/screenpad` | only if nvidia-drm is in your initramfs (it is not on stock Ubuntu); followed by `update-initramfs -u` |
 | `/usr/local/bin/screenpad-touchbar` | the touch bar daemon and CLI: a link to `/usr/local/lib/screenpad/touchbar.py` |
 | `/usr/local/bin/screenpad-agents` | the [agent app](agents.md): a link to `/usr/local/lib/screenpad/agents.py` |
-| `/usr/local/lib/screenpad/` | the programs' code: `screenpad.py`, `touchbar.py` and `agents.py`, and their packages `screenpad_display/`, `screenpad_touchbar/` and `screenpad_agents/` |
+| `/usr/local/lib/screenpad/` | the programs' code: `screenpad.py`, `touchbar.py` and `agents.py`, and their packages `screenpad_display/`, `screenpad_touchbar/`, `screenpad_app/` (the client library apps use) and `screenpad_agents/` |
 | `/usr/lib/systemd/user/screenpad-touchbar.service` | the touch bar's systemd user unit, installed but not enabled |
 | `/usr/lib/systemd/user/screenpad-agents.service` | the agent app's user unit, installed but not enabled; it starts only once `~/.config/screenpad/agents.toml` exists |
 | `/usr/local/share/gnome-shell/extensions/screenpad-touchbar@screenpad/` | the GNOME Shell extension that draws the bar |

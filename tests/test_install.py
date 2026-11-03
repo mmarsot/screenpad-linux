@@ -160,7 +160,7 @@ class InstallTests(Base):
             self.assertEqual(os.readlink(self.s.p(link)), "../lib/screenpad/" + script)
             self.assertEqual(self.s.read("%s/%s" % (lib, script)), repo_file(script))
             self.assertTrue(os.access(self.s.p(lib, script), os.X_OK))
-        for pkg in ("screenpad_display", "screenpad_touchbar", "screenpad_agents"):
+        for pkg in ("screenpad_display", "screenpad_touchbar", "screenpad_app", "screenpad_agents"):
             modules = sorted(n for n in os.listdir(os.path.join(REPO, pkg)) if n.endswith(".py"))
             self.assertEqual(sorted(os.listdir(self.s.p(lib, pkg))), modules)
             for name in modules:
