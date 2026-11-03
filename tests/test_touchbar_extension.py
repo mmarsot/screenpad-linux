@@ -251,22 +251,32 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(out, [True, True, False, False, False])
 
     def test_card_text_wraps_and_labels_center(self):
+        # On a card both lines wrap, the title and an answer's label too,
+        # so neither is cut; on the bar a label stays one line.
         card = published(ask=QUESTION)
+        bar = published()
         [text] = [t for t in card["tiles"] if t.get("title")]
+        [answer] = [t for t in card["tiles"] if t["id"] == "ask-option-0"]
+        [item] = [t for t in bar["tiles"] if t.get("label") and not t.get("icon")][:1]
         out = js(
             "scene.js",
-            "(() => { const g = m.barGeometry(v.s, v.monitor); const b = m.tileBox(v.t, g);"
-            " return [m.textLines(v.t, g.iconSize, b.height), m.textLines({label: 'Mute'}, g.iconSize, 28),"
-            " m.textLines({}, g.iconSize, 28)]; })()",
-            s=card,
+            "(() => { const lines = (s, t) => { const g = m.barGeometry(s, v.monitor);"
+            " return m.textLines(t, g.iconSize, m.tileBox(t, g).height); };"
+            " return [lines(v.card, v.t), lines(v.card, v.a), lines(v.bar, v.i),"
+            " m.textLines({}, 80, 28)]; })()",
+            card=card,
+            bar=bar,
             t=text,
+            a=answer,
+            i=item,
             monitor=MONITORS[0],
         )
-        lines, label, empty = out
+        lines, label, on_bar, empty = out
         self.assertEqual(
             (lines["first"], lines["text"], lines["start"], lines["wrap"]), ("Run it?", text["text"], True, True)
         )
-        self.assertEqual((label["first"], label["text"], label["start"], label["wrap"]), ("Mute", None, False, False))
+        self.assertEqual((label["first"], label["text"], label["start"], label["wrap"]), ("Yes", None, False, True))
+        self.assertEqual((on_bar["first"], on_bar["start"], on_bar["wrap"]), (item["label"], False, False))
         self.assertIsNone(empty)
 
     def test_the_pages(self):

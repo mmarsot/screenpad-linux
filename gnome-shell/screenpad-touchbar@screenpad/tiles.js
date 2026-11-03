@@ -61,29 +61,24 @@ function textActor(tile, iconSize, height) {
         y_align: Clutter.ActorAlign.CENTER,
     });
     const align = lines.start ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
-    if (lines.first) {
-        box.add_child(
-            new St.Label({
-                text: lines.first,
-                x_align: align,
-                style_class: 'screenpad-touchbar-title',
-                style: `font-size: ${lines.titleSize}px;`,
-            }),
-        );
-    }
-    if (lines.text) {
-        const text = new St.Label({
-            text: lines.text,
+    const line = (text, styleClass, size) => {
+        const label = new St.Label({
+            text,
             x_align: align,
-            style_class: 'screenpad-touchbar-text',
-            style: `font-size: ${lines.textSize}px;`,
+            style_class: styleClass,
+            style: `font-size: ${size}px;`,
         });
         if (lines.wrap) {
-            text.clutter_text.line_wrap = true;
-            text.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            label.clutter_text.line_wrap = true;
+            label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            label.clutter_text.line_alignment = lines.start
+                ? Pango.Alignment.LEFT
+                : Pango.Alignment.CENTER;
         }
-        box.add_child(text);
-    }
+        box.add_child(label);
+    };
+    if (lines.first) line(lines.first, 'screenpad-touchbar-title', lines.titleSize);
+    if (lines.text) line(lines.text, 'screenpad-touchbar-text', lines.textSize);
     return box;
 }
 

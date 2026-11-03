@@ -14,12 +14,11 @@ from .common import (
     PAGE,
     PAGE_ITEM,
     PAGE_X,
-    SPOT_W,
     TILE,
 )
 from .config import near
 from .moves import BAR_LIST
-from .scene import DISMISS, ask_option_at, option_x
+from .scene import DISMISS, ask_option_at, ask_option_box
 
 
 class Touch:
@@ -244,7 +243,8 @@ class Bar:
             if kind != "move":
                 del self.ask_touch[slot]
             return False
-        here = near(option_x(t.option), SPOT_W, max(self.config.height, CARD_HEIGHT), px, py)
+        x, width = ask_option_box(t.ask, t.option)
+        here = near(x, width, max(self.config.height, CARD_HEIGHT), px, py)
         if kind == "move":
             if here != t.armed:
                 t.armed = here

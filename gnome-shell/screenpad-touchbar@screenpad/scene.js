@@ -135,9 +135,10 @@ export function iconSizeFor(tile, iconSize, width) {
     return Math.max(Math.min(Math.round(iconSize * scale), Math.round(width * MAX_ICON)), 8);
 }
 
-// A text tile's lines: the title or label, and a smaller text under it,
-// which wraps when the tile has room for more lines (a card). Null when it
-// has neither.
+// A text tile's lines: the title or label, and a smaller text under it.
+// Both wrap at word boundaries when the tile has room for more lines (a
+// card), so a long title or answer goes on over the next line instead of
+// being cut; on the bar each stays one line. Null when it has neither.
 export function textLines(tile, iconSize, height) {
     const first = tile.title ?? tile.label ?? null;
     if (!first && !tile.text) return null;

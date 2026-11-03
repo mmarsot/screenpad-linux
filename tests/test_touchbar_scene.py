@@ -15,6 +15,7 @@ from screenpad_touchbar.common import (
     APPS,
     ASK_ARM,
     HOME,
+    PAGE_X,
     TONES,
 )
 from screenpad_touchbar.keys import KeyEmitter
@@ -203,7 +204,7 @@ class SceneTests(unittest.TestCase):
             {
                 "id": "ask-option-0",
                 "x": 856,
-                "width": 272,
+                "width": 408,
                 "style": "option",
                 "classes": ["tone-reject"],
                 "label": "Deny",
@@ -212,9 +213,28 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(tiles[3]["pressed"], True)
         self.assertTrue(ask_tiles(ask, pressed=[DISMISS])[1]["pressed"])
         self.assertEqual(
-            [ask_option_at(ask, x) for x in (0, 543, 600, 830, 856, 1200, 1500)],
-            [None, None, DISMISS, None, 0, 1, None],
+            [ask_option_at(ask, x) for x in (0, 543, 600, 830, 856, 1200, 1263, 1264, 1671, 1672)],
+            [None, None, DISMISS, None, 0, 0, 0, 1, 1, None],
         )
+
+    def test_answers_share_the_last_three_spots(self):
+        # One, two or three answers fill the spots right of Dismiss, so an
+        # answer's box is as wide as the card lets it be; the text and
+        # Dismiss stay where they are, and a touch hits what is drawn.
+        for n, width in ((1, 816), (2, 408), (3, 272)):
+            options = [{"id": "o%d" % k, "label": "O%d" % k} for k in range(n)]
+            ask = parse_ask(None, {"id": "q", "title": "T", "options": options}, 0)
+            tiles = ask_tiles(ask)
+            self.assertEqual(
+                [(t["x"], t["width"]) for t in tiles],
+                [(0, 544), (544, 272)] + [(856 + k * width, width) for k in range(n)],
+            )
+            self.assertEqual(tiles[-1]["x"] + tiles[-1]["width"], PAGE_X)
+            for k, tile in enumerate(tiles[2:]):
+                for x in (tile["x"], tile["x"] + tile["width"] // 2, tile["x"] + tile["width"] - 1):
+                    self.assertEqual(ask_option_at(ask, x), k, (n, x))
+            self.assertIsNone(ask_option_at(ask, 855))
+            self.assertIsNone(ask_option_at(ask, PAGE_X))
 
 
 class AskBarTests(unittest.TestCase):
@@ -250,6 +270,15 @@ class AskBarTests(unittest.TestCase):
         self.assertIsNone(self.asks.shown())
         # Nothing reached the spots under the question.
         self.assertEqual((self.frames, self.launched), ([], []))
+
+    def test_a_wide_answer_takes_a_touch_anywhere_on_it(self):
+        # One answer spans the three spots: a tap at either end chooses
+        # it, and sliding within it keeps it armed.
+        self.ask(n=1)
+        self.assertTrue(self.bar.handle([("begin", 0, 870, 50)]))
+        self.bar.handle([("move", 0, 1650, 300)])
+        self.bar.handle([("end", 0, 1650, 300)])
+        self.assertEqual(self.app.last("answer"), {"op": "answer", "id": "q", "option": "o0", "reason": "chosen"})
 
     def test_too_soon_does_nothing(self):
         self.asks.add(parse_ask(self.app, {"id": "q", "title": "T", "options": [{"id": "a", "label": "A"}]}, self.now))

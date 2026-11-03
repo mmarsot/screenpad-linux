@@ -1,6 +1,6 @@
 """The scene in touchbar.json: the tiles the extension draws, for the spots and for a question."""
 
-from .common import APP, GRIP, PAGE, PAGE_ICONS, PAGE_ITEM, PAGE_LABELS, SHORTCUTS_X, SPOT_W, TILE, TONES
+from .common import APP, GRIP, PAGE, PAGE_ICONS, PAGE_ITEM, PAGE_LABELS, PAGE_X, SHORTCUTS_X, SPOT_W, TILE, TONES
 
 # What touchbar.json shows the extension: tiles, each a rectangle in the bar
 # (x and width in panel pixels, as tall as the bar) and what to draw in it.
@@ -30,9 +30,12 @@ TILE_CLASSES = ("hold", "tap", "empty", "removing", "tile", "offline", "moving",
     "tone-" + tone for tone in TONES
 )
 # A question (an attention card): its title and text over the first two
-# spots, Dismiss in the third, its answers in the last three. The grip
-# stays.
+# spots, Dismiss in the third, and its answers sharing the last three
+# equally (one answer takes all three, two take one and a half each), so
+# an answer's box is as wide as the card lets it be. The page button and
+# the grip stay.
 ASK_TEXT_W = DISMISS_X = 2 * SPOT_W
+ANSWERS_W = PAGE_X - SHORTCUTS_X
 DISMISS = "dismiss"
 
 
@@ -99,22 +102,20 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
     return tiles
 
 
-def ask_option_x(k):
-    return SHORTCUTS_X + k * SPOT_W
-
-
-def option_x(option):
-    """Where an answer's tile (an index, or DISMISS) starts."""
-    return DISMISS_X if option == DISMISS else ask_option_x(option)
+def ask_option_box(ask, option):
+    """Where an answer's tile (an index, or DISMISS) is: its x and width."""
+    if option == DISMISS:
+        return DISMISS_X, SPOT_W
+    width = ANSWERS_W // len(ask.options)
+    return SHORTCUTS_X + option * width, width
 
 
 def ask_option_at(ask, px):
     """The answer under a touch at px (an index, or DISMISS), or None."""
-    if DISMISS_X <= px < DISMISS_X + SPOT_W:
-        return DISMISS
-    for k in range(len(ask.options)):
-        if ask_option_x(k) <= px < ask_option_x(k) + SPOT_W:
-            return k
+    for option in (DISMISS, *range(len(ask.options))):
+        x, width = ask_option_box(ask, option)
+        if x <= px < x + width:
+            return option
     return None
 
 
@@ -139,10 +140,11 @@ def ask_tiles(ask, pressed=(), queued=0):
         dismiss["pressed"] = True
     tiles = [text, dismiss]
     for k, o in enumerate(ask.options):
+        x, width = ask_option_box(ask, k)
         tile = {
             "id": "ask-option-%d" % k,
-            "x": ask_option_x(k),
-            "width": SPOT_W,
+            "x": x,
+            "width": width,
             "style": "option",
             "classes": ["tone-" + o["tone"]],
             "label": o["label"],
