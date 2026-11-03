@@ -59,6 +59,9 @@ class App:
 
     def _post(self, item):
         self._results.put(item)
+        self._wake()
+
+    def _wake(self):
         try:
             os.write(self._wake_w, b"x")
         except OSError:
@@ -77,7 +80,7 @@ class App:
                 try:
                     self.herdr.focus(pane)
                 except Exception as e:
-                    self._post(("log", _why(e, HerdrError)))
+                    self._post(("log", _why(e, HerdrError), None))
             try:
                 self._post(("agents", self.herdr.agents(), None))
             except Exception as e:
@@ -105,7 +108,7 @@ class App:
 
     def stop(self):
         self.stopping.set()
-        self._post(("stop", None, None))
+        self._wake()
 
     def step(self, timeout):
         """One turn of the loop: connect if due, wait up to timeout, then

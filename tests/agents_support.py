@@ -132,6 +132,7 @@ class FakeHerdr:
     def __init__(self, agents=()):
         self.list = [Agent(*a) if isinstance(a, tuple) else a for a in agents]
         self.error = None
+        self.focus_error = None
         self.focused = []
         self.reads = 0
         self.lock = threading.Lock()
@@ -146,6 +147,8 @@ class FakeHerdr:
     def focus(self, pane):
         with self.lock:
             self.focused.append(pane)
+            if self.focus_error:
+                raise HerdrError(self.focus_error)
 
 
 class FakeFirstmate:

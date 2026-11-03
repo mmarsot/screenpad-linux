@@ -104,6 +104,19 @@ class AppTests(unittest.TestCase):
         rig.turn(20)
         self.assertEqual(self.herdr.focused, ["w2:p1"])
 
+    def test_a_refused_focus_is_logged_and_the_loop_goes_on(self):
+        rig = self.rig()
+        self.herdr.focus_error = "herdr agent focus: agent target w2:p1 not found"
+        rig.apps.press(rig.client(), "agents", "agent.w2.p1", "tap")
+        rig.until(lambda: self.herdr.focus_error in rig.logged)
+        self.herdr.focus_error = None
+        with self.herdr.lock:
+            self.herdr.list[1] = Agent("w2:p1", "codex", "blocked")
+        rig.until(lambda: rig.apps.provided()["agents"].get("badge") == "2")
+        rig.apps.press(rig.client(), "agents", "agent.w1.p1", "tap")
+        rig.until(lambda: self.herdr.focused == ["w2:p1", "w1:p1"])
+        self.assertEqual(rig.logged, ["herdr agent focus: agent target w2:p1 not found"])
+
     def test_the_agents_tile_focuses_the_first_blocked_agent(self):
         rig = self.rig()
         rig.apps.event("agents", "up", inside=False)
