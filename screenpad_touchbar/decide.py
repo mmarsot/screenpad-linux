@@ -5,8 +5,11 @@ takes only a clear touch. Every contact that starts below the bar there (a
 SURFACE contact of the splitter) waits here, undecided, until one of:
 
 - it moves more than tap_move from where it went down, the pad's button is
-  pressed, or another finger is down below the bar (one undecided, or one
-  already the pointer's): it is the pointer's. The daemon hands it to the
+  pressed, or another finger is down below the bar (one undecided within
+  its tap_time, or one already the pointer's): it is the pointer's. A
+  finger resting still past its tap_time does not count: a new touch
+  beside it is decided on its own, so a tap beside a resting thumb is not
+  a two-finger tap. The daemon hands it to the
   virtual touchpad (Splitter.handoff()), from where it went down, and the
   surface never hears of it, so it cannot also press anything;
 - it lifts within tap_time, nearly still: a tap. The surface gets its
@@ -19,7 +22,8 @@ SURFACE contact of the splitter) waits here, undecided, until one of:
 - it lifts later, or is cancelled (a palm): nothing.
 
 A touch still for tap_time on nothing that takes a press stays undecided,
-with no timer: moving it later makes it the pointer's. The only timer is
+with no timer: moving it later makes it the pointer's (the pad's button
+too, or a finger on the touchpad when another goes down). The only timer is
 tap_time after an undecided touch went down.
 """
 
@@ -64,9 +68,14 @@ class Decider:
                 out.append(ev)
                 continue
             if kind == "begin":
-                if pad_down or pressing or self.pending:
-                    pointer += [slot, *self.pending]
-                    self.pending.clear()
+                if pad_down or pressing:
+                    taken = list(self.pending)
+                else:
+                    taken = [s for s, q in self.pending.items() if not q.late]
+                if pad_down or pressing or taken:
+                    pointer += [slot, *taken]
+                    for s in taken:
+                        del self.pending[s]
                 else:
                     self.pending[slot] = Pending(self.clock(), px, py)
                 continue

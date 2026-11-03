@@ -220,6 +220,19 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(codes(pad, EV_ABS, ABS_MT_TRACKING_ID), [10, 11])
         self.frame(lift(0), lift(1))
 
+    def test_a_resting_finger_is_not_a_second_finger(self):
+        # A thumb resting still on nothing past its tap time, then a tap
+        # beside it: the tap presses, not a two-finger tap on the touchpad.
+        self.down(TITLE)
+        self.wait(TAP_TIME + 0.5)
+        self.assertEqual(self.down(MUTE, slot=1), [])
+        self.assertEqual(self.frame(lift(1)), [])
+        self.assertEqual(self.keys, [[(EV_KEY, 248, 1), SYN], [(EV_KEY, 248, 0), SYN]])
+        self.assertEqual(self.daemon.splitter.sent, {})
+        # The thumb moved is still the pointer's.
+        self.assertEqual(codes(self.move((TITLE[0] + 60, TITLE[1])), EV_ABS, ABS_MT_TRACKING_ID), [1])
+        self.frame(lift(0))
+
     def test_a_finger_held_as_a_press_keeps_a_new_one_its_own(self):
         self.open_agents()
         self.down(DENY)

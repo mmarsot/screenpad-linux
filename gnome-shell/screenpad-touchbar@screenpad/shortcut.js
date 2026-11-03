@@ -40,25 +40,15 @@ export function combo(mods, keycode) {
     return out;
 }
 
-// What the capture button shows: the keys' names joined by "+", Clutter's
-// names as given (names), e.g. ['Control_L', 't'] -> 'Ctrl+T'.
-const SHOWN = {
-    Control_L: 'Ctrl',
-    Control_R: 'Ctrl',
-    Shift_L: 'Shift',
-    Shift_R: 'Shift',
-    Alt_L: 'Alt',
-    Alt_R: 'Alt',
-    Super_L: 'Super',
-    Super_R: 'Super',
-};
+// What the capture button shows: the modifiers, then Clutter's key name as
+// given, joined by "+", e.g. {ctrl} and 't' -> 'Ctrl+T'.
 export function comboText(mods, keyName) {
     const parts = [];
     if (mods.ctrl) parts.push('Ctrl');
     if (mods.shift) parts.push('Shift');
     if (mods.alt) parts.push('Alt');
     if (mods.super) parts.push('Super');
-    const name = SHOWN[keyName] ?? String(keyName ?? '');
+    const name = String(keyName ?? '');
     parts.push(name.length === 1 ? name.toUpperCase() : name);
     return parts.join('+');
 }
