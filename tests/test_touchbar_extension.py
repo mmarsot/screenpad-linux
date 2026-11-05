@@ -449,9 +449,7 @@ def stylesheet_rules(css):
     a selector's rules are merged in order."""
     rules = {}
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", css, flags=re.S)):
-        decls = dict(
-            (k.strip(), v.strip()) for k, _, v in (d.partition(":") for d in body.split(";") if d.strip())
-        )
+        decls = dict((k.strip(), v.strip()) for k, _, v in (d.partition(":") for d in body.split(";") if d.strip()))
         for selector in selectors.split(","):
             rules.setdefault(" ".join(selector.split()), {}).update(decls)
     return rules
