@@ -270,8 +270,7 @@ class Bar:
         return True
 
     def _removable(self, t):
-        s = self.spot(t)
-        return not t.inert and s.item is not None and s.item.removable()
+        return not t.inert and t.item is not None and t.item is self.spot(t).item and t.item.removable()
 
     def tick(self):
         """Turn long-held items to "remove"; True if that changed anything."""
