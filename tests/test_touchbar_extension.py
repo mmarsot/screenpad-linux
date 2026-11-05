@@ -456,6 +456,7 @@ class StylesheetTests(unittest.TestCase):
         for rule in (
             ".screenpad-touchbar-button.hold:active",
             ".screenpad-touchbar-shortcut.removing",
+            ".screenpad-touchbar-spot.removing",
             ".screenpad-touchbar-shortcut.drop",
             ".screenpad-touchbar-spot.empty",
             ".screenpad-touchbar-badge",

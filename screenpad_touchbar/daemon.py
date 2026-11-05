@@ -35,12 +35,12 @@ from .common import (
     state_path,
 )
 from .config import LISTS, config_path, load_config
-from .config_edit import append_item, edit_config, remove_app
+from .config_edit import append_item, edit_config, remove_item
 from .decide import Decider
 from .devices import Source, create_keys, create_pad, find_source, reset_tools, uinput_destroy, write_events
 from .fnkey import Panel, Toggle, TouchpadSetting
 from .keys import KeyEmitter
-from .moves import BAR_LIST, Mover
+from .moves import APPS_LIST, BAR_LIST, Mover
 from .pager import Pager
 from .picker import Picker, read_favourites
 from .publish import scene, state
@@ -99,6 +99,7 @@ class Daemon:
             click=self._click,
             items=lambda: self.config.apps,
             act=self.item_act,
+            remove=lambda index, item: self.remove_item(APPS_LIST, index, item),
         )
         # Items dragged between the bar and the apps page's home list.
         self.mover = Mover(lambda: self.config, self.surface.drop_cell, self.apps.asks, self.edit, self._click)
@@ -204,9 +205,10 @@ class Daemon:
         self.reload = True
         return True
 
-    def remove_shortcut(self, index):
-        """Remove the app in the bar's spot index (a long press on it)."""
-        return self.edit(lambda c: {"bar": remove_app(c.bar, index)}, "remove the app")
+    def remove_item(self, place, index, item):
+        """Remove item, at index of place's items (a long press on it), if
+        the file still has it there."""
+        return self.edit(lambda c: {place: remove_item(c.items(place), index, item)}, "remove the item")
 
     def resize(self, height):
         return self.edit(lambda c: {"height": height}, "resize the bar")
@@ -227,7 +229,7 @@ class Daemon:
             keys,
             self.run_command,
             self.launch,
-            self.remove_shortcut,
+            lambda index, item: self.remove_item(BAR_LIST, index, item),
             self.resize,
             tiles=self.apps,
             asks=self.apps.asks,

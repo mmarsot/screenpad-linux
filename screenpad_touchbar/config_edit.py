@@ -12,9 +12,10 @@ from .items import Item
 
 # The bar changes four things in the user's file: the height line, the
 # apps among the items (it adds, moves and removes app items), keys and
-# commands it adds (the picker's, picker.py; it never moves or removes
-# them), and items of any kind moved from the bar to the apps page or
-# back (their block goes from one list to the other as it is). It edits
+# commands it adds (the picker's, picker.py), items of any kind removed
+# (remove_item(): an item's block goes), and items of any kind moved from
+# the bar to the apps page or back (their block goes from one list to the
+# other as it is). It edits
 # those lines and leaves every other line, comments included, as it was,
 # then checks that the result parses to the old config with only that
 # change before it replaces the file.
@@ -98,10 +99,10 @@ def retitled(lines, name):
     return [lines[0][: m.start(1)] + name + lines[0][m.end(1) :]] + lines[1:]
 
 
-ONLY = "the bar only adds and removes apps, adds keys and commands, and moves items between the bar and the apps page"
+ONLY = "the bar only adds and removes items, adds keys and commands, and moves items between the bar and the apps page"
 
 
-def with_items(text, name, old, new, carried=None, added=()):
+def with_items(text, name, old, new, carried=None, added=(), removed=()):
     """text with its [[name]] items changed from old to new (lists of
     items.Item, old those text has).
 
@@ -113,8 +114,9 @@ def with_items(text, name, old, new, carried=None, added=()):
     id() is in added (new items, in neither list before), and get a block
     (one written anew, a carried one's lines under a [[name]] header), before
     the next item kept or after the last block; the ones new drops must
-    be apps or carried too, and lose their block (the comments above it
-    stay). Raises ConfigError for any other change."""
+    be apps, carried or in removed (id()s of items taken away of any kind),
+    and lose their block (the comments above it stay). Raises ConfigError
+    for any other change."""
     carried = carried or {}
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
@@ -127,7 +129,7 @@ def with_items(text, name, old, new, carried=None, added=()):
     if kept != sorted(set(kept)):
         raise ConfigError(ONLY)
     for i, o in enumerate(old):
-        if i not in kept and o.kind != APP and id(o) not in carried:
+        if i not in kept and o.kind != APP and id(o) not in carried and id(o) not in removed:
             raise ConfigError(ONLY)
 
     def block(item):
@@ -221,9 +223,10 @@ def edit_config(change, path=None):
             carried = _carried(text, old, lists)
             before = {id(i) for i in old.bar + old.apps}
             added = set(placed) - before  # in neither list before: new items
+            removed = before - set(placed)  # in neither list now: taken away
             for name, items in lists.items():
                 if [id(i) for i in items] != [id(i) for i in old.items(name)]:
-                    new_text = with_items(new_text, name, old.items(name), items, carried, added)
+                    new_text = with_items(new_text, name, old.items(name), items, carried, added, removed)
             new = parse_config(new_text)
         except ConfigError as e:
             raise ConfigError("%s: could not edit it safely (%s); change it by hand" % (path, e))
@@ -289,10 +292,14 @@ def append_item(items, item, limit):
     return items + [item]
 
 
-def remove_app(items, index):
-    """items without the app at index (0-based)."""
+def remove_item(items, index, item=None):
+    """items without the item at index (0-based), of any kind.
+
+    item, if given, is what the finger or the caller saw there: the file
+    may have changed since, and a different item is never removed in its
+    place."""
     if not 0 <= index < len(items):
         raise ConfigError("spot %d is empty" % (index + 1))
-    if items[index].kind != APP:
-        raise ConfigError("spot %d holds %s, not an app; change it in the file" % (index + 1, items[index].describe()))
+    if item is not None and items[index].spec() != item.spec():
+        raise ConfigError("the items changed since; try again")
     return items[:index] + items[index + 1 :]
