@@ -22,16 +22,17 @@ from .scene import DISMISS, ask_option_at, ask_option_box
 
 
 class Touch:
-    """A contact on a spot. source is the item it can drag to the apps
-    page (moves.py), and an inert touch (on a tile no app provides, or a
-    page that cannot open) does nothing but that."""
+    """A contact on a spot. item is the item pressed there, source the
+    item it can drag to the apps page (moves.py), and an inert touch (on a
+    tile no app provides, or a page that cannot open) does nothing but
+    that."""
 
-    __slots__ = ("armed", "inert", "removing", "source", "spot", "start", "start_height", "start_y")
+    __slots__ = ("armed", "inert", "item", "removing", "source", "spot", "start", "start_height", "start_y")
 
-    def __init__(self, spot, start, start_y=0, start_height=0, source=None, inert=False):
+    def __init__(self, spot, start, start_y=0, start_height=0, source=None, inert=False, item=None):
         self.spot, self.armed, self.start, self.removing = spot, not inert, start, False
         self.start_y, self.start_height = start_y, start_height
-        self.source, self.inert = source, inert
+        self.source, self.inert, self.item = source, inert, item
 
 
 class AskTouch:
@@ -175,7 +176,7 @@ class Bar:
                 if lifted:
                     self.add_spot()
             elif lifted and t.removing:
-                self.remove(s.index, s.item)
+                self.remove(s.index, t.item)
             elif s.item.kind == APP:
                 if lifted:
                     self.launch(s.item.name)
@@ -232,7 +233,7 @@ class Bar:
             if source:
                 self.touch[slot] = Touch(i, self.clock(), source=source, inert=True)
             return False
-        self.touch[slot] = Touch(i, self.clock(), source=source)
+        self.touch[slot] = Touch(i, self.clock(), source=source, item=s.item)
         if s.item.kind == TILE:
             self.tiles.event(s.item.name, "down")
             return True
@@ -356,10 +357,11 @@ class Bar:
     def set_config(self, config):
         """Take a reloaded config. Keys, commands and tiles held through it
         stay held if the same item is still in the same spot; every other
-        touch ends."""
+        touch ends, and so does one about to remove its item."""
         for slot, t in list(self.touch.items()):
             s, n = self.spot(t), config.spots[t.spot]
-            if not (s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()):
+            same = s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()
+            if t.removing or not same:
                 self._end(slot)
             elif t.source is not None:
                 self.mover.leave(t.source)

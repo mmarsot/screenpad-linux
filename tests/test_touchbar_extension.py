@@ -444,19 +444,38 @@ class SceneTests(unittest.TestCase):
             self.assertEqual(apps(scene()), ["a.desktop", "d.desktop", "b.desktop", "c.desktop"])
 
 
+def stylesheet_rules(css):
+    """The stylesheet as {selector: {property: value}}, comments left out;
+    a selector's rules are merged in order."""
+    rules = {}
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", css, flags=re.S)):
+        decls = dict(
+            (k.strip(), v.strip()) for k, _, v in (d.partition(":") for d in body.split(";") if d.strip())
+        )
+        for selector in selectors.split(","):
+            rules.setdefault(" ".join(selector.split()), {}).update(decls)
+    return rules
+
+
 class StylesheetTests(unittest.TestCase):
     def test_styles_for_every_tile_style_and_class(self):
         with open(os.path.join(EXT, "stylesheet.css")) as f:
-            css = f.read()
+            rules = stylesheet_rules(f.read())
         for style in TILE_STYLES:
-            self.assertIn(".screenpad-touchbar-%s {" % style, css)
+            self.assertIn(".screenpad-touchbar-%s" % style, rules)
         # A tap button is the plain button style; every other class has a rule.
+        classes = {c for selector in rules for c in re.findall(r"\.([\w-]+)", selector)}
         for name in set(TILE_CLASSES) - {"tap"}:
-            self.assertRegex(css, r"\.%s[ {:.,]" % re.escape(name), name)
+            self.assertIn(name, classes)
+        # An item about to be removed is red, pressed or not.
         for rule in (
-            ".screenpad-touchbar-button.hold:active",
             ".screenpad-touchbar-shortcut.removing",
             ".screenpad-touchbar-spot.removing",
+            ".screenpad-touchbar-spot.removing:active",
+        ):
+            self.assertEqual(rules.get(rule, {}).get("background-color"), "#c01c28", rule)
+        for rule in (
+            ".screenpad-touchbar-button.hold:active",
             ".screenpad-touchbar-shortcut.drop",
             ".screenpad-touchbar-spot.empty",
             ".screenpad-touchbar-badge",
@@ -470,7 +489,7 @@ class StylesheetTests(unittest.TestCase):
             ".screenpad-touchbar-surface-text",
             ".screenpad-touchbar-surface-hint",
         ):
-            self.assertIn(rule + " {", css)
+            self.assertIn(rule, rules)
 
 
 if __name__ == "__main__":

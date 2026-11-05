@@ -178,6 +178,35 @@ class RemoveTests(unittest.TestCase):
         self.lift()
         self.assertEqual((self.text(), self.keys), (config_text(), []))
 
+    def test_a_reload_under_the_finger_never_removes_another_item(self):
+        copy = '[[bar]]\nlabel = "Copy"\nkey = "ctrl+c"\n'
+        two = "height = 160\n\n" + copy + "\n" + copy
+        # Held until red, then the file loses that spot's block: the other
+        # Copy, the same as it, is now under the finger.
+        self.write(two)
+        self.daemon.check_config()
+        self.assertEqual(self.removing_bar(self.hold(spot(0))), [0])
+        self.write("height = 160\n\n" + copy)
+        self.daemon.check_config()
+        self.assertEqual(self.removing_bar(self.published()), [])
+        self.lift()
+        self.assertEqual(self.text(), "height = 160\n\n" + copy)
+        self.assertEqual(self.keys, [])
+        # Pressed, then relabelled under the finger and held until red:
+        # it is no longer the item pressed, so the file stays.
+        self.write(two)
+        self.daemon.check_config()
+        self.hold(spot(0), seconds=TAP_TIME)
+        relabelled = two.replace('"Copy"', '"Copy it"', 1)
+        self.write(relabelled)
+        self.daemon.check_config()
+        self.clock.now += LONG_PRESS
+        self.daemon.bar.tick()
+        self.assertEqual(self.removing_bar(self.published()), [0])
+        self.lift()
+        self.assertEqual(self.text(), relabelled)
+        self.assertEqual(self.keys, [])
+
     def test_what_holding_is_for_is_not_removed_from_the_bar(self):
         # A hold key is down while the finger is, for as long as it is:
         # push to talk. An app's tile is its app's.
