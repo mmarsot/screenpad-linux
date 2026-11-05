@@ -11,7 +11,7 @@ from touchbar_support import ConfigHome, config
 
 from screenpad_touchbar.common import ConfigError
 from screenpad_touchbar.config import load_config
-from screenpad_touchbar.config_edit import add_app, edit_config, remove_app, with_height, with_items
+from screenpad_touchbar.config_edit import add_app, edit_config, remove_item, with_height, with_items
 from screenpad_touchbar.defaults import EXAMPLE_CONFIG
 from screenpad_touchbar.items import Item
 
@@ -174,12 +174,17 @@ class WithItemsTests(unittest.TestCase):
         # The apps page has eight.
         self.assertEqual(len(add_app([Item.app(str(n)) for n in range(7)], "x", limit=8)), 8)
 
-    def test_remove_app(self):
+    def test_remove_item_takes_any_kind_but_only_the_one_asked_for(self):
         a, key = Item.app("a"), Item("key", "K", mode="tap", key="k", keys=(37,))
-        self.assertEqual(remove_app([key, a], 1), [key])
-        for index in (0, 2):
+        self.assertEqual(remove_item([key, a], 1), [key])
+        self.assertEqual(remove_item([key, a], 0), [a])
+        for index in (-1, 2):
             with self.assertRaises(ConfigError):
-                remove_app([key, a], index)
+                remove_item([key, a], index)
+        # The item the caller saw must still be the one there.
+        self.assertEqual(remove_item([key, a], 0, Item("key", "K", mode="tap", key="k", keys=(37,))), [a])
+        with self.assertRaises(ConfigError):
+            remove_item([key, a], 0, a)
 
 
 class EditConfigTests(unittest.TestCase):
@@ -195,7 +200,7 @@ class EditConfigTests(unittest.TestCase):
             self.assertEqual((c.height, names(c.bar)[3:]), (320, ["a.desktop"]))
             c = edit_config(lambda c: {"apps": add_app(c.apps, "b.desktop", limit=8)})
             self.assertEqual((load_config()[0].height, names(c.apps)), (320, ["b.desktop"]))
-            c = edit_config(lambda c: {"bar": remove_app(c.bar, 3)})
+            c = edit_config(lambda c: {"bar": remove_item(c.bar, 3)})
             with open(path) as f:
                 self.assertEqual(
                     f.read(), EXAMPLE_CONFIG.replace("height = 160", "height = 320") + '\n[[apps]]\napp = "b.desktop"\n'

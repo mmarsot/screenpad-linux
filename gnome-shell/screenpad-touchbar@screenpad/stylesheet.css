@@ -26,8 +26,8 @@
     background-color: #e01b24;
 }
 
-/* Shortcuts: the app's own icon; red with a bin while a long press arms
-   removing it. */
+/* Shortcuts: the app's own icon. Any item, on the bar or the apps page, is
+   red with a bin (a .removing spot) while a long press arms removing it. */
 .screenpad-touchbar-shortcut {
     background-color: #2a2a2e;
 }
@@ -225,6 +225,16 @@
     font-family: monospace;
     font-weight: normal;
     color: #e0e0e6;
+}
+
+/* An item held long enough that lifting removes it, on the bar or the apps
+   page: red, also while pressed and over any tone. */
+.screenpad-touchbar-spot.removing {
+    background-color: #c01c28;
+}
+
+.screenpad-touchbar-spot.removing:active {
+    background-color: #c01c28;
 }
 
 /* An item dragged between the bar and the apps page: it is faded where it

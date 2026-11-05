@@ -22,16 +22,17 @@ from .scene import DISMISS, ask_option_at, ask_option_box
 
 
 class Touch:
-    """A contact on a spot. source is the item it can drag to the apps
-    page (moves.py), and an inert touch (on a tile no app provides, or a
-    page that cannot open) does nothing but that."""
+    """A contact on a spot. item is the item pressed there, source the
+    item it can drag to the apps page (moves.py), and an inert touch (on a
+    tile no app provides, or a page that cannot open) does nothing but
+    that."""
 
-    __slots__ = ("armed", "inert", "removing", "source", "spot", "start", "start_height", "start_y")
+    __slots__ = ("armed", "inert", "item", "removing", "source", "spot", "start", "start_height", "start_y")
 
-    def __init__(self, spot, start, start_y=0, start_height=0, source=None, inert=False):
+    def __init__(self, spot, start, start_y=0, start_height=0, source=None, inert=False, item=None):
         self.spot, self.armed, self.start, self.removing = spot, not inert, start, False
         self.start_y, self.start_height = start_y, start_height
-        self.source, self.inert = source, inert
+        self.source, self.inert, self.item = source, inert, item
 
 
 class AskTouch:
@@ -52,7 +53,9 @@ class Bar:
     - a tile item belongs to an app, which gets "down" on touch and "up" on
       lift, with whether the finger lifted on (or near) it;
     - an app item: a tap opens the app; held for LONG_PRESS it turns to
-      "remove", and lifting then removes it; sliding away cancels either;
+      "remove", and lifting then removes it; sliding away cancels either.
+      So does any item that acts on the lift (Item.removable(): a tap key
+      or command, a page item); a hold item and an app's tile never do;
     - a page item: a tap opens that app's page on the apps page
       (open_page(name)), while the pages turn and an app gives it
       (tiles.pages);
@@ -71,7 +74,7 @@ class Bar:
     With a mover (moves.Mover), a touch on an item that lifts over the
     apps page's home list moves the item there instead: its own action
     is cancelled, as when sliding away (a held key goes up on the lift).
-    launch(app), remove(index), resize(height) and open_page(name) do
+    launch(app), remove(index, item), resize(height) and open_page(name) do
     the saving, launching and opening; remove and resize return whether
     they did. click() is called once for each press the bar accepts, when
     its action happens: a hold item's touch, and the lift on (or near) a
@@ -103,7 +106,7 @@ class Bar:
         self.keys = keys  # KeyEmitter
         self.run = run  # run(argv)
         self.launch = launch or (lambda app: None)
-        self.remove = remove or (lambda index: False)
+        self.remove = remove or (lambda index, item: False)
         self.resize = resize or (lambda height: False)
         self.clock = clock
         self.tiles = tiles
@@ -172,10 +175,10 @@ class Bar:
             elif s.item is None:
                 if lifted:
                     self.add_spot()
+            elif lifted and t.removing:
+                self.remove(s.index, t.item)
             elif s.item.kind == APP:
-                if lifted and t.removing:
-                    self.remove(s.index)
-                elif lifted:
+                if lifted:
                     self.launch(s.item.name)
             elif s.item.kind == PAGE_ITEM:
                 if lifted:
@@ -230,7 +233,7 @@ class Bar:
             if source:
                 self.touch[slot] = Touch(i, self.clock(), source=source, inert=True)
             return False
-        self.touch[slot] = Touch(i, self.clock(), source=source)
+        self.touch[slot] = Touch(i, self.clock(), source=source, item=s.item)
         if s.item.kind == TILE:
             self.tiles.event(s.item.name, "down")
             return True
@@ -266,22 +269,21 @@ class Bar:
                 self.asks.choose(t.ask, t.option)
         return True
 
-    def _app(self, t):
-        s = self.spot(t)
-        return s.item is not None and s.item.kind == APP
+    def _removable(self, t):
+        return not t.inert and t.item is not None and t.item is self.spot(t).item and t.item.removable()
 
     def tick(self):
-        """Turn long-held apps to "remove"; True if that changed anything."""
+        """Turn long-held items to "remove"; True if that changed anything."""
         now, changed = self.clock(), False
         for t in self.touch.values():
-            if self._app(t) and not t.removing and now >= t.start + LONG_PRESS:
+            if self._removable(t) and not t.removing and now >= t.start + LONG_PRESS:
                 t.removing = True
                 changed |= t.armed
         return changed
 
     def deadline(self):
         """When tick() next has something to do, on the clock; or None."""
-        times = [t.start + LONG_PRESS for t in self.touch.values() if self._app(t) and not t.removing]
+        times = [t.start + LONG_PRESS for t in self.touch.values() if self._removable(t) and not t.removing]
         return min(times) if times else None
 
     def act(self, item, kind):
@@ -354,10 +356,11 @@ class Bar:
     def set_config(self, config):
         """Take a reloaded config. Keys, commands and tiles held through it
         stay held if the same item is still in the same spot; every other
-        touch ends."""
+        touch ends, and so does one about to remove its item."""
         for slot, t in list(self.touch.items()):
             s, n = self.spot(t), config.spots[t.spot]
-            if not (s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()):
+            same = s.item and n.item and s.item.kind not in (APP, PAGE_ITEM) and n.item.action() == s.item.action()
+            if t.removing or not same:
                 self._end(slot)
             elif t.source is not None:
                 self.mover.leave(t.source)

@@ -109,13 +109,14 @@ def spot_tiles(config, pressed=(), removing=(), provided=None, page_to=None, pag
             )
         elif item.kind == APP:
             tile.update(style="shortcut", app=item.name, drop=i + 1, **item.looks())
-            if i in removing:
-                tile.update(classes=["removing"], icon="edit-delete-symbolic")
         elif item.kind in (TILE, PAGE_ITEM):
             classes, shown = app_look(item, (provided if item.kind == TILE else pages).get(item.name))
             tile.update(classes=classes, **shown)
         else:
             tile.update(classes=[item.mode], **item.looks())
+        if i in removing and item is not None:
+            # Held long enough that lifting removes it (Bar.removing()).
+            tile.update(classes=["removing"], icon="edit-delete-symbolic")
         if marks and s.kind not in (GRIP, PAGE) and i in marks:
             tile["classes"] = tile.get("classes", []) + [marks[i]]
         tiles.append(tile)

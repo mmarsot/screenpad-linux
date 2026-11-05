@@ -35,7 +35,7 @@ from .common import (
     state_path,
 )
 from .config import config_path, load_config
-from .config_edit import add_app, append_item, edit_config, remove_app
+from .config_edit import add_app, append_item, edit_config, remove_item
 from .daemon import Daemon
 from .defaults import EXAMPLE_CONFIG
 from .devices import Source, find_source
@@ -254,9 +254,11 @@ def poke_daemon():
 
 
 def cmd_shortcut(args):
-    """List, add or remove the apps among the bar's items, or the apps page's
+    """List, add or remove the bar's items, or the apps page's
     with --apps (the extension adds to the bar by drag and drop), or add a
-    key or a command at the end (the extension's custom shortcut window)."""
+    key or a command at the end (the extension's custom shortcut window).
+    Remove takes an item of any kind; only the items have spots here, so
+    the page button and the grip are never touched."""
     where = "apps" if args.apps else "bar"
     limit = MAX_APPS_ITEMS if args.apps else BAR_ITEMS
     try:
@@ -287,8 +289,13 @@ def cmd_shortcut(args):
             if not 1 <= args.spot <= limit:
                 raise ConfigError("spot must be 1 to %d" % limit)
 
+            gone = []
+
             def change(c):
-                return {where: remove_app(c.items(where), args.spot - 1)}
+                items = c.items(where)
+                if args.spot <= len(items):
+                    gone.append(items[args.spot - 1])
+                return {where: remove_item(items, args.spot - 1)}
 
         config = edit_config(change, args.config)
     except ConfigError as e:
@@ -297,6 +304,9 @@ def cmd_shortcut(args):
     poke_daemon()
     if args.action in ("add-key", "add-command"):
         print("added %s to %s" % (item.title(), "the apps page" if args.apps else "the bar"))
+        return 0
+    if args.action == "remove":
+        print("removed %s from %s" % (gone[0].title(), "the apps page" if args.apps else "the bar"))
         return 0
     apps = [i.name for i in config.items(where) if i.kind == APP]
     print("%s apps: %s" % ("the apps page's" if args.apps else "the bar's", ", ".join(apps) or "none"))
@@ -389,7 +399,7 @@ def parse_args(argv):
     check = sub.add_parser("check", help="validate the config")
     probe = sub.add_parser("probe", help="print where touches land, without grabbing")
     shortcut = sub.add_parser(
-        "shortcut", help="list, add or remove apps on the bar or the apps page, or add a key or command"
+        "shortcut", help="list the items on the bar or the apps page, add an app, key or command, or remove an item"
     )
     actions = shortcut.add_subparsers(dest="action", required=True)
     listing = actions.add_parser("list", help="the spots and their items")
@@ -402,7 +412,7 @@ def parse_args(argv):
     add.add_argument(
         "--spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
     )
-    remove = actions.add_parser("remove", help="remove the app in a spot")
+    remove = actions.add_parser("remove", help="remove the item in a spot, of any kind")
     remove.add_argument(
         "spot", type=int, metavar="N", help="spot 1 to %d (on the apps page, 1 to %d)" % (BAR_ITEMS, MAX_APPS_ITEMS)
     )

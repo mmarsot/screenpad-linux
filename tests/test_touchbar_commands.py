@@ -55,13 +55,20 @@ class ShortcutCommandTests(unittest.TestCase):
             self.assertEqual(self.run_cli("remove", "1")[0], 0)
             bar = load_config(path)[0].bar
             self.assertEqual([i.name for i in bar], [None, None, None, "org.gnome.Nautilus.desktop"])
-            # Only an app: the keys are the file's.
-            self.assertEqual(self.run_cli("remove", "2")[0], 2)
+            # Any kind: the second spot is the default's mute key, and only it goes.
+            code, out = self.run_cli("remove", "3")
+            self.assertEqual((code, out), (0, "removed Screenshot from the bar\n"))
+            bar = load_config(path)[0].bar
+            self.assertEqual([i.label for i in bar[:2]], ["Push to talk", "Mute microphone"])
+            self.assertEqual(len(bar), 3)
+            # An empty spot, and the page button and grip after the sixth: nothing.
             self.assertEqual(self.run_cli("remove", "6")[0], 2)
             self.assertEqual(self.run_cli("remove", "7")[0], 2)
+            self.assertEqual(self.run_cli("remove", "0")[0], 2)
+            self.assertEqual(len(load_config(path)[0].bar), 3)
             self.assertEqual(self.run_cli("add", "bad name")[0], 2)
             self.assertEqual(self.run_cli("add", "c", "--spot", "7")[0], 2)
-            self.assertEqual(len(load_config(path)[0].bar), 4)
+            self.assertEqual(len(load_config(path)[0].bar), 3)
 
     def test_the_apps_page(self):
         with tempfile.TemporaryDirectory() as d, ConfigHome(d) as path:

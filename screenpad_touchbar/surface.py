@@ -20,7 +20,10 @@ it:
 A touch keeps what it started on, like the bar's: one that started on a
 widget stays that widget's (or nothing) until it lifts. One that started on
 an [[apps]] item and lifts over the bar moves the item there instead
-(moves.py); its own action is cancelled, as when sliding away.
+(moves.py); its own action is cancelled, as when sliding away. One held
+on such an item for LONG_PRESS, if the item is removable (Item.removable():
+not a hold item or an app's tile), is drawn red with a bin, and lifting on
+it then removes the item (remove(index, item)) instead of tapping it.
 """
 
 import json
@@ -63,7 +66,9 @@ BACK_HINT = (
 )
 # Every CSS class a widget can carry; the stylesheet has a rule for each
 # (tests/test_touchbar_surface.py checks it).
-WIDGET_CLASSES = ("inert", "long", "held", "moving", "target", "empty") + tuple("tone-" + tone for tone in TONES)
+WIDGET_CLASSES = ("inert", "long", "held", "removing", "moving", "target", "empty") + tuple(
+    "tone-" + tone for tone in TONES
+)
 
 
 class Spot:
@@ -96,14 +101,16 @@ class Spot:
 
 class Press:
     """A contact on the surface: on a widget (spot), or inert (spot None);
-    source is the [[apps]] item it can drag to the bar (moves.py)."""
+    source is the [[apps]] item it can drag to the bar (moves.py), removal
+    the (index, item) a hold of LONG_PRESS then lift removes, once removing."""
 
-    __slots__ = ("held", "inside", "key", "source", "spot", "start")
+    __slots__ = ("held", "inside", "key", "removal", "removing", "source", "spot", "start")
 
-    def __init__(self, spot, start, source=None):
+    def __init__(self, spot, start, source=None, removal=None):
         self.spot, self.start, self.inside, self.held = spot, start, spot is not None, False
         self.key = spot.key() if spot else None
         self.source = source
+        self.removal, self.removing = removal, False
 
 
 def grid(x0, y0, width, height, columns, rows, col, row, cols, nrows):
@@ -130,10 +137,12 @@ class Surface:
     a hold item; never for a cancel.
     """
 
-    def __init__(self, apps, pager, top, cover, can_draw, clock=time.monotonic, click=None, items=None, act=None):
+    def __init__(
+        self, apps, pager, top, cover, can_draw, clock=time.monotonic, click=None, items=None, act=None, remove=None
+    ):
         self.apps, self.pager, self.clock = apps, pager, clock
-        self.click = click or (lambda: None)
-        self.items = items or list
+        self.click, self.items = click or (lambda: None), items or list
+        self.remove = remove or (lambda index, item: False)
         self.act = act or (lambda item, kind: None)
         self.top, self.cover, self.can_draw = top, cover, can_draw
         self.open = None  # the app page shown, or None for the home page
@@ -278,9 +287,13 @@ class Surface:
             self.covered = cover
         keys = {s.key() for s in spots}
         self.since = {k: self.since.get(k, now) for k in keys}
-        ended = False
+        ended, items = False, list[Item](self.items())
         for p in self.presses.values():
-            if p.spot is not None and p.key not in keys:
+            r = p.removal
+            swapped = r is not None and not any(i is r[1] for i in items[r[0] : r[0] + 1])
+            if swapped and not p.removing:
+                p.removal = None
+            elif p.spot is not None and (swapped or p.key not in keys):
                 self._cancel(p)
                 p.spot = None
                 ended = True
@@ -335,7 +348,11 @@ class Surface:
                     source = (APPS_LIST, spot.entry, self.items()[spot.entry])
                 if spot is not None and (spot.touch == "none" or fresh):
                     spot = None
-                self.presses[slot] = Press(spot, at, source)
+                removal = None
+                if spot is not None and spot.entry is not None:
+                    item = self.items()[spot.entry]
+                    removal = (spot.entry, item) if item.removable() else None
+                self.presses[slot] = Press(spot, at, source, removal)
                 if spot is not None:
                     self._send(spot, "down")
                     if spot.item is not None and spot.item.hold():
@@ -386,6 +403,11 @@ class Surface:
 
     def _lifted(self, p):
         spot = p.spot
+        if p.removing and p.removal is not None:
+            self.click()
+            self._cancel(p)
+            self.remove(*p.removal)
+            return
         if not (spot.item is not None and spot.item.hold()):
             self.click()
         if spot.page is not None:
@@ -404,10 +426,14 @@ class Surface:
             self.open = spot.wid[len(OPEN) :]
 
     def tick(self):
-        """Mark long-held "long" widgets held; True if that changed anything."""
+        """Mark long-held "long" widgets held, and long-held removable
+        items removing; True if that changed anything."""
         changed = self.refresh()
         now = self.clock()
         for p in self.presses.values():
+            if p.spot is not None and p.removal is not None and not p.removing and now >= p.start + LONG_PRESS:
+                p.removing = True
+                changed |= p.inside
             if p.spot is not None and p.spot.touch == "long" and not p.held and now >= p.start + LONG_PRESS:
                 p.held = True
                 changed = True
@@ -418,7 +444,8 @@ class Surface:
         times = [
             p.start + LONG_PRESS
             for p in self.presses.values()
-            if p.spot is not None and p.spot.touch == "long" and not p.held
+            if p.spot is not None
+            and ((p.spot.touch == "long" and not p.held) or (p.removal is not None and not p.removing))
         ]
         return min(times) if times else None
 
@@ -462,6 +489,9 @@ class Surface:
                     tile["pressed"] = True
                     if p.held:
                         classes.append("held")
+                    if p.removing:
+                        classes.append("removing")
+                        tile["icon"] = "edit-delete-symbolic"
             if s.page is None and s.entry in marks:
                 classes.append(marks[s.entry])
             if hint and s.page is None and s.wid == "title":

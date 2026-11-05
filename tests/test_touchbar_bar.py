@@ -189,7 +189,7 @@ class BarTests(unittest.TestCase):
         self.bar = self.make(config(self.CONFIG))
 
     def make(self, c):
-        def remove(i):
+        def remove(i, item):
             self.removed.append(i)
             return True
 

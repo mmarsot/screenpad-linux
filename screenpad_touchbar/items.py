@@ -50,6 +50,12 @@ class Item:
     def hold(self):
         return self.mode == "hold"
 
+    def removable(self):
+        """Whether holding a finger on it removes it: an item whose touch
+        acts on the lift. A hold item acts on the touch itself (holding is
+        its use) and a tile's touches are its app's, so neither is."""
+        return self.kind != TILE and not self.hold()
+
     def action(self):
         """What a touch on it does; a held item stays held through a reload
         only while this stays the same."""
