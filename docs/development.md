@@ -41,7 +41,7 @@ Each package has one module per concern, each under about 500 lines:
 | `screenpad_touchbar/items.py` | an item, one `[[bar]]` or `[[apps]]` block (a key, a command, an app, an app's tile or page): parsing it |
 | `screenpad_touchbar/config.py` | `touchbar.toml`: the bar's spots, the bar's and the apps page's items, `[notifications]`, `[screensaver]` and `[pager]`, parsing and loading |
 | `screenpad_touchbar/defaults.py` | the default config and the defaults earlier versions wrote |
-| `screenpad_touchbar/config_edit.py` | editing the config in place: the height, adding, moving and removing apps among the items, and moving an item's block between `[[bar]]` and `[[apps]]` |
+| `screenpad_touchbar/config_edit.py` | editing the config in place: the height, adding and moving apps among the items, adding keys and commands, removing an item of any kind, and moving an item's block between `[[bar]]` and `[[apps]]` |
 | `screenpad_touchbar/picker.py` | the picker a `+` opens: the presets, the dock's favourite apps, the custom shortcut, adding the one tapped |
 | `screenpad_touchbar/moves.py` | dragging items between the bar and the apps page's home list: where a drag lands, what it marks, the Replace card, the swap |
 | `screenpad_touchbar/migrate.py` | bringing an earlier config up to date: its default, its default blocks, its buttons and shortcuts turned into items |
