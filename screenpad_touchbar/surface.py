@@ -287,11 +287,10 @@ class Surface:
             self.covered = cover
         keys = {s.key() for s in spots}
         self.since = {k: self.since.get(k, now) for k in keys}
-        ended, items = False, self.items()
+        ended, items = False, list[Item](self.items())
         for p in self.presses.values():
-            swapped = p.removal is not None and not any(
-                i is p.removal[1] for i in items[p.removal[0] : p.removal[0] + 1]
-            )
+            r = p.removal
+            swapped = r is not None and not any(i is r[1] for i in items[r[0] : r[0] + 1])
             if swapped and not p.removing:
                 p.removal = None
             elif p.spot is not None and (swapped or p.key not in keys):
