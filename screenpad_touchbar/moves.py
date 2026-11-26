@@ -20,7 +20,7 @@ after the items, as Projects is once its bar item was removed) is pinned
 to the bar the same way: lifted over a spot, it goes there, in front of the
 item on it (the later ones move right), or at the end on an empty spot,
 written as a [[bar]] block with page and the page's title as label. A full
-bar refuses: the lift only shows a card saying so, and nothing is removed.
+bar refuses: the header says so, and the lift is no move.
 
 A lift over the bar while a card covers it, over the home list's header,
 on an app's page, or that would put an app or a page twice in one list,
@@ -46,14 +46,13 @@ PLACE_NAMES = {BAR_LIST: "the bar", APPS_LIST: "the apps page"}
 # The place of a source that is in neither list: a page apps give that no
 # [[apps]] item places, on the home list (its "index" is the page's name).
 PAGES_LIST = "pages"
-FULL_OPTIONS = [{"id": "ok", "label": "OK", "tone": "neutral"}]
 
 
 class Target:
     """Where a drag lands: index in place's list, and the item there it
     replaces (swapped to the source's spot), or None to go at the end (for
     a pinned page, in front of the item at index). full: a page pinned to
-    a bar with no room, which is refused."""
+    a bar with no room, which is only marked in the header, never moved."""
 
     __slots__ = ("full", "index", "place", "replaced")
 
@@ -183,15 +182,10 @@ class Mover:
         move (made, or asked about)."""
         self.leave(source)
         target = self.target(source, px, py)
-        if target is None:
+        if target is None or target.full:
             return False
         place, _, item = source
-        if target.full:
-            self._tell(
-                "The bar is full",
-                "Remove an item from it first (hold the item), then drag %s here." % short(item.title()),
-            )
-        elif place == PAGES_LIST:
+        if place == PAGES_LIST:
             if self.edit(lambda c: self.pinned(c, item, target), "pin the page"):
                 self.click()
         elif target.replaced is None:
@@ -200,15 +194,6 @@ class Mover:
         else:
             self._ask(source, target)
         return True
-
-    def _tell(self, title, text):
-        """A card with an OK: why a drop did nothing."""
-        self.asked += 1
-        self.asks.add(
-            Ask(
-                Asker(lambda: None), "move-%d" % self.asked, title, text, FULL_OPTIONS, self.asks.clock() + MOVE_TIMEOUT
-            )
-        )
 
     def _ask(self, source, target):
         place, _, item = source

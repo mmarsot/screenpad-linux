@@ -413,9 +413,10 @@ class MovesTests(unittest.TestCase):
         )
         self.assertIn('# From the agents app.\n[[bar]]\nlabel = "Agents"', self.text())
 
-    def test_a_full_bar_refuses_a_page_with_a_card(self):
+    def test_a_full_bar_refuses_a_page(self):
         d = self.daemon
-        self.write(CONFIG.replace("# The apps page.", "".join('[[bar]]\napp = "%s.desktop"\n\n' % a for a in "xyz")))
+        full = CONFIG.replace("# The apps page.", "".join('[[bar]]\napp = "%s.desktop"\n\n' % a for a in "xyz"))
+        self.write(full)
         d.reload = True
         d.check_config()
         self.projects()
@@ -425,15 +426,9 @@ class MovesTests(unittest.TestCase):
             self.widget(state, "title")["text"], "The bar is full: remove an item from it to make room for Projects."
         )
         self.assertFalse(any("target" in t.get("classes", []) for t in state["tiles"]))
-        ask = d.apps.asks.shown()
-        self.assertEqual((ask.title, [o["label"] for o in ask.options]), ("The bar is full", ["OK"]))
-        self.assertIn("Remove an item", ask.text)
-        # Nothing was written, removed or clicked; OK closes the card.
-        self.assertEqual((self.text(), d.clicks), (self.text(), clicks))
+        # No card, and nothing was written, removed or clicked.
+        self.assertEqual((d.apps.asks.shown(), self.text(), d.clicks), (None, full, clicks))
         self.assertEqual(len(d.config.bar), 6)
-        self.assertNotIn("projects", self.text())
-        self.answer(0)
-        self.assertEqual((d.apps.asks.shown(), len(d.config.bar)), (None, 6))
 
     def test_what_pins_nothing(self):
         d = self.daemon

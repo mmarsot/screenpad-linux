@@ -83,7 +83,7 @@ A page apps give the apps page that no item places (Projects, once its bar item 
 
 - **While the finger is over the bar**, the spot it would land on is blue and the header says what lifting does: "Lift to pin Projects to the bar." over an empty spot, "Lift to pin Projects here; the items after it move right." over an item.
 - **On an empty spot**, it goes at the end of the bar's items (the first empty spot); **on an item**, in front of it, and that item and the ones after it move one spot to the right, as an app dropped from the dock does. One click, no card.
-- **On a full bar** (six items) nothing is added and nothing is replaced: the header says the bar is full, and lifting shows a card, "The bar is full", with OK. Remove an item first (hold it), then drag the page again.
+- **On a full bar** (six items) nothing is added and nothing is replaced: the header says the bar is full, and lifting does nothing (no card, no click). Remove an item first (hold it), then drag the page again.
 - It is written as a `[[bar]]` block with `page` and the page's title as `label`, for example `page = "projects"` and `label = "Projects"`, in the file's own place for it ([writing the file](#adding-items-with-a-)). A page the bar already has is not pinned a second time, though it still shows on the list. Tiles need no such drag: a tile is an item, so it is on the home list only when an `[[apps]]` block places it, and moves like any item ([above](#moving-items-between-the-bar-and-the-apps-page)).
 
 ### Removing items
