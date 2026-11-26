@@ -5,7 +5,7 @@ import json
 import os
 import re
 
-from .common import APP, BAR_ITEMS, COMMAND, KEY, ConfigError, state_path
+from .common import APP, BAR_ITEMS, COMMAND, KEY, PAGE_ITEM, ConfigError, state_path
 from .config import Config, config_path, parse_config
 from .defaults import EXAMPLE_CONFIG
 from .items import Item
@@ -70,7 +70,8 @@ def _toml(value):
 
 
 def app_block(name, item):
-    """The lines the bar writes for an item it adds: an app, a key or a command."""
+    """The lines the bar writes for an item it adds: an app, a key, a command
+    or a page."""
     lines = ["[[%s]]\n" % name]
     if item.kind == APP:
         lines.append("app = %s\n" % _toml(item.name))
@@ -81,6 +82,8 @@ def app_block(name, item):
         # list of strings is a TOML array).
         sh = item.command[:2] == ["/bin/sh", "-c"] and len(item.command) == 3
         lines.append("command = %s\n" % _toml(item.command[2] if sh else item.command))
+    elif item.kind == PAGE_ITEM:
+        lines.append("page = %s\n" % _toml(item.name))
     else:
         raise ConfigError(ONLY)
     if item.mode and item.mode != "tap":
@@ -110,7 +113,7 @@ def with_items(text, name, old, new, carried=None, added=(), removed=()):
     lines of their block where they come from (its header to its last
     setting, as blocks() finds it). The items new keeps from old (the same
     objects) keep their blocks as they are, and stay in the same order;
-    the others in new must be apps, carried, or keys and commands whose
+    the others in new must be apps, carried, or keys, commands and pages whose
     id() is in added (new items, in neither list before), and get a block
     (one written anew, a carried one's lines under a [[name]] header), before
     the next item kept or after the last block; the ones new drops must

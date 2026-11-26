@@ -1,7 +1,7 @@
 """Tests for dragging items between the bar and the apps page's home list:
 where a drag lands, what it marks while over the other place, the Replace
 card and its answers, the swap, and the file edited in place, all in the
-daemon.
+daemon; and a page no item places, dragged from the home list to the bar.
 
 No root, no hardware, no uinput. Run with: python3 -m unittest discover -s tests
 """
@@ -367,6 +367,118 @@ class MovesTests(unittest.TestCase):
         self.frame(lift(0))
         self.assertEqual(self.keys, [[(EV_KEY, 248, 1), SYN], [(EV_KEY, 248, 0), SYN]])
         self.assertEqual(self.text(), CONFIG)
+
+    def projects(self):
+        """An app gives a page "projects", which no item places: the home
+        list's third cell, after Settings and Mute."""
+        self.daemon.apps.handle(hello(self.daemon.apps), page_msg(page="projects", title="Projects"))
+        self.published()
+
+    def test_a_page_no_item_places_is_pinned_to_the_bar(self):
+        d = self.daemon
+        self.projects()
+        clicks = d.clicks
+        state = self.drag(cell(2), spot(4))
+        # Over an empty spot: the bar's first empty one is the target, and
+        # the header says so.
+        self.assertIn("target", state["tiles"][3]["classes"])
+        self.assertEqual(self.widget(state, "title")["text"], "Lift to pin Projects to the bar.")
+        # At the end of the bar's items, written as a block of its own, the
+        # rest of the file as it was; a click, and no card.
+        self.assertEqual(self.lists()[0], ["PTT", "Files", "Agents", "Projects"])
+        self.assertEqual(
+            self.text(),
+            CONFIG.replace("\n[notifications]", '\n[[bar]]\npage = "projects"\nlabel = "Projects"\n\n[notifications]'),
+        )
+        self.assertEqual((d.clicks, d.apps.asks.shown(), self.ran), (clicks + 1, None, []))
+        self.assertEqual(d.config.bar[3].kind, "page")
+        # The page is on the bar now, and a tap on it opens the page.
+        self.assertEqual(self.published()["tiles"][3]["label"], "Projects")
+        self.down(spot(3))
+        self.frame(lift(0))
+        self.assertEqual(d.surface.open, "projects")
+
+    def test_a_page_dropped_on_an_item_goes_in_front_of_it(self):
+        self.projects()
+        state = self.drag(cell(2), spot(1))
+        self.assertIn("target", state["tiles"][1]["classes"])
+        self.assertEqual(
+            self.widget(state, "title")["text"], "Lift to pin Projects here; the items after it move right."
+        )
+        self.assertEqual(self.lists(), (["PTT", "Projects", "Files", "Agents"], ["Settings", "Mute"]))
+        # In front of Files' block and its comments, the others untouched.
+        self.assertIn(
+            'key = "F14"  # mine\n\n[[bar]]\npage = "projects"\nlabel = "Projects"\n\n[[bar]]\napp = "files.desktop"',
+            self.text(),
+        )
+        self.assertIn('# From the agents app.\n[[bar]]\nlabel = "Agents"', self.text())
+
+    def test_a_full_bar_refuses_a_page_with_a_card(self):
+        d = self.daemon
+        self.write(CONFIG.replace("# The apps page.", "".join('[[bar]]\napp = "%s.desktop"\n\n' % a for a in "xyz")))
+        d.reload = True
+        d.check_config()
+        self.projects()
+        clicks = d.clicks
+        state = self.drag(cell(2), spot(4))
+        self.assertEqual(
+            self.widget(state, "title")["text"], "The bar is full: remove an item from it to make room for Projects."
+        )
+        self.assertFalse(any("target" in t.get("classes", []) for t in state["tiles"]))
+        ask = d.apps.asks.shown()
+        self.assertEqual((ask.title, [o["label"] for o in ask.options]), ("The bar is full", ["OK"]))
+        self.assertIn("Remove an item", ask.text)
+        # Nothing was written, removed or clicked; OK closes the card.
+        self.assertEqual((self.text(), d.clicks), (self.text(), clicks))
+        self.assertEqual(len(d.config.bar), 6)
+        self.assertNotIn("projects", self.text())
+        self.answer(0)
+        self.assertEqual((d.apps.asks.shown(), len(d.config.bar)), (None, 6))
+
+    def test_what_pins_nothing(self):
+        d = self.daemon
+        self.projects()
+        # A slide that stays on the list, a lift on the header, and one on a
+        # spot covered by a card.
+        self.drag(cell(2), cell(5))
+        self.drag(cell(2), (900, 200))
+        self.assertEqual(self.text(), CONFIG)
+        # The page button and the grip are no spots for it.
+        self.drag(cell(2), (SPOT_X[5] + SPOT_W + 20, 80))
+        self.assertEqual(self.text(), CONFIG)
+        # A tap opens the page and nothing else.
+        self.down(cell(2))
+        self.frame(lift(0))
+        self.assertEqual((d.surface.open, self.text()), ("projects", CONFIG))
+        d.surface.open = None
+        d.apps.asks.add(Ask(FakeClient(), "q", "A question", None, [{"id": "a", "label": "A", "tone": "neutral"}], 1e9))
+        self.clock.now += ASK_ARM
+        self.drag(cell(2), spot(4))
+        self.assertEqual(self.text(), CONFIG)
+
+    def test_a_page_the_bar_already_has_is_not_pinned_twice(self):
+        d = self.daemon
+        self.projects()
+        self.drag(cell(2), spot(4))
+        self.assertEqual(self.lists()[0], ["PTT", "Files", "Agents", "Projects"])
+        # It still shows on the home list; dragging it again does nothing.
+        text = self.text()
+        state = self.drag(cell(2), spot(4))
+        self.assertEqual((self.text(), len(d.config.bar)), (text, 4))
+        self.assertEqual(self.widget(state, "title")["text"][:4], "Tap ")
+
+    def test_the_bar_filling_up_before_the_lift_pins_nothing(self):
+        d = self.daemon
+        self.projects()
+        self.down(cell(2))
+        self.move(spot(4))
+        full = CONFIG.replace("# The apps page.", "".join('[[bar]]\napp = "%s.desktop"\n\n' % a for a in "xyz"))
+        self.write(full)
+        d.reload = True
+        d.check_config()
+        self.frame(lift(0))
+        # The reload ended the touch's mark, and the file is as written.
+        self.assertEqual((self.text(), d.config.bar[-1].name), (full, "z.desktop"))
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ The file then documents the `[notifications]`, `[screensaver]` and `[pager]` tab
 The bar and the apps page are both places for **items**, and any kind of item goes in either:
 
 - `[[bar]]` blocks, up to six, fill the bar's six spots left to right; the spots after the last item are empty. The page button and the grip stay at the right end.
-- `[[apps]]` blocks, up to eight, fill the apps page's home list (see [The two pages](touchbar.md#the-two-pages)), left to right and top to bottom. The pages that apps give it, and that no `page` item places, follow them. The list has two rows of four, and a third or fourth row when it holds more.
+- `[[apps]]` blocks, up to eight, fill the apps page's home list (see [The two pages](touchbar.md#the-two-pages)), left to right and top to bottom. The pages that apps give it, and that no `page` item places, follow them; drag one to the bar to pin it there, which writes its `page` block ([pinning a page](touchbar.md#pinning-a-page-to-the-bar)). The list has two rows of four, and a third or fourth row when it holds more.
 
 Each item has exactly one of `key`, `command`, `app`, `tile` or `page`, which says what it is:
 

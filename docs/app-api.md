@@ -124,7 +124,7 @@ tile = "agents"
 
 While no app provides `agents`, the spot shows that icon (or label) dimmed and ignores touches. On the apps page, a tile shows its `label`, `text`, `icon`, `badge` and `tone` in its cell of the home list; the app gets `down` when a finger goes down on it and `up` when it lifts, with `inside` true when it lifted on the cell (`false` for a slide away, a cancel, or the cell changing under the finger).
 
-A `page` item places one of an app's pages: in the home list at its own place, before the pages no item places, or on the bar, where a tap opens the apps page on it. Pages need nothing from the app for that.
+A `page` item places one of an app's pages: in the home list at its own place, before the pages no item places, or on the bar, where a tap opens the apps page on it. Pages need nothing from the app for that. A page no item places can also be dragged from the home list to the bar, which writes its `page` item there ([pinning a page](touchbar.md#pinning-a-page-to-the-bar)).
 
 ## Pages on the apps page
 
