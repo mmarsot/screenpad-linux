@@ -4,7 +4,7 @@ The touch bar reads `~/.config/screenpad/touchbar.toml`. `screenpad-touchbar on`
 
 - **Applying changes:** save the file. The daemon reloads it within a second (or on `systemctl --user reload screenpad-touchbar`). No restart or re-login is needed.
 - **Errors:** if the new file has an error, the daemon keeps the current bar and logs why (`journalctl --user -u screenpad-touchbar`). `screenpad-touchbar check` shows the error too, and lists every spot when the file is valid.
-- **The bar edits it too:** resizing with the grip writes the `height` line, and adding an app (dragged onto the bar, or with `screenpad-touchbar shortcut`) adds its block, and removing an item of any kind ([held to remove](touchbar.md#removing-items), or `screenpad-touchbar shortcut remove`) takes its block away. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. An item added with a `+` ([adding items](touchbar.md#adding-items-with-a-)), or with `screenpad-touchbar shortcut add-key` or `add-command`, gets a block of its own after that list's last one. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
+- **The bar edits it too:** resizing with the grip writes the `height` line, and adding an app (dragged onto the bar, or with `screenpad-touchbar shortcut`) adds its block, and removing an item of any kind ([held to remove](touchbar.md#removing-items), or `screenpad-touchbar shortcut remove`) takes its block away. An item of any kind dragged between the bar and the apps page ([moving items](touchbar.md#moving-items-between-the-bar-and-the-apps-page)) has its block moved as it is from `[[bar]]` to `[[apps]]` or back, swapped with the block of the item it replaces. A page no item places, dragged from the apps page to the bar ([pinning a page](touchbar.md#pinning-a-page-to-the-bar)), gets a `page` block in `[[bar]]`. An item added with a `+` ([adding items](touchbar.md#adding-items-with-a-)), or with `screenpad-touchbar shortcut add-key` or `add-command`, gets a block of its own after that list's last one. Every other line and comment is kept, and the bar never otherwise adds, moves or removes an item.
 
 ## The default
 
@@ -44,7 +44,7 @@ The file then documents the `[notifications]`, `[screensaver]` and `[pager]` tab
 The bar and the apps page are both places for **items**, and any kind of item goes in either:
 
 - `[[bar]]` blocks, up to six, fill the bar's six spots left to right; the spots after the last item are empty. The page button and the grip stay at the right end.
-- `[[apps]]` blocks, up to eight, fill the apps page's home list (see [The two pages](touchbar.md#the-two-pages)), left to right and top to bottom. The pages that apps give it, and that no `page` item places, follow them. The list has two rows of four, and a third or fourth row when it holds more.
+- `[[apps]]` blocks, up to eight, fill the apps page's home list (see [The two pages](touchbar.md#the-two-pages)), left to right and top to bottom. The pages that apps give it, and that no `page` item places, follow them; drag one to the bar to pin it there, which writes its `page` block ([pinning a page](touchbar.md#pinning-a-page-to-the-bar)). The list has two rows of four, and a third or fourth row when it holds more.
 
 Each item has exactly one of `key`, `command`, `app`, `tile` or `page`, which says what it is:
 

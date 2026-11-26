@@ -17,6 +17,8 @@ it:
 - the app gets "down", then "tap", "long" or "cancel" (Apps.press). The
   surface's own widgets (Home, the home page's pages) open pages instead,
   and the home page's items do what they do on the bar (act()).
+A page on the home list that no item places can be dragged to the bar and
+pinned there as a page item (moves.py).
 A touch keeps what it started on, like the bar's: one that started on a
 widget stays that widget's (or nothing) until it lifts. One that started on
 an [[apps]] item and lifts over the bar moves the item there instead
@@ -46,7 +48,7 @@ from .common import (
     TONES,
 )
 from .items import Item
-from .moves import APPS_LIST
+from .moves import APPS_LIST, pin_source
 from .scene import page_look
 
 # The surface's own widgets: Home, a page in the home page's list, and an
@@ -343,9 +345,7 @@ class Surface:
                 # is a press): the arming counts from then.
                 at = ev[4] if len(ev) > 4 else now
                 spot, fresh = self._under(px, py, at)
-                source = None
-                if self.mover and spot is not None and spot.entry is not None and not fresh:
-                    source = (APPS_LIST, spot.entry, self.items()[spot.entry])
+                source = self._source(spot) if self.mover and not fresh else None
                 if spot is not None and (spot.touch == "none" or fresh):
                     spot = None
                 removal = None
@@ -385,6 +385,16 @@ class Surface:
             else:
                 self._cancel(p)
         return changed
+
+    def _source(self, spot):
+        """What a touch on spot can drag to the bar: an [[apps]] item, or a
+        page no item places (pinned there); None for anything else."""
+        if spot is None:
+            return None
+        if spot.entry is not None:
+            return (APPS_LIST, spot.entry, self.items()[spot.entry])
+        page = self.apps.pages.get(spot.wid[len(OPEN) :]) if spot.wid.startswith(OPEN) else None
+        return pin_source(page) if page else None
 
     def _under(self, px, py, at):
         """The widget under px, py, and whether it appeared or changed

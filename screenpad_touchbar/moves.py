@@ -15,6 +15,13 @@ where it lifts makes it a move:
   was, so both lists keep their length; Cancel, Dismiss, the card's
   timeout, or a card that cannot show leave both lists as they were.
 
+A page that apps give and no [[apps]] item places (it is on the home list
+after the items, as Projects is once its bar item was removed) is pinned
+to the bar the same way: lifted over a spot, it goes there, in front of the
+item on it (the later ones move right), or at the end on an empty spot,
+written as a [[bar]] block with page and the page's title as label. A full
+bar refuses: the header says so, and the lift is no move.
+
 A lift over the bar while a card covers it, over the home list's header,
 on an app's page, or that would put an app or a page twice in one list,
 is no move. While a drag is over the other place, the scene marks the
@@ -24,6 +31,7 @@ that is the only drawing a drag adds, and only when the mark changes.
 
 from .common import APP, BAR_ITEMS, PAGE_ITEM, ConfigError
 from .config import LISTS
+from .items import Item
 from .protocol import Ask
 
 BAR_LIST, APPS_LIST = "bar", "apps"
@@ -35,19 +43,29 @@ OPTIONS = [
     {"id": "replace", "label": "Replace", "tone": "warning"},
 ]
 PLACE_NAMES = {BAR_LIST: "the bar", APPS_LIST: "the apps page"}
+# The place of a source that is in neither list: a page apps give that no
+# [[apps]] item places, on the home list (its "index" is the page's name).
+PAGES_LIST = "pages"
 
 
 class Target:
     """Where a drag lands: index in place's list, and the item there it
-    replaces (swapped to the source's spot), or None to go at the end."""
+    replaces (swapped to the source's spot), or None to go at the end (for
+    a pinned page, in front of the item at index). full: a page pinned to
+    a bar with no room, which is only marked in the header, never moved."""
 
-    __slots__ = ("index", "place", "replaced")
+    __slots__ = ("full", "index", "place", "replaced")
 
-    def __init__(self, place, index, replaced=None):
-        self.place, self.index, self.replaced = place, index, replaced
+    def __init__(self, place, index, replaced=None, full=False):
+        self.place, self.index, self.replaced, self.full = place, index, replaced, full
 
     def key(self):
-        return (self.place, self.index, self.replaced is None)
+        return (self.place, self.index, self.replaced is None, self.full)
+
+
+def pin_source(page):
+    """The source of a drag of a page (widgets.Page) no item places."""
+    return (PAGES_LIST, page.name, Item(PAGE_ITEM, page.title(), name=page.name))
 
 
 def moved(config, source, target):
@@ -109,6 +127,8 @@ class Mover:
         """Where source's item lands if lifted at px, py; None for no move."""
         place, i, item = source
         config = self.config()
+        if place == PAGES_LIST:
+            return self._pin(config, item, px, py)
         items = config.items(place)
         if i >= len(items) or items[i] is not item:
             return None  # the config changed under the finger
@@ -126,6 +146,16 @@ class Mover:
         if not all(once_each(new) for new in moved(config, source, target).values()):
             return None
         return target
+
+    def _pin(self, config, item, px, py):
+        """Where a page no item places lands if lifted at px, py."""
+        spot = self._at(config, BAR_LIST, px, py)
+        if spot is None or not once_each(config.bar + config.apps + [item]):
+            return None
+        there = len(config.bar)
+        if there >= BAR_ITEMS:
+            return Target(BAR_LIST, spot, full=True)
+        return Target(BAR_LIST, min(spot, there))
 
     def _at(self, config, place, px, py):
         if place == APPS_LIST:
@@ -152,12 +182,20 @@ class Mover:
         move (made, or asked about)."""
         self.leave(source)
         target = self.target(source, px, py)
-        if target is None:
+        if target is None or target.full:
             return False
-        if target.replaced is None:
+        place, _, item = source
+        if place == PAGES_LIST:
+            if self.edit(lambda c: self.pinned(c, item, target), "pin the page"):
+                self.click()
+        elif target.replaced is None:
             if self.edit(lambda c: self.change(c, source, target), "move the item"):
                 self.click()
-            return True
+        else:
+            self._ask(source, target)
+        return True
+
+    def _ask(self, source, target):
         place, _, item = source
         name, replaced = short(item.title()), short(target.replaced.title())
         self.asked += 1
@@ -172,7 +210,16 @@ class Mover:
                 self.asks.clock() + MOVE_TIMEOUT,
             )
         )
-        return True
+
+    @staticmethod
+    def pinned(config, item, target):
+        """edit_config()'s change: item (a page) at the bar's target.index,
+        if the file still has room and the page is in neither list."""
+        there = config.bar
+        if len(there) >= BAR_ITEMS or not once_each(there + config.apps + [item]):
+            raise ConfigError("the bar changed since; drag it again")
+        i = min(target.index, len(there))
+        return {BAR_LIST: there[:i] + [item] + there[i:]}
 
     @staticmethod
     def change(config, source, target):
@@ -198,14 +245,21 @@ class Mover:
         for (p, i, _), t in self.hover.items():
             if p == place:
                 out[i] = "moving"
-            if t.place == place and (place == BAR_LIST or t.replaced is not None):
+            if t.place == place and not t.full and (place == BAR_LIST or t.replaced is not None):
                 out[t.index] = "target"
         return out
 
     def hint(self):
         """What the apps page's header says while a drag from the bar is
-        over its home list, or None."""
-        for (_, _, item), t in self.hover.items():
+        over its home list, or one of its pages over the bar, or None."""
+        for (place, _, item), t in self.hover.items():
+            if place == PAGES_LIST:
+                name = short(item.title())
+                if t.full:
+                    return "The bar is full: remove an item from it to make room for %s." % name
+                if t.index < len(self.config().bar):
+                    return "Lift to pin %s here; the items after it move right." % name
+                return "Lift to pin %s to the bar." % name
             if t.place == APPS_LIST:
                 name = short(item.title())
                 if t.replaced is None:
